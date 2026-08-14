@@ -56,6 +56,11 @@ let avancoFilters = { q:'', status:'' };
 let histFilters = { tipo:'', projeto:'' };
 let calRef = new Date();
 let CURRENT_USER = null;
+function currentAutor(){ return { usuarioNome: CURRENT_USER?.nome || 'Sistema', usuarioLogin: CURRENT_USER?.login || '' }; }
+function autor(h){
+  if(h && h.usuarioNome && h.usuarioNome!=='Sistema') return esc(h.usuarioNome)+(h.usuarioLogin? ` (${esc(h.usuarioLogin)})`:'');
+  return 'Sistema';
+}
 
 /* =========================================================
    CONSTANTES DE DOMÍNIO
@@ -516,7 +521,7 @@ function openConfirmacaoModal(prog, atrib, onResolved){
         const de = atrib.status;
         atrib.status='Concluído';
         atrib.historico = atrib.historico||[];
-        atrib.historico.push({ts:Date.now(), tipo:'confirmacao', de, para:'Concluído', motivo:'Execução confirmada pelo usuário (SIM)'});
+        atrib.historico.push({...currentAutor(), ts:Date.now(), tipo:'confirmacao', de, para:'Concluído', motivo:'Execução confirmada pelo usuário (SIM)'});
         saveData(); root.innerHTML=''; toast('Programação concluída.'); renderContent(); onResolved && onResolved();
       });
     } else if(step==='nao'){
@@ -538,7 +543,7 @@ function openConfirmacaoModal(prog, atrib, onResolved){
         atrib.status = 'Reprogramado';
         if(editor){ const data = editor.getData(); if(data.length) atrib.atividades = data.map(d=>({...d, quantidadeExecutada:null})); }
         atrib.historico = atrib.historico||[];
-        atrib.historico.push({ts:Date.now(), tipo:'reprogramacao', de:dataAntiga, para:novaData, motivo, obs});
+        atrib.historico.push({...currentAutor(), ts:Date.now(), tipo:'reprogramacao', de:dataAntiga, para:novaData, motivo, obs});
         saveData(); root.innerHTML=''; toast('Programação reprogramada.'); renderContent(); onResolved && onResolved();
       });
     }
@@ -1252,7 +1257,7 @@ function findAtribuicaoGlobal(atribId){
   const de = atrib.status;
   atrib.status = status;
   atrib.historico = atrib.historico||[];
-  atrib.historico.push({ts:Date.now(), tipo:'status', de, para:status, motivo:null});
+  atrib.historico.push({...currentAutor(), ts:Date.now(), tipo:'status', de, para:status, motivo:null});
   saveData(); renderContent(); renderBanner(); toast('Status alterado para '+status+'.');
 }
 function bindKanbanDrag(area){
@@ -1547,14 +1552,14 @@ function openAtribDetalhe(atribId){
           const existing = oldAtribs.find(old => String(old.equipeId)===String(a.equipeId));
           const novasAtividades = a.atividades.map(x=>({atividadeId:Number(x.atividadeId), quantidadePrevista: x.quantidadePrevista?parseFloat(x.quantidadePrevista):null, quantidadeExecutada: existing? (existing.atividades.find(y=>y.atividadeId===Number(x.atividadeId))?.quantidadeExecutada ?? null) : null}));
           if(existing){ if(existing.dataProgramada===dataBaseAntiga) existing.dataProgramada = dataBase; existing.atividades = novasAtividades; return existing; }
-          return { id: nextId(), equipeId:Number(a.equipeId), dataProgramada: dataBase, status:'Programado', atividades: novasAtividades, historico:[{ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Atribuição adicionada à programação'}] };
+          return { id: nextId(), equipeId:Number(a.equipeId), dataProgramada: dataBase, status:'Programado', atividades: novasAtividades, historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Atribuição adicionada à programação'}] };
         });
         toast('Programação atualizada.');
       } else {
         const novaProg = { id: nextId(), projetoId, dataProgramada: dataBase, ciclo, observacoes, custom,
           atribuicoes: atribs.map(a=> ({ id: nextId(), equipeId:Number(a.equipeId), dataProgramada: dataBase, status:'Programado',
             atividades: a.atividades.map(x=>({atividadeId:Number(x.atividadeId), quantidadePrevista:x.quantidadePrevista?parseFloat(x.quantidadePrevista):null, quantidadeExecutada:null})),
-            historico:[{ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Programação criada'}] })) };
+            historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Programação criada'}] })) };
         DB.programacoes.push(novaProg); toast('Programação criada.');
       }
       saveData(); renderContent(); renderBanner();
@@ -1587,8 +1592,8 @@ function openReprogramarManual(pgId, atId){
       const dataAntiga = atrib.dataProgramada;
       atrib.dataProgramada = novaData; atrib.status = 'Reprogramado';
       atrib.historico = atrib.historico||[];
-      atrib.historico.push({ts:Date.now(), tipo:'reprogramacao', de:dataAntiga, para:novaData, motivo, obs});
-      saveData(); renderContent(); renderBanner(); toast('Programação reprogramada.');
+        atrib.historico.push({...currentAutor(), ts:Date.now(), tipo:'reprogramacao', de:dataAntiga, para:novaData, motivo, obs});
+        saveData(); renderContent(); renderBanner(); toast('Programação reprogramada.');
     }
   });
 }
@@ -1722,7 +1727,7 @@ function renderHistoricoTimeline(events, withContext){
     else if(h.tipo==='reprogramacao'){ dotColor='var(--purple)'; title=`Reprogramada: ${fmtDate(h.de)} → ${fmtDate(h.para)}`; }
     else if(h.tipo==='confirmacao'){ dotColor='var(--green)'; title='Execução confirmada'; }
     const ctx = withContext && pg ? `<div class="tl-meta">${esc(findProjeto(pg.projetoId)?.nome||'')} · Equipe ${equipeLabel(eq)}</div>` : '';
-    return `<div class="tl-item ${withContext?'clickable':''}" ${withContext?`data-open-atrib="${h.atribId}"`:''} style="--dot-c:${dotColor}"><div class="tl-title">${title}</div><div class="tl-meta">${fmtDateTime(h.ts)}</div>${ctx}${h.motivo? `<div class="tl-motivo"><strong>Motivo:</strong> ${esc(h.motivo)}${h.obs? ' — '+esc(h.obs):''}</div>`:''}</div>`;
+    return `<div class="tl-item ${withContext?'clickable':''}" ${withContext?`data-open-atrib="${h.atribId}"`:''} style="--dot-c:${dotColor}"><div class="tl-title">${title}</div><div class="tl-meta">${fmtDateTime(h.ts)} · <strong style="color:var(--muted);">${autor(h)}</strong></div>${ctx}${h.motivo? `<div class="tl-motivo"><strong>Motivo:</strong> ${esc(h.motivo)}${h.obs? ' — '+esc(h.obs):''}</div>`:''}</div>`;
   }).join('')}</div>`;
 }
 function openHistoricoModal(atribId){
@@ -1904,8 +1909,8 @@ function seedIfEmpty(){
   DB.projetos.push(p1);
   const prog1 = { id:nextId(), projetoId:p1.id, dataProgramada:todayISO(), ciclo:'CICLO-01/2026', observacoes:'', custom:{},
     atribuicoes:[
-      { id:nextId(), equipeId:eq1.id, dataProgramada:todayISO(), status:'Programado', atividades:[{atividadeId:a1.id, quantidadePrevista:3, quantidadeExecutada:null}], historico:[{ts:Date.now(), tipo:'criacao', de:null, para:'Programado', motivo:'Programação criada (exemplo)'}] },
-      { id:nextId(), equipeId:eq2.id, dataProgramada:todayISO(), status:'Programado', atividades:[{atividadeId:a2.id, quantidadePrevista:8, quantidadeExecutada:null},{atividadeId:a3.id, quantidadePrevista:120, quantidadeExecutada:null}], historico:[{ts:Date.now(), tipo:'criacao', de:null, para:'Programado', motivo:'Programação criada (exemplo)'}] }
+      { id:nextId(), equipeId:eq1.id, dataProgramada:todayISO(), status:'Programado', atividades:[{atividadeId:a1.id, quantidadePrevista:3, quantidadeExecutada:null}], historico:[{...currentAutor(), usuarioNome:'Sistema', usuarioLogin:'', ts:Date.now(), tipo:'criacao', de:null, para:'Programado', motivo:'Programação criada (exemplo)'}] },
+      { id:nextId(), equipeId:eq2.id, dataProgramada:todayISO(), status:'Programado', atividades:[{atividadeId:a2.id, quantidadePrevista:8, quantidadeExecutada:null},{atividadeId:a3.id, quantidadePrevista:120, quantidadeExecutada:null}], historico:[{...currentAutor(), usuarioNome:'Sistema', usuarioLogin:'', ts:Date.now(), tipo:'criacao', de:null, para:'Programado', motivo:'Programação criada (exemplo)'}] }
     ]};
   DB.programacoes.push(prog1);
   saveData();
