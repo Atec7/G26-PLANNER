@@ -93,6 +93,7 @@ function nivelLabel(v){ return NIVEIS_ACESSO.find(n=>n.v===v)?.l || v; }
 ========================================================= */
 const NAV_ITEMS = [
   { id:'dashboard',   label:'Painel',        sub:'Visão geral do sistema', icon:'grid' },
+  { id:'alertas',     label:'Alertas',       sub:'Projetos vencendo, reprogramações e viabilidade', icon:'alert' },
   { id:'equipes',     label:'Equipes',       sub:'Cadastro de equipes de campo', icon:'users' },
   { id:'atividades',  label:'Atividades',    sub:'Cadastro de códigos e valores unitários', icon:'list' },
   { id:'projetos',    label:'Projetos',      sub:'Cadastro de projetos', icon:'folder' },
@@ -127,7 +128,11 @@ function icon(name,size=16){ return `<svg width="${size}" height="${size}" viewB
     function renderNav(){
       const nav = document.getElementById('nav');
       const items = NAV_ITEMS.filter(it=> it.id!=='admin' || (CURRENT_USER && CURRENT_USER.role==='administrador'));
-      nav.innerHTML = items.map((it,i) => `${i===items.length-1?'<div class="nav-sep"></div>':''}<button class="nav-item ${currentView===it.id?'active':''}" data-view="${it.id}">${icon(it.icon)}<span>${it.label}</span></button>`).join('');
+      const alertTotal = alertaCount();
+      nav.innerHTML = items.map((it,i) => {
+        const badge = it.id==='alertas' && alertTotal>0 ? `<span class="nav-badge">${alertTotal}</span>` : '';
+        return `${i===items.length-1?'<div class="nav-sep"></div>':''}<button class="nav-item ${currentView===it.id?'active':''}" data-view="${it.id}">${icon(it.icon)}<span>${it.label}</span>${badge}</button>`;
+      }).join('');
       nav.querySelectorAll('.nav-item').forEach(btn=> btn.addEventListener('click', ()=> setView(btn.dataset.view)));
     }
 function setView(view){
@@ -156,6 +161,7 @@ function renderTopbarActions(){
     programacoes: ()=>btnSecondary('Excel', exportProgramacoesCSV),
     avanco: ()=>btnSecondary('Excel', exportAvancoCSV),
     historico: ()=>btnSecondary('Excel', exportHistoricoCSV),
+    alertas: ()=>btnSecondary('Excel', exportAlertasCSV),
   };
   const docMap = {
     programacoes: ()=>btnSecondary('Documento de campo', openDocumentoDataModal),
@@ -190,7 +196,18 @@ function fmtDate(iso){ if(!iso) return '—'; const [y,m,d]=iso.split('-'); retu
 function fmtDateTime(iso){ const dt=new Date(iso); return dt.toLocaleDateString('pt-BR')+' '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
 function fmtMoney(v){ return (Number(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
 function todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function diasEntre(de, ate){
+  if(!de || !ate) return null;
+  return Math.round((new Date(ate+'T12:00:00') - new Date(de+'T12:00:00'))/86400000);
+}
 function isLate(atrib){ return atrib.dataProgramada < todayISO() && !['Concluído','Cancelado'].includes(atrib.status); }
+const ALERT_VENCER_DIAS = 30;
+const ALERT_VIABILIDADE_DIAS = 20;
+const ALERT_VIAB_BREVE_DIAS = 5;
+function prazoViabilidadeProjeto(p){
+  if(!p?.dataRecebimentoCarteira) return '';
+  return shiftISO(p.dataRecebimentoCarteira, ALERT_VIABILIDADE_DIAS);
+}
 function equipeLabel(eq){
   if(!eq) return '—';
   const parts=[];
@@ -266,11 +283,34 @@ function exportAtividadesCSV(){
 }
 function exportProjetosCSV(){
   exportCSV('projetos.csv',
-    ['Código','Nome','Início','Fim','Setor','Coordenação','Ciclo','Status','Orçado (R$)','Executado (R$)','Restante (R$)','% Físico','% Financeiro','Atividades concluídas','Atividades totais'],
+    ['Código','Nome','Início','Fim','Receb. carteira','Vencimento','Viabilização','Setor','Coordenação','Ciclo','Status','Orçado (R$)','Executado (R$)','Restante (R$)','% Físico','% Financeiro','Atividades concluídas','Atividades totais'],
     DB.projetos.map(p=>{
       const av = projetoAvanco(p);
-      return [p.codigo, p.nome, fmtDate(p.dataInicio), fmtDate(p.dataFim), p.setor||'', p.coordenacao||'', p.ciclo||'', p.status, fmtMoney(av.valorOrcado), fmtMoney(av.valorExecutado), fmtMoney(av.restante), av.fisicoPct.toFixed(1)+'%', av.financeiroPct.toFixed(1)+'%', av.concluidoLinhas, av.totalLinhas];
+      return [p.codigo, p.nome, fmtDate(p.dataInicio), fmtDate(p.dataFim), fmtDate(p.dataRecebimentoCarteira), fmtDate(p.dataVencimento), fmtDate(p.dataViabilizacao), p.setor||'', p.coordenacao||'', p.ciclo||'', p.status, fmtMoney(av.valorOrcado), fmtMoney(av.valorExecutado), fmtMoney(av.restante), av.fisicoPct.toFixed(1)+'%', av.financeiroPct.toFixed(1)+'%', av.concluidoLinhas, av.totalLinhas];
     }));
+}
+function exportAlertasCSV(){
+  const hoje = todayISO();
+  const rows = [];
+  DB.projetos.forEach(p=>{
+    if(['Concluído','Cancelado'].includes(p.status)) return;
+    if(p.dataVencimento){
+      const dias = diasEntre(hoje, p.dataVencimento);
+      const sit = dias<0? `Vencido há ${-dias} dia(s)` : (dias===0? 'Vence hoje' : `Vence em ${dias} dia(s)`);
+      rows.push(['Vencimento', p.codigo, p.nome, fmtDate(p.dataVencimento), sit, p.status]);
+    }
+    if(p.dataRecebimentoCarteira){
+      const prazo = prazoViabilidadeProjeto(p);
+      const dias = diasEntre(hoje, prazo);
+      const sit = p.dataViabilizacao? `Viabilizado em ${fmtDate(p.dataViabilizacao)}` : (dias<0? `Viabilização atrasada há ${-dias} dia(s)` : `${dias} dia(s) para o prazo de viabilização`);
+      rows.push(['Viabilidade', p.codigo, p.nome, fmtDate(prazo), sit, p.status]);
+    }
+  });
+  flatAtribuicoes().filter(x=>x.atribuicao.status==='Reprogramado').forEach(x=>{
+    const p=x.atribuicao, pr=findProjeto(x.programacao.projetoId);
+    rows.push(['Reprogramação', pr?.codigo||'', pr?.nome||'', fmtDate(p.dataProgramada), 'Reprogramação pendente', p.status]);
+  });
+  exportCSV('alertas.csv', ['Tipo','Código','Projeto','Data referência','Situação','Status'], rows);
 }
 function exportProgramacoesCSV(){
   exportCSV('programacoes.csv',
@@ -376,6 +416,13 @@ function flatAtribuicoes(){
 }
 function pendingList(){
   return flatAtribuicoes().filter(x=> isLate(x.atribuicao));
+}
+function alertaCount(){
+  const hoje = todayISO();
+  const vencidos = DB.projetos.filter(p=> p.dataVencimento && !['Concluído','Cancelado'].includes(p.status) && p.dataVencimento < hoje).length;
+  const viabAtraso = DB.projetos.filter(p=> p.dataRecebimentoCarteira && !p.dataViabilizacao && prazoViabilidadeProjeto(p) < hoje).length;
+  const reprog = flatAtribuicoes().filter(x=>x.atribuicao.status==='Reprogramado').length;
+  return vencidos + viabAtraso + reprog;
 }
 
 /* =========================================================
@@ -623,6 +670,120 @@ function renderDashboard(){
 }
 
 /* =========================================================
+   VIEW: ALERTAS (vencimento, reprogramações, viabilidade)
+========================================================= */
+function renderAlertas(){
+  const el = document.getElementById('content');
+  const hoje = todayISO();
+  const ativos = p=> !['Concluído','Cancelado'].includes(p.status);
+
+  const projetosVencendo = DB.projetos.filter(p=> p.dataVencimento && ativos(p) && p.dataVencimento <= shiftISO(hoje, ALERT_VENCER_DIAS))
+    .map(p=>({ p, dias: diasEntre(hoje, p.dataVencimento) }))
+    .sort((a,b)=> a.p.dataVencimento.localeCompare(b.p.dataVencimento));
+  const vencidos = projetosVencendo.filter(x=>x.dias<0);
+  const venceHoje = projetosVencendo.filter(x=>x.dias===0);
+
+  const reprog = flatAtribuicoes().filter(x=>x.atribuicao.status==='Reprogramado');
+
+  const viabilidade = DB.projetos.filter(p=> p.dataRecebimentoCarteira && ativos(p)).map(p=>{
+    const prazo = prazoViabilidadeProjeto(p);
+    return { p, prazo, viabilizado: !!p.dataViabilizacao, dias: diasEntre(hoje, prazo) };
+  }).sort((a,b)=> a.prazo.localeCompare(b.prazo));
+  const viabVencidos = viabilidade.filter(x=>!x.viabilizado && x.dias<0);
+
+  el.innerHTML = `
+    <div class="grid-stats">
+      <div class="stat-card" style="--accent-c:var(--red)"><div class="lbl">Projetos vencidos</div><div class="val">${vencidos.length}</div></div>
+      <div class="stat-card" style="--accent-c:var(--accent)"><div class="lbl">Vencimento hoje</div><div class="val">${venceHoje.length}</div></div>
+      <div class="stat-card" style="--accent-c:var(--purple)"><div class="lbl">Reprogramações pendentes</div><div class="val">${reprog.length}</div></div>
+      <div class="stat-card" style="--accent-c:var(--red)"><div class="lbl">Viabilização em atraso</div><div class="val">${viabVencidos.length}</div></div>
+    </div>
+    ${renderAlertasProjetosPanel(projetosVencendo)}
+    ${renderAlertasReprogsPanel(reprog)}
+    ${renderAlertasViabilidadePanel(viabilidade)}
+  `;
+  el.querySelectorAll('[data-avanco-alerta]').forEach(b=>b.addEventListener('click', ()=>openAvancoDetalhe(b.dataset.avancoAlerta)));
+  el.querySelectorAll('[data-edit-alerta]').forEach(b=>b.addEventListener('click', ()=>openProjetoModal(b.dataset.editAlerta)));
+}
+function renderAlertasProjetosPanel(list){
+  return `<div class="panel section-gap">
+    <div class="panel-head"><h3>Projetos vencendo (próximos ${ALERT_VENCER_DIAS} dias)</h3><span style="font-size:12px;color:var(--muted);">${list.length} projeto(s)</span></div>
+    <div class="table-scroll"><table>
+      <thead><tr><th>Código</th><th>Projeto</th><th>Receb. carteira</th><th>Vencimento</th><th>Prazo</th><th>Status</th><th></th></tr></thead>
+      <tbody>${list.length? list.map(({p,dias})=>{
+        const c = dias<0? 'var(--red)' : dias<=ALERT_VIAB_BREVE_DIAS? 'var(--accent)' : 'var(--muted)';
+        const prazoTxt = dias<0? `VENCIDO há ${-dias} dia(s)` : dias===0? 'Vence hoje' : `Vence em ${dias} dia(s)`;
+        return `<tr>
+          <td class="mono">${esc(p.codigo)}</td>
+          <td><strong>${esc(p.nome)}</strong></td>
+          <td class="mono">${fmtDate(p.dataRecebimentoCarteira)}</td>
+          <td class="mono">${fmtDate(p.dataVencimento)}</td>
+          <td><span class="badge ${dias<0?'blink-red':''}" style="color:${c};background:${bgFromVar(c)};">${prazoTxt}</span></td>
+          <td>${projStatusBadge(p.status)}</td>
+          <td><div class="row-actions">
+            <button class="icon-btn" title="Ver avanço" data-avanco-alerta="${p.id}">${icon('trend',14)}</button>
+            <button class="icon-btn" title="Editar projeto" data-edit-alerta="${p.id}">${icon('edit',14)}</button>
+          </div></td>
+        </tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="7">Nenhum projeto vencendo nos próximos ${ALERT_VENCER_DIAS} dias.</td></tr>`}</tbody>
+    </table></div>
+  </div>`;
+}
+function renderAlertasReprogsPanel(list){
+  return `<div class="panel section-gap">
+    <div class="panel-head"><h3>Reprogramações pendentes</h3><span style="font-size:12px;color:var(--muted);">${list.length} programação(ões)</span></div>
+    <div class="table-scroll"><table>
+      <thead><tr><th>Data atual</th><th>Projeto</th><th>Equipe</th><th>Último motivo</th><th>Vezes</th><th>Status</th></tr></thead>
+      <tbody>${list.length? list.map(x=>{
+        const p=x.atribuicao, pr=findProjeto(x.programacao.projetoId), eq=findEquipe(p.equipeId);
+        const reprogs = (p.historico||[]).filter(h=>h.tipo==='reprogramacao');
+        const last = reprogs[reprogs.length-1];
+        const late = isLate(p);
+        return `<tr>
+          <td class="mono">${fmtDate(p.dataProgramada)} ${late?`<div class="blink-red" style="font-size:10.5px;color:var(--red);">NOVAMENTE VENCIDA</div>`:''}</td>
+          <td>${esc(pr?.nome||'—')}<div style="color:var(--muted-2);font-size:11px;">${esc(pr?.codigo||'')}</div></td>
+          <td>${equipeLabel(eq)}</td>
+          <td style="font-size:12px;color:var(--muted);">${esc(last?.motivo||'—')}${last?.obs? ' — '+esc(last.obs):''}</td>
+          <td class="mono">${reprogs.length}</td>
+          <td>${statusBadge(p.status)}</td>
+        </tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="6">Nenhuma reprogramação pendente.</td></tr>`}</tbody>
+    </table></div>
+  </div>`;
+}
+function renderAlertasViabilidadePanel(list){
+  return `<div class="panel">
+    <div class="panel-head"><h3>Viabilidade (prazo de ${ALERT_VIABILIDADE_DIAS} dias corridos após recebimento da carteira)</h3><span style="font-size:12px;color:var(--muted);">${list.length} projeto(s)</span></div>
+    <div class="table-scroll"><table>
+      <thead><tr><th>Código</th><th>Projeto</th><th>Receb. carteira</th><th>Prazo limite</th><th>Situação</th><th>Data viabilização</th><th></th></tr></thead>
+      <tbody>${list.length? list.map(({p,prazo,viabilizado,dias})=>{
+        let situacao, c;
+        if(viabilizado){
+          const dentro = p.dataViabilizacao && p.dataViabilizacao<=prazo;
+          situacao = dentro? 'Viabilizado dentro do prazo' : 'Viabilizado fora do prazo';
+          c = dentro? 'var(--green)' : 'var(--accent)';
+        } else if(dias<0){
+          situacao = `Prazo vencido há ${-dias} dia(s)`; c='var(--red)';
+        } else if(dias<=ALERT_VIAB_BREVE_DIAS){
+          situacao = `Vence em ${dias} dia(s)`; c='var(--accent)';
+        } else {
+          situacao = `${dias} dia(s) restantes`; c='var(--muted)';
+        }
+        return `<tr>
+          <td class="mono">${esc(p.codigo)}</td>
+          <td><strong>${esc(p.nome)}</strong></td>
+          <td class="mono">${fmtDate(p.dataRecebimentoCarteira)}</td>
+          <td class="mono">${fmtDate(prazo)}</td>
+          <td><span class="badge ${(!viabilizado && dias<0)?'blink-red':''}" style="color:${c};background:${bgFromVar(c)};">${situacao}</span></td>
+          <td class="mono">${fmtDate(p.dataViabilizacao)}</td>
+          <td><div class="row-actions"><button class="icon-btn" title="Editar projeto" data-edit-alerta="${p.id}">${icon('edit',14)}</button></div></td>
+        </tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="7">Nenhum projeto com data de recebimento de carteira.</td></tr>`}</tbody>
+    </table></div>
+  </div>`;
+}
+
+/* =========================================================
    VIEW: EQUIPES
 ========================================================= */
 function renderEquipes(){
@@ -806,7 +967,7 @@ function renderProjetos(){
       <span style="font-size:12px;color:var(--muted);">${list.length} de ${DB.projetos.length} projetos</span>
     </div>
     <div class="panel"><div class="table-scroll"><table>
-      <thead><tr><th>Código</th><th>Projeto</th><th>Período</th><th>Setor · Coordenação</th><th>Ciclo</th><th>Orçado</th><th>Avanço</th><th>Status</th><th>Programações</th>${customFields.map(f=>`<th>${esc(f.label)}</th>`).join('')}<th></th></tr></thead>
+      <thead><tr><th>Código</th><th>Projeto</th><th>Período</th><th>Receb. carteira</th><th>Vencimento</th><th>Setor · Coordenação</th><th>Ciclo</th><th>Orçado</th><th>Avanço</th><th>Status</th><th>Programações</th>${customFields.map(f=>`<th>${esc(f.label)}</th>`).join('')}<th></th></tr></thead>
       <tbody>${list.map(p=>{
       const count = DB.programacoes.filter(x=>x.projetoId===p.id).reduce((s,pg)=>s+(pg.atribuicoes?.length||0),0);
       const av = projetoAvanco(p);
@@ -814,6 +975,8 @@ function renderProjetos(){
         <td class="mono">${esc(p.codigo)}</td>
         <td><strong>${esc(p.nome)}</strong><div style="color:var(--muted-2);font-size:11.5px;margin-top:2px;">${esc(p.descricao||'')}</div></td>
         <td class="mono" style="font-size:12px;">${fmtDate(p.dataInicio)} → ${fmtDate(p.dataFim)}</td>
+        <td class="mono" style="font-size:12px;">${fmtDate(p.dataRecebimentoCarteira)}${viabilidadeAlertBadge(p)}</td>
+        <td class="mono" style="font-size:12px;">${fmtDate(p.dataVencimento)}${vencimentoAlertBadge(p)}</td>
         <td style="font-size:12px;">${esc(p.setor||'—')}<div style="color:var(--muted-2);font-size:11px;">${esc(p.coordenacao||'—')}</div></td>
         <td><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${esc(p.ciclo||'—')}</span></td>
         <td class="mono">${fmtMoney(p.valorOrcado||0)}</td>
@@ -822,7 +985,7 @@ function renderProjetos(){
         ${customFields.map(f=>`<td>${esc(p.custom?.[f.id]||'—')}</td>`).join('')}
         <td><div class="row-actions"><button class="icon-btn" title="Ver avanço" data-avanco-detalhe="${p.id}">${icon('trend',14)}</button><button class="icon-btn" data-edit-pj="${p.id}">${icon('edit',14)}</button><button class="icon-btn" data-del-pj="${p.id}">${icon('trash',14)}</button></div></td>
       </tr>`;
-    }).join('') || `<tr class="empty-row"><td colspan="${10+customFields.length}">Nenhum projeto encontrado com os filtros.</td></tr>`}</tbody></table></div></div>`;
+    }).join('') || `<tr class="empty-row"><td colspan="${12+customFields.length}">Nenhum projeto encontrado com os filtros.</td></tr>`}</tbody></table></div></div>`;
   document.getElementById('f-pj-q').addEventListener('input', e=>{ projFilters.q=e.target.value; renderContent(); });
   document.getElementById('f-pj-status').addEventListener('change', e=>{ projFilters.status=e.target.value; renderContent(); });
   el.querySelectorAll('[data-avanco-detalhe]').forEach(b=>b.addEventListener('click', ()=>openAvancoDetalhe(b.dataset.avancoDetalhe)));
@@ -833,6 +996,21 @@ function projStatusBadge(status){
   const colors = {'Planejado':'var(--blue)','Em Andamento':'var(--accent)','Concluído':'var(--green)','Cancelado':'var(--red)'};
   const c = colors[status]||'var(--muted)';
   return `<span class="badge" style="color:${c};background:${bgFromVar(c)}"><span class="badge-dot"></span>${status}</span>`;
+}
+function vencimentoAlertBadge(p){
+  if(!p.dataVencimento || ['Concluído','Cancelado'].includes(p.status)) return '';
+  const dias = diasEntre(todayISO(), p.dataVencimento);
+  if(dias<0) return `<div class="blink-red" style="font-size:10.5px;color:var(--red);margin-top:2px;">VENCIDO há ${-dias} dia(s)</div>`;
+  if(dias===0) return `<div style="font-size:10.5px;color:var(--accent);margin-top:2px;">Vence hoje</div>`;
+  if(dias<=5) return `<div style="font-size:10.5px;color:var(--accent);margin-top:2px;">Vence em ${dias} dia(s)</div>`;
+  return '';
+}
+function viabilidadeAlertBadge(p){
+  if(!p.dataRecebimentoCarteira || p.dataViabilizacao || ['Concluído','Cancelado'].includes(p.status)) return '';
+  const dias = diasEntre(todayISO(), prazoViabilidadeProjeto(p));
+  if(dias<0) return `<div class="blink-red" style="font-size:10.5px;color:var(--red);margin-top:2px;">VIABILIDADE ATRASADA há ${-dias} dia(s)</div>`;
+  if(dias<=ALERT_VIAB_BREVE_DIAS) return `<div style="font-size:10.5px;color:var(--accent);margin-top:2px;">Viabilizar em ${dias} dia(s)</div>`;
+  return '';
 }
     function openProjetoModal(id){
       if(!requerEscrita()) return;
@@ -849,6 +1027,11 @@ function projStatusBadge(status){
       <div class="field"><label>Data de início <span class="req">*</span></label><input type="date" name="dataInicio" required value="${pj?.dataInicio||''}"></div>
       <div class="field"><label>Data fim prevista</label><input type="date" name="dataFim" value="${pj?.dataFim||''}"></div>
     </div>
+    <div class="field-row">
+      <div class="field"><label>Data recebimento carteira <span class="req">*</span></label><input type="date" name="dataRecebimentoCarteira" required value="${pj?.dataRecebimentoCarteira||''}"><div class="field-hint">Início da contagem do prazo de viabilização (20 dias corridos).</div></div>
+      <div class="field"><label>Data vencimento do projeto <span class="req">*</span></label><input type="date" name="dataVencimento" required value="${pj?.dataVencimento||''}"><div class="field-hint">Referência para os alertas de projetos vencendo.</div></div>
+    </div>
+    <div class="field"><label>Data de viabilização</label><input type="date" name="dataViabilizacao" value="${pj?.dataViabilizacao||''}"><div class="field-hint">Informe a data quando o projeto for viabilizado. Enquanto vazio, o alerta de viabilidade permanece até o prazo de 20 dias corridos após o recebimento da carteira.</div></div>
     <div class="field-row">
       <div class="field"><label>Setor <span class="req">*</span></label><select name="setor" required><option value="">Selecione…</option><option ${pj?.setor==='MANUTENÇÃO'?'selected':''}>MANUTENÇÃO</option><option ${pj?.setor==='OBRAS'?'selected':''}>OBRAS</option></select></div>
       <div class="field"><label>Coordenação <span class="req">*</span></label><select name="coordenacao" required><option value="">Selecione…</option><option ${pj?.coordenacao==='RIO VERDE'?'selected':''}>RIO VERDE</option><option ${pj?.coordenacao==='QUIRINOPOLIS'?'selected':''}>QUIRINOPOLIS</option></select></div>
@@ -874,7 +1057,7 @@ function projStatusBadge(status){
       const ciclo = cicloMask(fd.get('ciclo'));
       if(!isCicloValido(ciclo)){ toast('Informe o ciclo recebido no formato CICLO-XX/XXXX (ex.: CICLO-01/2026).', 'error'); return false; }
       if(!fd.get('setor') || !fd.get('coordenacao')){ toast('Selecione o setor e a coordenação do projeto.', 'error'); return false; }
-      const data = { codigo: fd.get('codigo').trim(), nome: fd.get('nome').trim(), descricao: fd.get('descricao').trim(), dataInicio: fd.get('dataInicio'), dataFim: fd.get('dataFim'), setor: fd.get('setor'), coordenacao: fd.get('coordenacao'), status: fd.get('status'), valorOrcado: parseFloat(fd.get('valorOrcado'))||0, ciclo, planoFisico: (planoEditor? planoEditor.getData() : []).map(x=>({atividadeId:x.atividadeId, quantidade:x.quantidadePrevista})), custom: parseCustomFieldsFromForm('projetos', fd) };
+      const data = { codigo: fd.get('codigo').trim(), nome: fd.get('nome').trim(), descricao: fd.get('descricao').trim(), dataInicio: fd.get('dataInicio'), dataFim: fd.get('dataFim'), dataRecebimentoCarteira: fd.get('dataRecebimentoCarteira'), dataVencimento: fd.get('dataVencimento'), dataViabilizacao: fd.get('dataViabilizacao')||'', setor: fd.get('setor'), coordenacao: fd.get('coordenacao'), status: fd.get('status'), valorOrcado: parseFloat(fd.get('valorOrcado'))||0, ciclo, planoFisico: (planoEditor? planoEditor.getData() : []).map(x=>({atividadeId:x.atividadeId, quantidade:x.quantidadePrevista})), custom: parseCustomFieldsFromForm('projetos', fd) };
       if(pj){ Object.assign(pj, data); toast('Projeto atualizado.'); } else { data.id = nextId(); DB.projetos.push(data); toast('Projeto cadastrado.'); }
       saveData(); renderContent();
     }
@@ -1887,7 +2070,7 @@ document.getElementById('import-file').addEventListener('change', (e)=>{
    ROUTER
 ========================================================= */
 function renderContent(){
-  const map = { dashboard: renderDashboard, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin };
+  const map = { dashboard: renderDashboard, alertas: renderAlertas, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin };
   (map[currentView]||renderDashboard)();
 }
 
@@ -1905,7 +2088,7 @@ function seedIfEmpty(){
   const a2 = {id:nextId(), codigo:'MAN-022', descricao:'Poda de árvore próxima à rede', unidade:'un', valorUnitario:180, custom:{}};
   const a3 = {id:nextId(), codigo:'CON-005', descricao:'Instalação de rede de baixa tensão', unidade:'m', valorUnitario:42.5, custom:{}};
   DB.atividades.push(a1,a2,a3);
-  const p1 = {id:nextId(), codigo:'PRJ-2026-01', nome:'Manutenção preventiva - Setor Leste', descricao:'Ronda de manutenção preventiva na rede do setor leste.', dataInicio:todayISO(), dataFim:'', setor:'MANUTENÇÃO', coordenacao:'RIO VERDE', status:'Em Andamento', valorOrcado:60000, ciclo:'CICLO-01/2026', planoFisico:[{atividadeId:a1.id, quantidade:6},{atividadeId:a2.id, quantidade:12},{atividadeId:a3.id, quantidade:150}], custom:{}};
+  const p1 = {id:nextId(), codigo:'PRJ-2026-01', nome:'Manutenção preventiva - Setor Leste', descricao:'Ronda de manutenção preventiva na rede do setor leste.', dataInicio:todayISO(), dataFim:'', dataRecebimentoCarteira:shiftISO(todayISO(), -10), dataVencimento:shiftISO(todayISO(), 60), dataViabilizacao:'', setor:'MANUTENÇÃO', coordenacao:'RIO VERDE', status:'Em Andamento', valorOrcado:60000, ciclo:'CICLO-01/2026', planoFisico:[{atividadeId:a1.id, quantidade:6},{atividadeId:a2.id, quantidade:12},{atividadeId:a3.id, quantidade:150}], custom:{}};
   DB.projetos.push(p1);
   const prog1 = { id:nextId(), projetoId:p1.id, dataProgramada:todayISO(), ciclo:'CICLO-01/2026', observacoes:'', custom:{},
     atribuicoes:[

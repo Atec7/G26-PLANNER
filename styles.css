@@ -39,6 +39,7 @@ input,select,textarea{font-family:'Inter',sans-serif;}
 .nav-item:hover{background:var(--panel-2);color:var(--text);}
 .nav-item.active{background:var(--panel-2);color:var(--accent);border-color:var(--border);}
 .nav-item.active svg{opacity:1;}
+.nav-badge{margin-left:auto;background:var(--red);color:#fff;font-size:10px;font-weight:700;min-width:17px;height:17px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;}
 .nav-sep{height:1px;background:var(--border-soft);margin:8px 6px;}
 .nav-foot{padding:14px 18px;border-top:1px solid var(--border-soft);}
 .nav-foot button{width:100%;background:var(--panel-2);border:1px solid var(--border);color:var(--muted);padding:8px;border-radius:var(--radius-sm);font-size:12px;}
