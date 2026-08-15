@@ -417,9 +417,15 @@ function render(){
     h.className = 'te-photo-hint ' + (n? 'ok':'missing');
   });
   document.getElementById('team-submit').addEventListener('click', submitEdit);
-  document.getElementById('btn-informar-acidente').addEventListener('click', ()=> abrirModalAcidente());
+  const btnAcidente = document.getElementById('btn-informar-acidente');
+  if(btnAcidente){
+    btnAcidente.addEventListener('click', ()=>{ console.log('[team] INFORMAR ACIDENTE clicked'); abrirModalAcidente(); });
+  }else{
+    console.warn('[team] btn-informar-acidente não encontrado no DOM');
+  }
 }
 function abrirModalAcidente(){
+  console.log('[team] abrirModalAcidente chamado');
   const eq = findEquipe(DB, (prog.atribuicoes||[])[0]?.equipeId);
   const progGidLabel = prog.gid || ('G26-'+String(prog.id).padStart(7,'0'));
   const body = `
@@ -460,6 +466,7 @@ function abrirModalAcidente(){
         await ACCIDENT_REF.push(acidente);
         toast('Alerta de acidente enviado a todas as telas do escritório!');
       }catch(e){
+        console.error('[team] Erro ao enviar acidente:', e);
         toast('Erro ao enviar alerta: '+e.message, 'error');
         return false;
       }
