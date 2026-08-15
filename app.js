@@ -308,8 +308,8 @@ function exportCSV(filename, headers, rows){
 }
 function exportEquipesCSV(){
   exportCSV('equipes.csv',
-    ['Nome da equipe','Nome complementar','Supervisor','Encarregado','Motorista','Meta diária','Eletricistas','Situação'],
-    DB.equipes.map(e=>[e.eqtl, e.prtn, e.supervisor, e.encarregado, e.motorista, e.metaDiaria||'', (e.eletricistas||[]).join(', '), e.ativo? 'Ativa':'Inativa']));
+    ['Nome da equipe','Nome complementar','Setor','Coordenação','Supervisor','Encarregado','Motorista','Meta diária','Eletricistas','Situação'],
+    equipesVisiveis().map(e=>[e.eqtl, e.prtn, e.setor||'', e.coordenacao||'', e.supervisor, e.encarregado, e.motorista, e.metaDiaria||'', (e.eletricistas||[]).join(', '), e.ativo? 'Ativa':'Inativa']));
 }
 function exportAtividadesCSV(){
   exportCSV('atividades.csv',
@@ -652,7 +652,8 @@ function renderDashboard(){
   const hoje = todayISO();
   const cicloAtivo = progFilters.ciclo || cicloPadrao();
   const flat = flatPorCicloPadrao();
-  const equipesAtivas = DB.equipes.filter(e=>e.ativo).length;
+  const eqs = equipesVisiveis();
+  const equipesAtivas = eqs.filter(e=>e.ativo).length;
   const ps = projetosVisiveis();
   const projetosAndamento = ps.filter(p=>p.status==='Em Andamento').length;
   const progHoje = flat.filter(x=> x.atribuicao.dataProgramada===hoje && x.atribuicao.status!=='Cancelado').length;
@@ -671,7 +672,7 @@ function renderDashboard(){
       ${cicloAtivo? `<span style="font-size:11.5px;color:var(--muted-2);">maior ciclo cadastrado com programações concluídas — vale para todas as telas com filtro</span>`:''}
     </div>
     <div class="grid-stats">
-      <div class="stat-card clickable" data-go="equipes" style="--accent-c:var(--blue)"><div class="lbl">Equipes ativas</div><div class="val">${equipesAtivas}<small> / ${DB.equipes.length}</small></div></div>
+      <div class="stat-card clickable" data-go="equipes" style="--accent-c:var(--blue)"><div class="lbl">Equipes ativas</div><div class="val">${equipesAtivas}<small> / ${eqs.length}</small></div></div>
       <div class="stat-card clickable" data-go="projetos" style="--accent-c:var(--teal)"><div class="lbl">Projetos em andamento</div><div class="val">${projetosAndamento}<small> / ${ps.length}</small></div></div>
       <div class="stat-card clickable" data-go="hoje" style="--accent-c:var(--accent)"><div class="lbl">Programado p/ hoje</div><div class="val">${progHoje}</div></div>
       <div class="stat-card clickable" data-go="vencidas" style="--accent-c:var(--red)"><div class="lbl">Vencidas (aguardando confirmação)</div><div class="val">${atrasadas}</div></div>
@@ -861,11 +862,12 @@ function renderAlertasViabilidadePanel(list){
 ========================================================= */
 function renderEquipes(){
   const el = document.getElementById('content');
-  if(!DB.equipes.length){ el.innerHTML = emptyState('Nenhuma equipe cadastrada', 'Cadastre equipes de campo informando o nome da equipe, supervisor, encarregado, motorista, meta diária e eletricistas.'); bindEmptyCta(el, ()=>openEquipeModal()); return; }
-  const list = DB.equipes.filter(e=>{
+  const visiveis = equipesVisiveis();
+  if(!visiveis.length){ el.innerHTML = emptyState('Nenhuma equipe cadastrada', 'Cadastre equipes de campo informando o nome da equipe, supervisor, encarregado, motorista, meta diária e eletricistas.'); bindEmptyCta(el, ()=>openEquipeModal()); return; }
+  const list = visiveis.filter(e=>{
     if(equipeFilters.status==='ativa' && !e.ativo) return false;
     if(equipeFilters.status==='inativa' && e.ativo) return false;
-    if(equipeFilters.q){ const t=(e.eqtl+' '+(e.prtn||'')+' '+(e.supervisor||'')+' '+(e.encarregado||'')+' '+(e.motorista||'')+' '+(e.eletricistas||[]).join(' ')).toLowerCase(); if(!t.includes(equipeFilters.q.toLowerCase())) return false; }
+    if(equipeFilters.q){ const t=(e.eqtl+' '+(e.prtn||'')+' '+(e.setor||'')+' '+(e.coordenacao||'')+' '+(e.supervisor||'')+' '+(e.encarregado||'')+' '+(e.motorista||'')+' '+(e.eletricistas||[]).join(' ')).toLowerCase(); if(!t.includes(equipeFilters.q.toLowerCase())) return false; }
     return true;
   });
   el.innerHTML = `
@@ -874,7 +876,7 @@ function renderEquipes(){
         <input id="f-eq-q" placeholder="Buscar equipe (nome, supervisor, encarregado…)…" value="${esc(equipeFilters.q)}">
         <select id="f-eq-status"><option value="">Todas as situações</option><option value="ativa" ${equipeFilters.status==='ativa'?'selected':''}>Ativas</option><option value="inativa" ${equipeFilters.status==='inativa'?'selected':''}>Inativas</option></select>
       </div>
-      <span style="font-size:12px;color:var(--muted);">${list.length} de ${DB.equipes.length} equipes</span>
+      <span style="font-size:12px;color:var(--muted);">${list.length} de ${visiveis.length} equipes</span>
     </div>
     ${list.length? `<div class="grid-crews">${list.map(crewCard).join('')}</div>` : `<div class="panel"><div class="empty-state">${icon('empty',34)}<p>Nenhuma equipe encontrada com os filtros.</p></div></div>`}`;
   document.getElementById('f-eq-q').addEventListener('input', e=>{ equipeFilters.q=e.target.value; renderContent(); });
@@ -893,7 +895,7 @@ function crewCard(eq){
           ${eq.eqtl? `<span class="badge-prefix">${esc(eq.eqtl)}</span>`:''}
           ${eq.prtn? `<span class="badge-prefix alt">${esc(eq.prtn)}</span>`:''}
         </div>
-        <div style="margin-top:8px;font-size:12px;color:var(--muted);"><span class="crew-status-dot ${eq.ativo?'':'off'}"></span>${eq.ativo? 'Ativa':'Inativa'}</div>
+        <div style="margin-top:8px;font-size:12px;color:var(--muted);"><span class="crew-status-dot ${eq.ativo?'':'off'}"></span>${eq.ativo? 'Ativa':'Inativa'}${eq.setor||eq.coordenacao? ' · '+esc([eq.setor,eq.coordenacao].filter(Boolean).join(' / ')):''}</div>
       </div>
       <div class="row-actions">
         <button class="icon-btn" data-edit-equipe="${eq.id}">${icon('edit',14)}</button>
@@ -926,6 +928,10 @@ function crewCard(eq){
     <div class="field"><label>WhatsApp</label><input type="text" name="whatsapp" value="${esc(eq?.whatsapp||'')}" placeholder="Ex: (11) 98765-4321" inputmode="tel"><div class="field-hint">Usado no botão "Encaminhar para equipe" das programações. Informe com DDD.</div></div>
     <div class="field"><label>Meta diária (R$)</label><input type="number" step="0.01" min="0" name="metaDiaria" value="${eq?.metaDiaria??''}" placeholder="0,00"><div class="field-hint">Se a programação do dia ficar abaixo deste valor, o sistema alerta na programação.</div></div>
     <div class="field"><label>Eletricistas</label><input type="text" name="eletricistas" value="${esc((eq?.eletricistas||[]).join(', '))}" placeholder="Separe por vírgula: Fulano, Ciclano"><div class="field-hint">Separe os nomes por vírgula.</div></div>
+    <div class="field-row">
+      <div class="field"><label>Setor <span class="req">*</span></label><select name="setor" required><option value="">Selecione…</option><option ${eq?.setor==='MANUTENÇÃO'||(usuarioRestrito()&&CURRENT_USER.setor==='MANUTENÇÃO')?'selected':''}>MANUTENÇÃO</option><option ${eq?.setor==='OBRAS'||(usuarioRestrito()&&CURRENT_USER.setor==='OBRAS')?'selected':''}>OBRAS</option></select><div class="field-hint">Vincular a equipe ao setor onde ela atua.</div></div>
+      <div class="field"><label>Coordenação <span class="req">*</span></label><select name="coordenacao" required><option value="">Selecione…</option><option ${eq?.coordenacao==='RIO VERDE'||(usuarioRestrito()&&CURRENT_USER.coordenacao==='RIO VERDE')?'selected':''}>RIO VERDE</option><option ${eq?.coordenacao==='QUIRINOPOLIS'||(usuarioRestrito()&&CURRENT_USER.coordenacao==='QUIRINOPOLIS')?'selected':''}>QUIRINOPOLIS</option></select><div class="field-hint">Vincular a equipe à coordenação onde ela atua.</div></div>
+    </div>
     ${renderCustomFieldsInputs('equipes', eq)}
     <div class="field" style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="ativo" id="eq-ativo" style="width:auto;" ${eq? (eq.ativo?'checked':'') : 'checked'}><label for="eq-ativo" style="margin:0;">Equipe ativa</label></div>
   `;
@@ -934,7 +940,10 @@ function crewCard(eq){
     onSubmit:(fd)=>{
       const eqtl = fd.get('eqtl').trim(), prtn = fd.get('prtn').trim();
       if(!eqtl && !prtn){ toast('Preencha ao menos o nome da equipe.', 'error'); return false; }
-      const data = { eqtl, prtn, supervisor: fd.get('supervisor').trim(), encarregado: fd.get('encarregado').trim(), motorista: fd.get('motorista').trim(), whatsapp: fd.get('whatsapp').trim(), metaDiaria: parseFloat(fd.get('metaDiaria'))||0,
+      if(!fd.get('setor') || !fd.get('coordenacao')){ toast('Selecione o setor e a coordenação da equipe.', 'error'); return false; }
+      const setor = usuarioRestrito()? CURRENT_USER.setor : fd.get('setor');
+      const coordenacao = usuarioRestrito()? CURRENT_USER.coordenacao : fd.get('coordenacao');
+      const data = { eqtl, prtn, setor, coordenacao, supervisor: fd.get('supervisor').trim(), encarregado: fd.get('encarregado').trim(), motorista: fd.get('motorista').trim(), whatsapp: fd.get('whatsapp').trim(), metaDiaria: parseFloat(fd.get('metaDiaria'))||0,
         eletricistas: fd.get('eletricistas').split(',').map(s=>s.trim()).filter(Boolean), ativo: fd.get('ativo')==='on', custom: parseCustomFieldsFromForm('equipes', fd) };
       if(eq){ Object.assign(eq, data); toast('Equipe atualizada.'); } else { data.id = nextId(); DB.equipes.push(data); toast('Equipe cadastrada.'); }
       saveData(); renderContent();
@@ -1414,7 +1423,7 @@ function renderProgramacoes(){
     <div class="panel-head" style="padding:0;margin-bottom:16px;border:none;">
       <div class="filters">
         <select id="f-projeto"><option value="">Todos os projetos</option>${projetosVisiveis().map(p=>`<option value="${p.id}" ${progFilters.projeto==String(p.id)?'selected':''}>${esc(p.codigo)} · ${esc(p.nome)}</option>`).join('')}</select>
-        <select id="f-equipe"><option value="">Todas as equipes</option>${DB.equipes.map(e=>`<option value="${e.id}" ${progFilters.equipe==String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' — '+esc(e.encarregado):''}</option>`).join('')}</select>
+        <select id="f-equipe"><option value="">Todas as equipes</option>${equipesVisiveis().map(e=>`<option value="${e.id}" ${progFilters.equipe==String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' — '+esc(e.encarregado):''}</option>`).join('')}</select>
         <select id="f-status"><option value="">Todos os status</option>${STATUS_PROG.map(s=>`<option ${progFilters.status===s?'selected':''}>${s}</option>`).join('')}</select>
         <select id="f-ciclo"><option value="">Todos os ciclos</option>${ciclosUnicos().map(c=>`<option ${progFilters.ciclo===c?'selected':''}>${c}</option>`).join('')}</select>
         <input type="date" id="f-data-de" value="${progFilters.dataDe}" title="Data inicial">
@@ -1777,11 +1786,12 @@ function openAtribDetalhe(atribId){
       if(!requerEscrita()) return;
       const pg = id ? DB.programacoes.find(x=>x.id===Number(id)) : null;
   let atribs = pg ? pg.atribuicoes.map(a=>({ equipeId:String(a.equipeId), atividades: a.atividades.map(x=>({atividadeId:String(x.atividadeId), quantidadePrevista:x.quantidadePrevista??''})) })) : [{ equipeId:'', atividades:[{atividadeId:'',quantidadePrevista:''}] }];
+  let selProjeto = pg? findProjeto(pg.projetoId) : null;
 
   function atribBlockHtml(a,i){
     return `<div class="atrib-block" data-idx="${i}">
       <div class="atrib-head">
-        <select class="atrib-equipe" data-idx="${i}"><option value="">Selecione a equipe…</option>${DB.equipes.map(e=>`<option value="${e.id}" ${String(a.equipeId)===String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' · '+esc(e.encarregado):''}</option>`).join('')}</select>
+        <select class="atrib-equipe" data-idx="${i}"><option value="">Selecione a equipe…</option>${equipesDoProjeto(selProjeto).map(e=>`<option value="${e.id}" ${String(a.equipeId)===String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' · '+esc(e.encarregado):''}</option>`).join('')}</select>
         ${atribs.length>1? `<button type="button" class="icon-btn atrib-remove" data-idx="${i}">${icon('trash',14)}</button>`:''}
       </div>
       <div class="atrib-activities">${a.atividades.map((at,j)=>activityRowHtml(a,i,at,j)).join('')}</div>
@@ -1820,14 +1830,20 @@ function openAtribDetalhe(atribId){
       bindCicloMasks(root);
       const projSel = root.querySelector('#pg-projeto');
       function applyProjetoData(){
-        const pr = findProjeto(Number(projSel.value));
+        const pr = projSel.value? findProjeto(Number(projSel.value)) : null;
+        selProjeto = pr;
         root.querySelector('#pg-setor').value = pr?.setor||'';
         root.querySelector('#pg-coord').value = pr?.coordenacao||'';
         root.querySelector('#pg-ciclo').value = pr?.ciclo? cicloMask(pr.ciclo) : '';
+        refreshContainer();
       }
       projSel.addEventListener('change', applyProjetoData);
       applyProjetoData();
-      function refreshContainer(){ document.getElementById('atribs-container').innerHTML = renderAtribsHtml(); bindDynamic(); }
+      function refreshContainer(){
+        const ok = equipesDoProjeto(selProjeto);
+        atribs.forEach(a=>{ if(a.equipeId && !ok.some(e=>String(e.id)===String(a.equipeId))) a.equipeId=''; });
+        document.getElementById('atribs-container').innerHTML = renderAtribsHtml(); bindDynamic();
+      }
       function bindDynamic(){
         root.querySelectorAll('.atrib-equipe').forEach(s=>s.addEventListener('change', e=>{ atribs[e.target.dataset.idx].equipeId = e.target.value; }));
         root.querySelectorAll('.atrib-remove').forEach(b=>b.addEventListener('click', e=>{ atribs.splice(Number(e.currentTarget.dataset.idx),1); refreshContainer(); }));
@@ -2362,8 +2378,8 @@ function seedIfEmpty(){
   if(DB.equipes.length || DB.atividades.length || DB.projetos.length) return;
   DB.usuarios = DB.usuarios||[];
   DB.usuarios.push({id:nextId(), nome:'Mestre', login:'1', senha:'1', role:'administrador', nivel:'total', ativo:true});
-  const eq1 = {id:nextId(), eqtl:'Equipe Alfa', prtn:'', supervisor:'Marcos Lima', encarregado:'José Ferreira', motorista:'Paulo Souza', metaDiaria:5000, eletricistas:['Carlos Alves','Renato Dias'], ativo:true, custom:{}};
-  const eq2 = {id:nextId(), eqtl:'', prtn:'Equipe Bravo', supervisor:'Ana Ribeiro', encarregado:'Bruno Castro', motorista:'Diego Nunes', metaDiaria:3000, eletricistas:['Felipe Rocha'], ativo:true, custom:{}};
+  const eq1 = {id:nextId(), eqtl:'Equipe Alfa', prtn:'', setor:'MANUTENÇÃO', coordenacao:'RIO VERDE', supervisor:'Marcos Lima', encarregado:'José Ferreira', motorista:'Paulo Souza', metaDiaria:5000, eletricistas:['Carlos Alves','Renato Dias'], ativo:true, custom:{}};
+  const eq2 = {id:nextId(), eqtl:'', prtn:'Equipe Bravo', setor:'MANUTENÇÃO', coordenacao:'RIO VERDE', supervisor:'Ana Ribeiro', encarregado:'Bruno Castro', motorista:'Diego Nunes', metaDiaria:3000, eletricistas:['Felipe Rocha'], ativo:true, custom:{}};
   DB.equipes.push(eq1, eq2);
   const a1 = {id:nextId(), codigo:'MAN-014', descricao:'Substituição de poste de concreto', unidade:'un', valorUnitario:850, fav:true, custom:{}};
   const a2 = {id:nextId(), codigo:'MAN-022', descricao:'Poda de árvore próxima à rede', unidade:'un', valorUnitario:180, custom:{}};
@@ -2397,6 +2413,11 @@ function usuarioRestrito(){ return !!(CURRENT_USER && CURRENT_USER.role==='super
 function projetoVisivel(p){ return !usuarioRestrito() || (p.setor===CURRENT_USER.setor && p.coordenacao===CURRENT_USER.coordenacao); }
 function projetosVisiveis(){ return DB.projetos.filter(projetoVisivel); }
 function programacoesVisiveis(){ const vis = projetosVisiveis().map(p=>p.id); return DB.programacoes.filter(pg=> vis.includes(pg.projetoId)); }
+function equipesVisiveis(){ return usuarioRestrito()? DB.equipes.filter(e=> e.setor===CURRENT_USER.setor && e.coordenacao===CURRENT_USER.coordenacao) : DB.equipes; }
+function equipesDoProjeto(pr){
+  if(!pr || !pr.setor || !pr.coordenacao) return equipesVisiveis();
+  return equipesVisiveis().filter(e=> !e.setor || !e.coordenacao || (e.setor===pr.setor && e.coordenacao===pr.coordenacao));
+}
 function novoGid(){ return 'G26-' + String(Math.floor(1000000 + Math.random()*9000000)); }
 function progGid(pg){ return (pg && pg.gid) || (pg? 'G26-'+String(pg.id).padStart(7,'0') : ''); }
 function showLoginScreen(){
