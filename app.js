@@ -101,6 +101,7 @@ const NAV_ITEMS = [
   { id:'programacoes',label:'Programações',  sub:'Agenda, fluxo e reprogramação', icon:'calendar' },
   { id:'historico',   label:'Histórico',     sub:'Linha do tempo de todas as alterações', icon:'clock' },
   { id:'admin',       label:'Administração', sub:'Campos personalizados de cada módulo', icon:'gear' },
+  { id:'execucadas',  label:'Execuídas',     sub:'Programações concluídas com detalhes', icon:'check' },
 ];
 const ICONS = {
   grid:'<path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/>',
@@ -2230,7 +2231,7 @@ document.getElementById('import-file').addEventListener('change', (e)=>{
    ROUTER
 ========================================================= */
 function renderContent(){
-  const map = { dashboard: renderDashboard, alertas: renderAlertas, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin };
+  const map = { dashboard: renderDashboard, alertas: renderAlertas, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin, execucadas: renderProgramacoesConcluidas };
   (map[currentView]||renderDashboard)();
 }
 
@@ -2340,3 +2341,79 @@ setTimeout(()=>{
     toast('Sem conexão com o Firebase. Os dados ficarão apenas nesta sessão.', 'error');
   }
 }, 8000);
+
+/* =========================================================
+   PROGRAMAÇÕES CONCLUÍDAS
+   ========================================================= */
+function renderProgramacoesConcluidas(){
+  const el = document.getElementById('content');
+  const concluidas = flatAtribuicoes().filter(x=> x.atribuicao.status=== 'Concluído');
+  if(!concluidas.length){
+    el.innerHTML = `<div class="panel"><div class="empty-state"><p>Nenhuma programação concluída encontrada.</p><button class="btn btn-primary" style="width:100%;">Voltar ao Painel</button></div></div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="section-gap">
+      <div class="panel-head">
+        <div><h3>Programações Concluídas</h3><div class="admin-field-meta">${concluidas.length} programação(s) finalizada(s)</div></div>
+      </div>
+      <div style="max-height:700px;overflow-y:auto;">
+        ${concluidas.map(x=>`
+          <div class="panel" style="margin-bottom:24px;">
+            <div class="panel-head">
+              <div><h4>${esc(findProjeto(x.programacao.projetoId)?.nome||'Projeto')} (${esc(findProjeto(x.programacao.projetoId)?.codigo||'')})</h4><span class="badge" style="background:rgba(34,139,34,.12);color:var(--green);">${fmtDate(x.atribuicao.dataProgramada)}</span></div>
+              <div style="text-align:right;font-size:12px;color:var(--muted);">${fmtDateTime(x.atribuicao.tsCriacao||x.atribuicao.historico?.[0]?.ts||Date.now())}</div>
+            </div>
+            <div style="padding:16px;">
+              <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead>
+                  <tr>
+                    <th style="width:8px;">#</th>
+                    <th>Código</th>
+                    <th style="width:40%;">Descrição</th>
+                    <th style="width:24px;">Un.</th>
+                    <th style="width:24px;">Prev.</th>
+                    <th style="width:24px;">Exec.</th>
+                    <th style="width:32px;">%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(x.atribuicao.atividades||[]).map((a,idx)=>{
+                    const at = findAtividade(a.atividadeId);
+                    const exec = x.atribuicao.status==='Concluído' ? (a.quantidadeExecutada!=null? a.quantidadeExecutada : a.quantidadePrevista) : (a.quantidadeExecutada!=null? a.quantidadeExecutada : null);
+                    const pct = a.quantidadePrevista? Math.round((exec||0)/a.quantidadePrevista*100) : 0;
+                    return `<tr>
+                      <td style="text-align:center;">${idx+1}</td>
+                      <td class="mono">${esc(at?.codigo||'?')}</td>
+                      <td>${esc(at?.descricao||'')}</td>
+                      <td style="text-align:center;">${esc(at?.unidade||'')}</td>
+                      <td style="text-align:center;">${a.quantidadePrevista??'—'}</td>
+                      <td style="text-align:center;">${exec!=null? exec+'' : '—'}</td>
+                      <td style="text-align:center;color:var(--green);font-weight:700;">${pct}%</td>
+                    </tr>`;
+                  }).join('')}
+                </tbody>
+              </table>
+              <div style="margin-top:12px;">
+                <h4>Dados da Execução</h4>
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                  <tr><td style="font-weight:600;padding-right:8px;">Status</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:rgba(34,139,34,.08);">Concluído</td></tr>
+                  <tr><td style="font-weight:600;padding-right:8px;">Horário Confirmação</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoHorarioFinalizacao||'—'}</td></tr>
+                  <tr><td style="font-weight:600;padding-right:8px;">Cond. Climáticas</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoCondicoes||'—'}</td></tr>
+                  <tr><td style="font-weight:600;padding-right:8px;">Impedimento Exec.</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoImpedimento||'—'}</td></tr>
+                  <tr><td style="font-weight:600;padding-right:8px;">Falta Material</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoFaltaMaterial||'—'}</td></tr>
+                  <tr><td style="font-weight:600;padding-right:8px;">Obs. Execução</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.observacao||'—'}</td></tr>
+                </table>
+              </div>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  // Add back button
+  const backBtn = document.createElement('button');
+  backBtn.className = 'btn btn-primary';
+  backBtn.style.margin = '16px 0 0 0';
+  backBtn.textContent = 'Voltar ao Painel';
+  backBtn.addEventListener('click', ()=> setView('dashboard'));
+  el.appendChild(backBtn);
+}
