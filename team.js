@@ -85,6 +85,9 @@ function staticMapImgTag(lat,lng,zoom,w,h,alt,style){
   const fb = staticMapFallbackUrl(lat,lng,zoom,w,h);
   return `<img src="${esc(geo)}" alt="${esc(alt||'Mapa')}" style="${esc(style||'width:100%;max-width:520px;border-radius:8px;border:1px solid var(--border-soft);display:block;')}" onerror="this.onerror=null; this.src='${esc(fb)}';">`;
 }
+function qrCodeUrl(data, size=120){
+  return 'https://api.qrserver.com/v1/create-qr-code/?size='+size+'x'+size+'&data='+encodeURIComponent(data);
+}
 function toast(msg, kind){
   const wrap = document.getElementById('toast-wrap');
   const t = document.createElement('div'); t.className='toast';
@@ -703,7 +706,12 @@ function buildDocEquipeHtml(pg, eqId){
         <tr><th>Ciclo</th><td>${esc(pg.ciclo||'—')}</td><th>Setor</th><td>${esc(pr?.setor||'—')}</td></tr>
         ${pg.local? `<tr><th>Local de execução</th><td colspan="3"><strong>${esc(pg.local)}</strong>${(pg.localLat!=null&&pg.localLng!=null)? ` — ${esc(mapsLinkByCoords(pg.localLat,pg.localLng))}`:''}</td></tr>`:''}
       </table>
-      ${(pg.localLat!=null&&pg.localLng!=null)? `<div style="margin:10px 0;"><strong>Localização:</strong><br>${staticMapImgTag(pg.localLat,pg.localLng,16,640,360, 'Mapa: '+(pg.local||''), 'width:100%;max-width:520px;border:1px solid #999;border-radius:4px;')}</div>`:''}
+      ${(pg.localLat!=null&&pg.localLng!=null)? `<div style="margin:10px 0;"><strong>Localização:</strong><br>${staticMapImgTag(pg.localLat,pg.localLng,16,640,360, 'Mapa: '+(pg.local||''), 'width:100%;max-width:520px;border:1px solid #999;border-radius:4px;')}
+      <div style="margin-top:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <img src="${esc(qrCodeUrl(mapsLinkByCoords(pg.localLat,pg.localLng), 100))}" alt="QR Code localização" style="width:100px;height:100px;border:1px solid #999;border-radius:4px;">
+        <div style="font-size:11px;color:#333;"><strong>Escaneie para abrir no Google Maps</strong><br>${esc(mapsLinkByCoords(pg.localLat,pg.localLng))}</div>
+      </div>
+    </div>`:''}
       <table>
         <thead><tr><th style="width:26px;">#</th><th>Código</th><th>Descrição</th><th style="width:40px;">Un.</th><th style="width:52px;">Qtd prev.</th><th style="width:64px;">Qtd exec.</th><th>Obs.</th></tr></thead>
         <tbody>${rows}</tbody>

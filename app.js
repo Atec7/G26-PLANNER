@@ -1994,7 +1994,7 @@ function openAtribDetalhe(atribId){
   function renderAtribsHtml(){ return atribs.map((a,i)=> atribBlockHtml(a,i)).join(''); }
 
   const baseFieldsHtml = `
-    <div class="field"><label>Projeto <span class="req">*</span></label><select name="projetoId" id="pg-projeto" required>${projetosVisiveis().filter(p=>p.status!=='Encerrado').map(pr=>`<option value="${pr.id}" ${pg?.projetoId===pr.id?'selected':''}>${esc(pr.codigo)} · ${esc(pr.nome)}</option>`).join('')}</select></div>
+    <div class="field"><label>Projeto <span class="req">*</span></label><select name="projetoId" id="pg-projeto" required>${projetosVisiveis().filter(p=>!['Encerrado','Aguardando Viabilidade'].includes(p.status)).map(pr=>`<option value="${pr.id}" ${pg?.projetoId===pr.id?'selected':''}>${esc(pr.codigo)} · ${esc(pr.nome)}</option>`).join('')}</select></div>
     <div class="field-row">
       <div class="field"><label>Setor</label><input type="text" id="pg-setor" disabled value=""><div class="field-hint">Preenchido automaticamente do projeto.</div></div>
       <div class="field"><label>Coordenação</label><input type="text" id="pg-coord" disabled value=""><div class="field-hint">Preenchido automaticamente do projeto.</div></div>
@@ -2367,6 +2367,9 @@ function localMapsHref(local, lat, lng){
   if(lat!=null && lng!=null) return mapsLinkByCoords(lat,lng);
   return mapsLinkByAddress(local);
 }
+function qrCodeUrl(data, size=120){
+  return 'https://api.qrserver.com/v1/create-qr-code/?size='+size+'x'+size+'&data='+encodeURIComponent(data);
+}
 function localThumbHtml(local, lat, lng){
   if(lat==null || lng==null) return '';
   return staticMapImgTag(lat,lng,17,640,320, 'Mapa: '+(local||''), 'width:100%;max-width:520px;border-radius:8px;border:1px solid var(--border-soft);display:block;');
@@ -2528,6 +2531,10 @@ function buildDocProgramacao(prog){
     ${(prog.localLat!=null&&prog.localLng!=null)? `<div class="ps-block" style="page-break-before:auto;break-before:auto;margin-top:8px;">
       <div class="ps-block-head">Localização no mapa — ${progGid(prog)}</div>
       ${staticMapImgTag(prog.localLat,prog.localLng,16,720,420, 'Mapa: '+(prog.local||''), 'width:100%;max-width:620px;border:1px solid #999;border-radius:4px;')}
+      <div style="margin-top:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <img src="${esc(qrCodeUrl(mapsLinkByCoords(prog.localLat,prog.localLng), 100))}" alt="QR Code localização" style="width:100px;height:100px;border:1px solid #999;border-radius:4px;">
+        <div style="font-size:11px;color:#333;"><strong>Escaneie para abrir no Google Maps</strong><br>${esc(mapsLinkByCoords(prog.localLat,prog.localLng))}</div>
+      </div>
     </div>`:''}
     <div style="margin-top:8px;font-size:10.5px;color:#000;border-top:1px solid #444;padding-top:6px;">Assinatura do fiscal / responsável: <span class="ps-line"></span> &nbsp;&nbsp; Data: ____/____/____</div>
     ${docAnexosHtml(prog)}
