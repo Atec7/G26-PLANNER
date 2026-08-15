@@ -1410,7 +1410,7 @@ function renderProgListaInto(area, list){
         <td class="mono">${fmtMoney(valPrev)}</td>
         <td>${statusBadge(p.status, late)}${teamBadgeHtml(p)? `<div style="margin-top:4px;">${teamBadgeHtml(p)}</div>`:''}</td>
         <td><div class="row-actions">
-          <button class="icon-btn" title="Encaminhar para equipe no WhatsApp" data-whats="${x.programacao.id}|${p.id}">${icon('whatsapp',14)}</button>
+          <button class="icon-btn" title="Encaminhar para as equipes no WhatsApp" data-whats="${x.programacao.id}">${icon('whatsapp',14)}</button>
           <button class="icon-btn" title="Imprimir documento de campo" data-doc-prog="${x.programacao.id}">${icon('print',14)}</button>
           <button class="icon-btn" title="Histórico" data-hist="${p.id}">${icon('history',14)}</button>
           <button class="icon-btn" title="Reprogramar" data-reprog="${x.programacao.id}|${p.id}">${icon('reprog',14)}</button>
@@ -1422,7 +1422,7 @@ function renderProgListaInto(area, list){
   bindProgRowActions(area);
 }
 function bindProgRowActions(area){
-  area.querySelectorAll('[data-whats]').forEach(b=>b.addEventListener('click', ()=>{ const [pgId,atId]=b.dataset.whats.split('|'); encaminharWhats(pgId, atId); }));
+  area.querySelectorAll('[data-whats]').forEach(b=>b.addEventListener('click', ()=>encaminharWhats(b.dataset.whats)));
   area.querySelectorAll('[data-doc-prog]').forEach(b=>b.addEventListener('click', ()=>openDocProgramacao(b.dataset.docProg)));
   area.querySelectorAll('[data-hist]').forEach(b=>b.addEventListener('click', ()=>openHistoricoModal(b.dataset.hist)));
   area.querySelectorAll('[data-reprog]').forEach(b=>b.addEventListener('click', ()=>{ const [pgId,atId]=b.dataset.reprog.split('|'); openReprogramarManual(pgId, atId); }));
@@ -1683,7 +1683,7 @@ function openAtribDetalhe(atribId){
           ${STATUS_PROG.filter(s=>s!==atrib.status).map(s=>`<button type="button" class="btn btn-sm" data-set-status="${s}">→ ${s}</button>`).join('')}
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button type="button" class="btn btn-sm" data-whats-detail="${programacao.id}|${atrib.id}">${icon('whatsapp',13)} Encaminhar WhatsApp</button>
+          <button type="button" class="btn btn-sm" data-whats-detail="${programacao.id}">${icon('whatsapp',13)} Encaminhar WhatsApp</button>
           <button type="button" class="btn btn-sm" data-edit-detail="${programacao.id}">${icon('edit',13)} Editar programação</button>
           <button type="button" class="btn btn-sm" data-doc-detail="${programacao.id}">${icon('print',13)} Documento de campo</button>
           <button type="button" class="btn btn-sm" data-reprog-detail="${programacao.id}|${atrib.id}">${icon('reprog',13)} Reprogramar</button>
@@ -1699,7 +1699,7 @@ function openAtribDetalhe(atribId){
         atrib.historico.push({ts:Date.now(), tipo:'status', de, para:atrib.status, motivo:null}); saveData();
         document.getElementById('modal-overlay')?.remove(); document.getElementById('modal-root').innerHTML=''; renderContent(); renderBanner();
       }));
-      root.querySelectorAll('[data-whats-detail]').forEach(b=>b.addEventListener('click', ()=>{ const [pgId,atId]=b.dataset.whatsDetail.split('|'); encaminharWhats(pgId, atId); }));
+      root.querySelectorAll('[data-whats-detail]').forEach(b=>b.addEventListener('click', ()=>encaminharWhats(b.dataset.whatsDetail)));
       root.querySelectorAll('[data-edit-detail]').forEach(b=>b.addEventListener('click', ()=>{
         document.getElementById('modal-root').innerHTML='';
         openProgramacaoModal(b.dataset.editDetail);
@@ -1849,14 +1849,9 @@ function equipePageUrl(progId){
   if(base && !base.endsWith('/')) base += '/';
   return base + 'team.html?equipe=' + progId;
 }
-function equipePrintUrl(progId, equipeId){
-  let base = location.href.split(/[?#]/)[0];
-  base = base.replace(/[\\/]index\.html$/i, '');
-  if(base && !base.endsWith('/')) base += '/';
-  return base + 'team.html?print=' + progId + '&e=' + equipeId;
-}
 
 /* ── WHATSAPP ── */
+const WHATS_SUPORTE = '556496151084';
 function phoneDigits(p){ return String(p||'').replace(/\D/g,''); }
 function waLink(phone, text){ return 'https://wa.me/' + phoneDigits(phone) + '?text=' + encodeURIComponent(text); }
 function buildWhatsMessage(prog, atrib){
@@ -1883,18 +1878,28 @@ function buildWhatsMessage(prog, atrib){
     `*Acesso da equipe (QR):*`,
     equipePageUrl(prog.id),
     ``,
-    `*Documento de campo (PDF):*`,
-    equipePrintUrl(prog.id, atrib.equipeId)
+    `_Caso tenha problemas técnicos com a ferramenta, entre em contato:_`,
+    `https://wa.me/${WHATS_SUPORTE}`
   ].join('\n');
 }
-function encaminharWhats(progId, atribId){
+function encaminharWhats(progId){
   const prog = DB.programacoes.find(p=>p.id===Number(progId));
   if(!prog) return;
-  const atrib = (prog.atribuicoes||[]).find(a=>a.id===Number(atribId));
-  if(!atrib) return;
-  const eq = findEquipe(atrib.equipeId);
-  if(!eq?.whatsapp || !phoneDigits(eq.whatsapp)){ toast('Esta equipe não possui WhatsApp cadastrado. Edite a equipe e informe o número.', 'error'); return; }
-  window.open(waLink(eq.whatsapp, buildWhatsMessage(prog, atrib)), '_blank');
+  const teams = (prog.atribuicoes||[]).filter(a=>a.status!=='Cancelado');
+  if(!teams.length) return;
+  const semWhats = [];
+  let enviadas = 0;
+  teams.forEach(atrib=>{
+    const eq = findEquipe(atrib.equipeId);
+    if(!eq?.whatsapp || !phoneDigits(eq.whatsapp)){ semWhats.push(equipeLabel(eq)); return; }
+    window.open(waLink(eq.whatsapp, buildWhatsMessage(prog, atrib)), '_blank');
+    enviadas++;
+  });
+  if(semWhats.length){
+    toast('Sem WhatsApp cadastrado para: '+semWhats.join(', ')+'. Edite a equipe e informe o número.', 'error');
+  }else{
+    toast(enviadas>1? `Mensagem encaminhada para ${enviadas} equipes.` : 'Mensagem encaminhada para a equipe.');
+  }
 }
 function qrSvgHtml(url, cellSize){
   if(typeof qrcode==='undefined' || !url) return '';
