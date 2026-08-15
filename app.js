@@ -280,19 +280,24 @@ function findAtividade(id){ return DB.atividades.find(a=>a.id===Number(id)); }
 function findProjeto(id){ return DB.projetos.find(p=>p.id===Number(id)); }
 function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function anexoSrc(a){ return (a&&(a.url||a.dataUrl))||''; }
-function uploadToImgbb(file){
+function uploadToImgbb(file, tentativas=3){
   const fd = new FormData();
   fd.append('image', file);
   return fetch('https://api.imgbb.com/1/upload?key='+IMGGB_KEY, { method:'POST', body: fd })
     .then(res=>res.json())
-    .then(j=>{ if(!j.success) throw new Error((j.error&&j.error.message)||'Falha no upload'); return (j.data && (j.data.url || j.data.display_url)) || ''; });
+    .then(j=>{
+      if(j.success) return (j.data && (j.data.url || j.data.display_url)) || '';
+      const msg = (j.error&&j.error.message)||'Falha no upload';
+      if(tentativas>1) return new Promise(resolve=>setTimeout(()=>resolve(uploadToImgbb(file, tentativas-1)), 800));
+      throw new Error(msg);
+    });
 }
 function anexosGridHtml(anexos, editable){
   const list = anexos||[];
   if(!list.length) return editable? '<div class="field-hint">Nenhum anexo ainda. Envie imagens para a equipe visualizar (croqui, localização, detalhe do serviço) — elas também saem no RDO.</div>' : '';
   return `<div class="anexos-grid">${list.map((a,i)=>`
     <div class="anexo-thumb">
-      <img src="${esc(anexoSrc(a))}" alt="${esc(a.nome||'anexo')}" loading="lazy">
+      <img src="${esc(anexoSrc(a))}" alt="${esc(a.nome||'anexo')}">
       <div class="anexo-meta">${esc(a.nome||'')}</div>
       ${editable? `<button type="button" class="icon-btn anexo-remove" data-i="${i}" title="Remover anexo">${icon('close',12)}</button>`:''}
     </div>`).join('')}</div>`;
@@ -303,7 +308,7 @@ function anexosDisplayHtml(anexos, print=false){
   if(print) return `<div class="fotos">${list.map(a=>`<figure><img src="${esc(anexoSrc(a))}" alt="${esc(a.nome||'anexo')}"><figcaption>${esc(a.nome||'Anexo do programador')}</figcaption></figure>`).join('')}</div>`;
   return `<div class="anexos-grid">${list.map(a=>`
     <a class="anexo-thumb" href="${esc(anexoSrc(a))}" target="_blank" rel="noopener">
-      <img src="${esc(anexoSrc(a))}" alt="${esc(a.nome||'anexo')}" loading="lazy">
+      <img src="${esc(anexoSrc(a))}" alt="${esc(a.nome||'anexo')}">
       <div class="anexo-meta">${esc(a.nome||'')}</div>
     </a>`).join('')}</div>`;
 }
@@ -1867,6 +1872,7 @@ function openAtribDetalhe(atribId){
   let atribs = pg ? pg.atribuicoes.map(a=>({ equipeId:String(a.equipeId), atividades: a.atividades.map(x=>({atividadeId:String(x.atividadeId), quantidadePrevista:x.quantidadePrevista??''})) })) : [{ equipeId:'', atividades:[{atividadeId:'',quantidadePrevista:''}] }];
   let selProjeto = pg? findProjeto(pg.projetoId) : null;
   let anexos = pg ? (pg.anexos||[]).map(a=>({...a})) : [];
+  let anexosEnviando = false;
 
   function atribBlockHtml(a,i){
     return `<div class="atrib-block" data-idx="${i}">
@@ -1900,8 +1906,12 @@ function openAtribDetalhe(atribId){
     <div class="field"><label>Observações gerais</label><textarea name="observacoes">${esc(pg?.observacoes||'')}</textarea></div>
     <div class="field"><label>Anexos do programador</label>
       <input type="file" id="pg-anexos-input" accept="image/*" multiple>
-      <div class="field-hint">Imagens para a equipe visualizar (croqui, localização, detalhe do serviço). Também saem no RDO.</div>
+      <div class="field-hint">Imagens para a equipe visualizar (croqui, localização, detalhe do serviço). Também saem no RDO. A programação só pode ser salva depois que todas as imagens terminarem de enviar.</div>
       <div id="pg-anexos-preview">${anexosGridHtml(anexos, true)}</div>
+      <div id="pg-anexos-progress" style="display:none;margin-top:8px;">
+        <div id="pg-anexos-progress-text" style="font-size:11px;color:var(--muted);margin-bottom:4px;">Enviando…</div>
+        <div style="height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden;"><div id="pg-anexos-progress-fill" style="height:100%;width:0%;background:var(--accent);transition:width .2s;"></div></div>
+      </div>
     </div>
     ${renderCustomFieldsInputs('programacoes', pg)}
     <div class="field"><label>Equipes e atividades <span class="req">*</span></label>
@@ -1941,6 +1951,9 @@ function openAtribDetalhe(atribId){
       document.getElementById('add-atrib-btn').addEventListener('click', ()=>{ atribs.push({equipeId:'',atividades:[{atividadeId:'',quantidadePrevista:''}]}); refreshContainer(); });
       const anexosPreview = root.querySelector('#pg-anexos-preview');
       const anexosInput = root.querySelector('#pg-anexos-input');
+      const anexosProgress = root.querySelector('#pg-anexos-progress');
+      const anexosProgressText = root.querySelector('#pg-anexos-progress-text');
+      const anexosProgressFill = root.querySelector('#pg-anexos-progress-fill');
       function paintAnexos(){
         anexosPreview.innerHTML = anexosGridHtml(anexos, true);
         anexosPreview.querySelectorAll('.anexo-remove').forEach(b=>b.addEventListener('click', ()=>{
@@ -1949,20 +1962,40 @@ function openAtribDetalhe(atribId){
       }
       anexosInput.addEventListener('change', async ()=>{
         const files = Array.from(anexosInput.files||[]);
-        if(files.length) anexosInput.disabled = true;
-        for(const f of files){
-          if(anexos.length>=8){ toast('Máximo de 8 anexos por programação.', 'error'); break; }
+        if(!files.length) return;
+        const sobra = Math.max(0, 8 - anexos.length);
+        const fila = files.slice(0, sobra);
+        if(files.length > sobra) toast('Máximo de 8 anexos por programação.', 'error');
+        if(!fila.length){ anexosInput.value=''; return; }
+        anexosInput.disabled = true;
+        anexosEnviando = true;
+        let feitos = 0;
+        const atualizar = ()=>{
+          anexosProgressFill.style.width = Math.round(feitos/fila.length*100)+'%';
+          anexosProgressText.textContent = `Enviando ${Math.min(feitos+1,fila.length)} de ${fila.length}…`;
+        };
+        anexosProgress.style.display = 'block';
+        atualizar();
+        for(const f of fila){
           try{
             const url = await uploadToImgbb(f);
             if(url) anexos.push({ nome: f.name||('anexo-'+Date.now()), url, ts: Date.now() });
+            else toast('Falha ao enviar '+esc(f.name), 'error');
           }catch(e){ toast('Falha ao enviar a imagem '+esc(f.name)+' ('+e.message+'). Tente novamente.', 'error'); }
+          feitos++;
+          atualizar();
           paintAnexos();
+          if(feitos < fila.length) await new Promise(r=>setTimeout(r,300));
         }
-        anexosInput.disabled = false; anexosInput.value=''; paintAnexos();
+        anexosEnviando = false;
+        anexosProgress.style.display = 'none';
+        anexosInput.disabled = false; anexosInput.value='';
+        paintAnexos();
       });
       paintAnexos();
     },
     onSubmit:(fd)=>{
+      if(anexosEnviando){ toast('Aguarde o envio das imagens dos anexos antes de salvar.', 'error'); return false; }
       const ciclo = cicloMask(fd.get('ciclo'));
       if(!isCicloValido(ciclo)){ toast('Informe o ciclo recebido no formato CICLO-XX/XXXX (ex.: CICLO-01/2026).', 'error'); return false; }
       if(!atribs.length || atribs.some(a=>!a.equipeId)){ toast('Selecione a equipe em todos os blocos.', 'error'); return false; }
