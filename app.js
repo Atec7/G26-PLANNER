@@ -292,6 +292,29 @@ function uploadToImgbb(file, tentativas=3){
       throw new Error(msg);
     });
 }
+function comprimirImagem(file, maxLado=1800, qualidade=0.88){
+  return new Promise((resolve, reject)=>{
+    if(!file || !/^image\//.test(file.type)){ reject(new Error('Arquivo não é imagem')); return; }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = ()=>{
+      try{
+        const escala = Math.min(1, maxLado/Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(1, Math.round(img.naturalWidth*escala));
+        const h = Math.max(1, Math.round(img.naturalHeight*escala));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        canvas.toBlob(blob=>{
+          URL.revokeObjectURL(url);
+          blob? resolve(blob) : reject(new Error('Falha na compressão'));
+        }, 'image/jpeg', qualidade);
+      }catch(e){ URL.revokeObjectURL(url); reject(e); }
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('Imagem inválida')); };
+    img.src = url;
+  });
+}
 function anexosGridHtml(anexos, editable){
   const list = anexos||[];
   if(!list.length) return editable? '<div class="field-hint">Nenhum anexo ainda. Envie imagens para a equipe visualizar (croqui, localização, detalhe do serviço) — elas também saem no RDO.</div>' : '';
@@ -307,11 +330,54 @@ function anexosDisplayHtml(anexos, print=false){
   if(!list.length) return '';
   if(print) return `<div class="fotos">${list.map(a=>`<figure><img src="${esc(anexoSrc(a))}" alt="${esc(a.nome||'anexo')}"><figcaption>${esc(a.nome||'Anexo do programador')}</figcaption></figure>`).join('')}</div>`;
   return `<div class="anexos-grid">${list.map(a=>`
-    <a class="anexo-thumb" href="${esc(anexoSrc(a))}" target="_blank" rel="noopener">
+    <div class="anexo-thumb" role="button" tabindex="0" title="${esc(a.nome||'')}">
       <img src="${esc(anexoSrc(a))}" alt="${esc(a.nome||'anexo')}">
       <div class="anexo-meta">${esc(a.nome||'')}</div>
-    </a>`).join('')}</div>`;
+    </div>`).join('')}</div>`;
 }
+function openLightbox(srcs, index){
+  if(!srcs || !srcs.length) return;
+  let i = Math.max(0, Math.min(index||0, srcs.length-1));
+  const wrap = document.createElement('div');
+  wrap.className = 'lb-overlay';
+  wrap.innerHTML = `
+    <button type="button" class="lb-close" title="Fechar (Esc)">&times;</button>
+    ${srcs.length>1? `<button type="button" class="lb-nav lb-prev" title="Anterior">&#8249;</button><button type="button" class="lb-nav lb-next" title="Próxima">&#8250;</button>`:''}
+    <div class="lb-counter">${i+1} / ${srcs.length}</div>
+    <img class="lb-img" src="${esc(srcs[i])}" alt="">`;
+  document.body.appendChild(wrap);
+  const img = wrap.querySelector('.lb-img');
+  const counter = wrap.querySelector('.lb-counter');
+  function close(){ wrap.remove(); document.removeEventListener('keydown', onKey); }
+  function show(){ img.src = srcs[i]; counter.textContent = (i+1)+' / '+srcs.length; }
+  function onKey(e){
+    if(e.key==='Escape') close();
+    else if(e.key==='ArrowRight'){ i=(i+1)%srcs.length; show(); }
+    else if(e.key==='ArrowLeft'){ i=(i-1+srcs.length)%srcs.length; show(); }
+  }
+  wrap.querySelector('.lb-close').addEventListener('click', close);
+  const prev=wrap.querySelector('.lb-prev'), next=wrap.querySelector('.lb-next');
+  if(prev) prev.addEventListener('click', e=>{ e.stopPropagation(); i=(i-1+srcs.length)%srcs.length; show(); });
+  if(next) next.addEventListener('click', e=>{ e.stopPropagation(); i=(i+1)%srcs.length; show(); });
+  wrap.addEventListener('click', e=>{ if(e.target===wrap) close(); });
+  document.addEventListener('keydown', onKey);
+}
+document.addEventListener('click', (e)=>{
+  if(e.target.closest('.anexo-remove')) return;
+  const thumb = e.target.closest('.anexos-grid .anexo-thumb');
+  if(thumb){
+    const grid = thumb.closest('.anexos-grid');
+    const thumbs = Array.from(grid.querySelectorAll('.anexo-thumb'));
+    openLightbox(thumbs.map(t=>t.querySelector('img').src), thumbs.indexOf(thumb));
+    return;
+  }
+  const foto = e.target.closest('.rdo-foto');
+  if(foto){
+    const container = foto.closest('.rdo-fotos');
+    const imgs = Array.from(container.querySelectorAll('.rdo-foto'));
+    openLightbox(imgs.map(x=>x.src), imgs.indexOf(foto));
+  }
+});
 function toast(msg, kind='ok'){
   const wrap = document.getElementById('toast-wrap');
   const t = document.createElement('div'); t.className='toast';
@@ -1832,6 +1898,11 @@ function openAtribDetalhe(atribId){
         ${anexosDisplayHtml(programacao.anexos)}
       </div>`:''}
 
+      ${String(programacao.orientacoesPlanejamento||'').trim()? `<div class="dtl-section">
+        <div class="dtl-section-head"><h4>Orientações do Setor de Planejamento</h4></div>
+        <div style="white-space:pre-wrap;line-height:1.55;">${esc(programacao.orientacoesPlanejamento)}</div>
+      </div>`:''}
+
       <div class="dtl-actions">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <span class="dtl-actions-lbl">Alterar status:</span>
@@ -1913,6 +1984,9 @@ function openAtribDetalhe(atribId){
         <div style="height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden;"><div id="pg-anexos-progress-fill" style="height:100%;width:0%;background:var(--accent);transition:width .2s;"></div></div>
       </div>
     </div>
+    <div class="field"><label>Orientações do Setor de Planejamento</label>
+      <textarea name="orientacoesPlanejamento" rows="3" placeholder="Orientação de execução, restrições, pontos de atenção para a equipe de campo...">${esc(pg?.orientacoesPlanejamento||'')}</textarea>
+    </div>
     ${renderCustomFieldsInputs('programacoes', pg)}
     <div class="field"><label>Equipes e atividades <span class="req">*</span></label>
       <div id="atribs-container">${renderAtribsHtml()}</div>
@@ -1969,24 +2043,27 @@ function openAtribDetalhe(atribId){
         if(!fila.length){ anexosInput.value=''; return; }
         anexosInput.disabled = true;
         anexosEnviando = true;
+        const total = fila.length;
         let feitos = 0;
         const atualizar = ()=>{
-          anexosProgressFill.style.width = Math.round(feitos/fila.length*100)+'%';
-          anexosProgressText.textContent = `Enviando ${Math.min(feitos+1,fila.length)} de ${fila.length}…`;
+          anexosProgressFill.style.width = Math.round(feitos/total*100)+'%';
+          anexosProgressText.textContent = total>1? `Enviando ${Math.min(feitos+1,total)} de ${total}…` : 'Enviando…';
         };
         anexosProgress.style.display = 'block';
+        paintAnexos();
         atualizar();
-        for(const f of fila){
+        await Promise.all(fila.map(async (f)=>{
+          let url = '';
           try{
-            const url = await uploadToImgbb(f);
-            if(url) anexos.push({ nome: f.name||('anexo-'+Date.now()), url, ts: Date.now() });
-            else toast('Falha ao enviar '+esc(f.name), 'error');
+            const blob = await comprimirImagem(f);
+            url = await uploadToImgbb(blob);
           }catch(e){ toast('Falha ao enviar a imagem '+esc(f.name)+' ('+e.message+'). Tente novamente.', 'error'); }
+          if(url) anexos.push({ nome: f.name||('anexo-'+Date.now()), url, ts: Date.now() });
+          else toast('Falha ao enviar '+esc(f.name), 'error');
           feitos++;
           atualizar();
           paintAnexos();
-          if(feitos < fila.length) await new Promise(r=>setTimeout(r,300));
-        }
+        }));
         anexosEnviando = false;
         anexosProgress.style.display = 'none';
         anexosInput.disabled = false; anexosInput.value='';
@@ -2001,10 +2078,11 @@ function openAtribDetalhe(atribId){
       if(!atribs.length || atribs.some(a=>!a.equipeId)){ toast('Selecione a equipe em todos os blocos.', 'error'); return false; }
       for(const a of atribs){ if(!a.atividades.length || a.atividades.some(x=>!x.atividadeId)){ toast('Selecione a atividade em todas as linhas.', 'error'); return false; } }
       const dataBase = fd.get('dataProgramada'); const projetoId = Number(fd.get('projetoId')); const observacoes = fd.get('observacoes').trim();
+      const orientacoesPlanejamento = String(fd.get('orientacoesPlanejamento')||'').trim();
       const custom = parseCustomFieldsFromForm('programacoes', fd);
       if(pg){
         const dataBaseAntiga = pg.dataProgramada;
-        pg.projetoId = projetoId; pg.dataProgramada = dataBase; pg.ciclo = ciclo; pg.observacoes = observacoes; pg.custom = custom; pg.anexos = anexos;
+        pg.projetoId = projetoId; pg.dataProgramada = dataBase; pg.ciclo = ciclo; pg.observacoes = observacoes; pg.orientacoesPlanejamento = orientacoesPlanejamento; pg.custom = custom; pg.anexos = anexos;
         const oldAtribs = pg.atribuicoes;
         pg.atribuicoes = atribs.map(a=>{
           const existing = oldAtribs.find(old => String(old.equipeId)===String(a.equipeId));
@@ -2014,7 +2092,7 @@ function openAtribDetalhe(atribId){
         });
         toast('Programação atualizada.');
       } else {
-        const novaProg = { id: nextId(), gid: novoGid(), projetoId, dataProgramada: dataBase, ciclo, observacoes, custom, anexos,
+        const novaProg = { id: nextId(), gid: novoGid(), projetoId, dataProgramada: dataBase, ciclo, observacoes, orientacoesPlanejamento, custom, anexos,
           atribuicoes: atribs.map(a=> ({ id: nextId(), equipeId:Number(a.equipeId), dataProgramada: dataBase, status:'Programado',
             atividades: a.atividades.map(x=>({atividadeId:Number(x.atividadeId), quantidadePrevista:x.quantidadePrevista?parseFloat(x.quantidadePrevista):null, quantidadeExecutada:null})),
             historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Programação criada'}] })) };
@@ -2193,6 +2271,7 @@ function buildDocProgramacao(prog){
       <tr><th>Ciclo</th><td>${esc(prog.ciclo||'—')}</td><th>Valor orçado</th><td>${fmtMoney(pr?.valorOrcado||0)}</td></tr>
       <tr><th>Período do projeto</th><td colspan="3">${fmtDate(pr?.dataInicio)} → ${fmtDate(pr?.dataFim)}</td></tr>
       ${prog.observacoes? `<tr><th>Observações gerais</th><td colspan="3">${esc(prog.observacoes)}</td></tr>`:''}
+      ${String(prog.orientacoesPlanejamento||'').trim()? `<tr><th>Orientações do Setor de Planejamento</th><td colspan="3">${esc(prog.orientacoesPlanejamento)}</td></tr>`:''}
     </table>
     ${prog.atribuicoes.map(at=> docAtribuicaoHtml(prog, at)).join('')}
     <div style="margin-top:8px;font-size:10.5px;color:#000;border-top:1px solid #444;padding-top:6px;">Assinatura do fiscal / responsável: <span class="ps-line"></span> &nbsp;&nbsp; Data: ____/____/____</div>
@@ -2738,6 +2817,10 @@ function renderProgramacoesConcluidas(){
 
   const filters = `
     <div class="panel" style="padding:14px 16px;margin-bottom:16px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+        <input type="search" id="rdo-f-busca" placeholder="Buscar por projeto, equipe, supervisor, data, status, GID ou ID da programação..." style="flex:1;">
+        <button class="btn btn-sm" id="rdo-f-busca-aplicar">${icon('search',13)} Buscar</button>
+      </div>
       <div class="filters">
         <label style="font-weight:600;">Projeto</label>
         <select id="rdo-f-projeto"><option value="">Todos</option>${projetos.map(p=>`<option value="${p.id}">${esc(p.nome)}</option>`).join('')}</select>
@@ -2834,7 +2917,10 @@ function renderProgramacoesConcluidas(){
   const fSt = document.getElementById('rdo-f-status');
   const fDe = document.getElementById('rdo-f-de');
   const fAte = document.getElementById('rdo-f-ate');
+  const fBusca = document.getElementById('rdo-f-busca');
+  const norm = s=> String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   const aplicar = ()=>{
+    const q = norm(fBusca.value.trim());
     registros.forEach(x=>{
       const pr = findProjeto(x.programacao.projetoId);
       const eq = findEquipe(x.atribuicao.equipeId);
@@ -2844,13 +2930,24 @@ function renderProgramacoesConcluidas(){
       const data = x.atribuicao.dataProgramada||'';
       const okDe = !fDe.value || data >= fDe.value;
       const okAte = !fAte.value || data <= fAte.value;
+      const hay = norm([
+        pr?.nome, pr?.codigo, pr?.setor, pr?.coordenacao,
+        equipeLabel(eq), eq?.supervisor, eq?.encarregado, eq?.motorista, (eq?.eletricistas||[]).join(' '),
+        data, x.atribuicao.status,
+        x.atribuicao.rdoHorarioChegada, x.atribuicao.rdoHorarioSaidaObra, x.atribuicao.rdoCondicoes,
+        rdoImpedimentos(x.atribuicao).join(' '),
+        progGid(x.programacao), String(x.programacao.id), String(x.atribuicao.id)
+      ].join(' '));
+      const okBusca = !q || hay.indexOf(q)!==-1;
       const tr = document.querySelector(`tr[data-prog="${x.programacao.id}"][data-atrib="${x.atribuicao.id}"]`);
-      if(tr) tr.style.display = (okProj&&okEq&&okSt&&okDe&&okAte)? '' : 'none';
+      if(tr) tr.style.display = (okProj&&okEq&&okSt&&okDe&&okAte&&okBusca)? '' : 'none';
     });
   };
+  fBusca.addEventListener('input', aplicar);
+  document.getElementById('rdo-f-busca-aplicar').addEventListener('click', aplicar);
   document.getElementById('rdo-f-aplicar').addEventListener('click', aplicar);
   document.getElementById('rdo-f-limpar').addEventListener('click', ()=>{
-    fProj.value=''; fEq.value=''; fSt.value=''; fDe.value=''; fAte.value='';
+    fProj.value=''; fEq.value=''; fSt.value=''; fDe.value=''; fAte.value=''; fBusca.value='';
     aplicar();
   });
 
@@ -2936,7 +3033,7 @@ function openRDOModal(progId, attribId){
               <td style="text-align:center;" class="mono">${p? fmtNum(p):'—'}</td>
               <td style="text-align:center;" class="mono"><strong>${e!=null? fmtNum(e):'—'}</strong></td>
               <td style="text-align:center;color:${pct>=100?'var(--green)':pct>=50?'var(--accent)':'var(--red)'};font-weight:700;">${p? pct+'%':'—'}</td>
-              <td style="text-align:center;">${fotos.length? `<div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">${fotos.map(u=>`<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="foto" style="width:36px;height:36px;object-fit:cover;border-radius:6px;border:1px solid var(--border);" loading="lazy"></a>`).join('')}</div>`:'<span style="color:var(--muted-2);">—</span>'}</td>
+              <td style="text-align:center;">${fotos.length? `<div class="rdo-fotos" style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">${fotos.map(u=>`<img class="rdo-foto" src="${esc(u)}" alt="foto" title="Ampliar" style="width:36px;height:36px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:zoom-in;">`).join('')}</div>`:'<span style="color:var(--muted-2);">—</span>'}</td>
             </tr>`;
           }).join('')}
         </tbody>

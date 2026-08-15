@@ -121,6 +121,7 @@ function renderRDOForm(){
   ];
   return `
     ${anexosDoProgramadorHtml()}
+    ${orientacoesPlanejamentoHtml()}
     <div class="panel section-gap" style="max-width:600px;margin:0 auto;">
       <div class="panel-head"><h3>Questionário RDO - Saída da Base</h3><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${prog.gid||'G26-'+String(prog.id).padStart(7,'0')}</span></div>
       <div style="padding:24px;">
@@ -155,11 +156,56 @@ function anexosDoProgramadorHtml(){
   return `
     <div class="panel section-gap" style="max-width:600px;margin:0 auto;margin-bottom:14px;">
       <div class="panel-head"><h3>Anexos do programador</h3><span class="badge-prefix">${anexos.length} imagem(ns)</span></div>
-      <div style="padding:14px;display:flex;flex-wrap:wrap;gap:10px;">
-        ${anexos.map(a=>{ const src=a.url||a.dataUrl||''; return `<a href="${esc(src)}" target="_blank" rel="noopener" title="${esc(a.nome||'')}"><img src="${esc(src)}" alt="${esc(a.nome||'anexo')}" style="width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--border);" loading="lazy"></a>`; }).join('')}
+      <div style="padding:14px;">
+        <div class="anexos-grid">${anexos.map(a=>{ const src=a.url||a.dataUrl||''; return `<div class="anexo-thumb" role="button" tabindex="0" title="${esc(a.nome||'')}"><img src="${esc(src)}" alt="${esc(a.nome||'anexo')}"><div class="anexo-meta">${esc(a.nome||'')}</div></div>`; }).join('')}</div>
       </div>
     </div>`;
 }
+
+function orientacoesPlanejamentoHtml(){
+  const txt = (prog&&String(prog.orientacoesPlanejamento||'')).trim();
+  if(!txt) return '';
+  return `
+    <div class="panel section-gap" style="max-width:600px;margin:0 auto;margin-bottom:14px;border-left:4px solid var(--accent);">
+      <div class="panel-head"><h3>Orientações do Setor de Planejamento</h3></div>
+      <div style="padding:14px;white-space:pre-wrap;font-size:14px;line-height:1.5;">${esc(txt)}</div>
+    </div>`;
+}
+
+function openLightbox(srcs, index){
+  if(!srcs || !srcs.length) return;
+  let i = Math.max(0, Math.min(index||0, srcs.length-1));
+  const wrap = document.createElement('div');
+  wrap.className = 'lb-overlay';
+  wrap.innerHTML = `
+    <button type="button" class="lb-close" title="Fechar (Esc)">&times;</button>
+    ${srcs.length>1? `<button type="button" class="lb-nav lb-prev" title="Anterior">&#8249;</button><button type="button" class="lb-nav lb-next" title="Próxima">&#8250;</button>`:''}
+    <div class="lb-counter">${i+1} / ${srcs.length}</div>
+    <img class="lb-img" src="${esc(srcs[i])}" alt="">`;
+  document.body.appendChild(wrap);
+  const img = wrap.querySelector('.lb-img');
+  const counter = wrap.querySelector('.lb-counter');
+  function close(){ wrap.remove(); document.removeEventListener('keydown', onKey); }
+  function show(){ img.src = srcs[i]; counter.textContent = (i+1)+' / '+srcs.length; }
+  function onKey(e){
+    if(e.key==='Escape') close();
+    else if(e.key==='ArrowRight'){ i=(i+1)%srcs.length; show(); }
+    else if(e.key==='ArrowLeft'){ i=(i-1+srcs.length)%srcs.length; show(); }
+  }
+  wrap.querySelector('.lb-close').addEventListener('click', close);
+  const prev=wrap.querySelector('.lb-prev'), next=wrap.querySelector('.lb-next');
+  if(prev) prev.addEventListener('click', e=>{ e.stopPropagation(); i=(i-1+srcs.length)%srcs.length; show(); });
+  if(next) next.addEventListener('click', e=>{ e.stopPropagation(); i=(i+1)%srcs.length; show(); });
+  wrap.addEventListener('click', e=>{ if(e.target===wrap) close(); });
+  document.addEventListener('keydown', onKey);
+}
+document.addEventListener('click', (e)=>{
+  const thumb = e.target.closest('.anexos-grid .anexo-thumb');
+  if(!thumb) return;
+  const grid = thumb.closest('.anexos-grid');
+  const thumbs = Array.from(grid.querySelectorAll('.anexo-thumb'));
+  openLightbox(thumbs.map(t=>t.querySelector('img').src), thumbs.indexOf(thumb));
+});
 
 function getRDORespostas(){
   const respostas = {};
@@ -271,6 +317,7 @@ function render(){
   resetFotos();
   root.innerHTML = `
     ${anexosDoProgramadorHtml()}
+    ${orientacoesPlanejamentoHtml()}
     <div class="panel section-gap">
       <div class="panel-head">
         <div><h3>${esc(pr?.nome||'Projeto')}</h3><div class="admin-field-meta">${prog.gid||'G26-'+String(prog.id).padStart(7,'0')} · ${esc(pr?.codigo||'')} · Ciclo ${esc(prog.ciclo||'—')}</div></div>
