@@ -155,6 +155,7 @@ const ICONS = {
   pulse:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
   database:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
   search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>',
+  pin:'<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z"/><circle cx="12" cy="10" r="3"/>',
 };
 function icon(name,size=16){ return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`; }
 
@@ -1889,6 +1890,7 @@ function openAtribDetalhe(atribId){
         <div class="dtl-tile"><div class="dtl-tile-lbl">Data programada</div><div class="dtl-tile-val mono">${fmtDate(atrib.dataProgramada)}</div>${late? `<div class="blink-red" style="font-size:11px;color:var(--red);margin-top:4px;">VENCIDA</div>`:''}</div>
         <div class="dtl-tile"><div class="dtl-tile-lbl">Encarregado</div><div class="dtl-tile-val">${esc(eq?.encarregado||'—')}</div></div>
         <div class="dtl-tile"><div class="dtl-tile-lbl">Status</div><div class="dtl-tile-val">${statusBadge(atrib.status, late)}</div></div>
+        <div class="dtl-tile" style="grid-column:1/-1;"><div class="dtl-tile-lbl">Local de execução</div><div class="dtl-tile-val">${programacao.local? esc(programacao.local) : '—'}</div>${(programacao.local||programacao.localLat!=null)? `<div style="margin-top:4px;font-size:11.5px;"><a href="${esc(localMapsHref(programacao.local,programacao.localLat,programacao.localLng))}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600;">${icon('pin',11)} Abrir no Google Maps</a></div>`:''}</div>
       </div>
 
       ${teamE? `<div class="dtl-team-note">${icon('alert',14)} <div><strong>Alterada pela equipe</strong> em ${fmtDateTime(teamE.ts)} — ${esc(teamE.motivo||'')}</div></div>`:''}
@@ -1914,6 +1916,11 @@ function openAtribDetalhe(atribId){
       ${(programacao.anexos&&programacao.anexos.length)? `<div class="dtl-section">
         <div class="dtl-section-head"><h4>Anexos do programador</h4><span class="mono">${programacao.anexos.length} imagem(ns)</span></div>
         ${anexosDisplayHtml(programacao.anexos)}
+      </div>`:''}
+
+      ${(programacao.localLat!=null && programacao.localLng!=null)? `<div class="dtl-section">
+        <div class="dtl-section-head"><h4>Localização no mapa</h4></div>
+        <div style="padding:12px;"><a href="${esc(staticMapUrl(programacao.localLat,programacao.localLng,15,800,450))}" target="_blank" rel="noopener">${localThumbHtml(programacao.local,programacao.localLat,programacao.localLng)}</a></div>
       </div>`:''}
 
       ${String(programacao.orientacoesPlanejamento||'').trim()? `<div class="dtl-section">
@@ -1962,6 +1969,9 @@ function openAtribDetalhe(atribId){
   let selProjeto = pg? findProjeto(pg.projetoId) : null;
   let anexos = pg ? (pg.anexos||[]).map(a=>({...a})) : [];
   let anexosEnviando = false;
+  let localAddr = pg?.local||'';
+  let localLat = pg?.localLat??null;
+  let localLng = pg?.localLng??null;
 
   function atribBlockHtml(a,i){
     return `<div class="atrib-block" data-idx="${i}">
@@ -1994,6 +2004,19 @@ function openAtribDetalhe(atribId){
       <div class="field"><label>Ciclo recebido carteira <span class="req">*</span></label><input type="text" name="ciclo" class="ciclo-input" id="pg-ciclo" required maxlength="13" value="${esc(pg?.ciclo||'')}" placeholder="CICLO-XX/XXXX"><div class="field-hint">Preenchido automaticamente do projeto; pode ser ajustado.</div></div>
     </div>
     <div class="field"><label>Observações gerais</label><textarea name="observacoes">${esc(pg?.observacoes||'')}</textarea></div>
+    <div class="field">
+      <label>Local / endereço de execução</label>
+      <input type="text" name="local" id="pg-local" value="${esc(pg?.local||'')}" placeholder="Digite o endereço onde a equipe vai executar…">
+      <div class="field-hint">Enquanto você digita, geramos automaticamente o link do Google Maps com a localização. Também dá para abrir o mapa e marcar o ponto exato. O local e o mapa vão para o documento (PDF), para os registros e para a mensagem do WhatsApp.</div>
+      <div id="pg-local-tools"></div>
+      <div id="pg-map-wrap" style="display:none;margin-top:8px;">
+        <div id="pg-local-map" style="height:320px;border-radius:10px;overflow:hidden;border:1px solid var(--border-soft);"></div>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm btn-primary" id="pg-map-confirm">Confirmar local no mapa</button>
+          <button type="button" class="btn btn-sm btn-ghost" id="pg-map-cancel">Fechar mapa</button>
+        </div>
+      </div>
+    </div>
     <div class="field"><label>Anexos do programador</label>
       <input type="file" id="pg-anexos-input" accept="image/*" multiple>
       <div class="field-hint">Imagens para a equipe visualizar (croqui, localização, detalhe do serviço). Também saem no RDO. A programação só pode ser salva depois que todas as imagens terminarem de enviar.</div>
@@ -2116,6 +2139,75 @@ function openAtribDetalhe(atribId){
         paintAnexos();
       });
       paintAnexos();
+      /* --- Local / mapa (Geoapify) --- */
+      const localInput = root.querySelector('#pg-local');
+      const localTools = root.querySelector('#pg-local-tools');
+      const mapWrap = root.querySelector('#pg-map-wrap');
+      const mapEl = root.querySelector('#pg-local-map');
+      let localDeb = null;
+      let localMap = null, localMarker = null, localPicked = null;
+      function paintLocalTools(){
+        const btn = `<button type="button" class="btn btn-sm" id="pg-map-pick-btn">${icon('pin',13)} Selecionar no mapa</button>`;
+        if(!localAddr && localLat==null && localLng==null){ localTools.innerHTML = `<div style="margin-top:8px;">${btn}</div>`; return; }
+        localTools.innerHTML = `
+          <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;align-items:flex-start;">
+            ${btn}
+            <a href="${esc(localMapsHref(localAddr,localLat,localLng))}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;color:var(--blue);font-weight:600;font-size:12.5px;">${icon('pin',13)} Abrir no Google Maps</a>
+            ${(localLat!=null && localLng!=null)? `<a href="${esc(staticMapUrl(localLat,localLng,15,640,320))}" target="_blank" rel="noopener" title="Clique para ampliar o mapa">${localThumbHtml(localAddr,localLat,localLng)}</a>`:''}
+          </div>`;
+      }
+      async function geocodeLocal(addr){
+        const g = await geoapifyGeocode(addr);
+        if(String(addr).trim()!==String(localInput.value).trim()) return;
+        if(!g){ localLat=null; localLng=null; paintLocalTools(); return; }
+        localLat = g.lat; localLng = g.lng; localAddr = g.label; localInput.value = g.label;
+        paintLocalTools();
+      }
+      localInput.addEventListener('input', ()=>{
+        const val = localInput.value.trim();
+        localAddr = val;
+        clearTimeout(localDeb);
+        localDeb = setTimeout(()=>{
+          if(!val){ localLat=null; localLng=null; paintLocalTools(); return; }
+          paintLocalTools();
+          geocodeLocal(val);
+        }, 700);
+      });
+      function initLocalMap(){
+        if(localMap) return;
+        loadLeaflet().then(L=>{
+          const center = (localLat!=null&&localLng!=null)? [localLat, localLng] : [-17.79, -50.92];
+          localMap = L.map(mapEl).setView(center, (localLat!=null&&localLng!=null)? 15 : 12);
+          L.tileLayer(`https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}.png?apiKey=${MAPS_KEY}`, { attribution:'Powered by <a href="https://www.geoapify.com/">Geoapify</a> | © OpenStreetMap' }).addTo(localMap);
+          function placeMarker(pos){
+            if(localMarker){ localMarker.setLatLng(pos); }
+            else { localMarker = L.marker(pos, {draggable:true}).addTo(localMap); localMarker.on('dragend', ()=>{ localPicked = localMarker.getLatLng(); }); }
+            localMap.setView(pos, 15);
+          }
+          if(localLat!=null && localLng!=null) placeMarker([localLat, localLng]);
+          localMap.on('click', e=>{ localPicked = e.latlng; placeMarker(e.latlng); });
+          setTimeout(()=>{ localMap.invalidateSize(); }, 60);
+        }).catch(()=>{ toast('Não foi possível carregar o mapa.', 'error'); mapWrap.style.display='none'; });
+      }
+      localTools.addEventListener('click', e=>{
+        if(!e.target.closest('#pg-map-pick-btn')) return;
+        mapWrap.style.display='block';
+        if(!localMap) initLocalMap();
+        else setTimeout(()=>{ localMap.invalidateSize(); }, 60);
+      });
+      root.querySelector('#pg-map-confirm').addEventListener('click', async ()=>{
+        if(!localPicked){ toast('Clique no mapa para posicionar o marcador.', 'error'); return; }
+        const lat = localPicked.lat, lng = localPicked.lng;
+        const addr = await geoapifyReverse(lat, lng);
+        localLat = lat; localLng = lng;
+        if(addr){ localAddr = addr; localInput.value = addr; }
+        else { localAddr = localInput.value.trim()||'Ponto marcado no mapa'; }
+        mapWrap.style.display='none';
+        paintLocalTools();
+        toast('Local marcado no mapa.');
+      });
+      root.querySelector('#pg-map-cancel').addEventListener('click', ()=>{ mapWrap.style.display='none'; });
+      paintLocalTools();
     },
     onSubmit:(fd)=>{
       if(anexosEnviando){ toast('Aguarde o envio das imagens dos anexos antes de salvar.', 'error'); return false; }
@@ -2126,9 +2218,12 @@ function openAtribDetalhe(atribId){
       const dataBase = fd.get('dataProgramada'); const projetoId = Number(fd.get('projetoId')); const observacoes = fd.get('observacoes').trim();
       const orientacoesPlanejamento = String(fd.get('orientacoesPlanejamento')||'').trim();
       const custom = parseCustomFieldsFromForm('programacoes', fd);
+      const local = String(fd.get('local')||'').trim()||localAddr||'';
+      const locLat = local? localLat : null;
+      const locLng = local? localLng : null;
       if(pg){
         const dataBaseAntiga = pg.dataProgramada;
-        pg.projetoId = projetoId; pg.dataProgramada = dataBase; pg.ciclo = ciclo; pg.observacoes = observacoes; pg.orientacoesPlanejamento = orientacoesPlanejamento; pg.custom = custom; pg.anexos = anexos;
+        pg.projetoId = projetoId; pg.dataProgramada = dataBase; pg.ciclo = ciclo; pg.observacoes = observacoes; pg.orientacoesPlanejamento = orientacoesPlanejamento; pg.custom = custom; pg.anexos = anexos; pg.local = local; pg.localLat = locLat; pg.localLng = locLng;
         const oldAtribs = pg.atribuicoes;
         pg.atribuicoes = atribs.map(a=>{
           const existing = oldAtribs.find(old => String(old.equipeId)===String(a.equipeId));
@@ -2139,7 +2234,7 @@ function openAtribDetalhe(atribId){
         toast('Programação atualizada.');
         registrarEvento('edicao','programacao',pg.id,progGid(pg), (pg.atribuicoes||[]).length+' equipe(s), '+pg.atribuicoes.reduce((s,a)=>s+(a.atividades?.length||0),0)+' atividade(s), '+anexos.length+' anexo(s)');
       } else {
-        const novaProg = { id: nextId(), gid: novoGid(), projetoId, dataProgramada: dataBase, ciclo, observacoes, orientacoesPlanejamento, custom, anexos,
+        const novaProg = { id: nextId(), gid: novoGid(), projetoId, dataProgramada: dataBase, ciclo, observacoes, orientacoesPlanejamento, custom, anexos, local, localLat: locLat, localLng: locLng,
           atribuicoes: atribs.map(a=> ({ id: nextId(), equipeId:Number(a.equipeId), dataProgramada: dataBase, status:'Programado',
             atividades: a.atividades.map(x=>({atividadeId:Number(x.atividadeId), quantidadePrevista:x.quantidadePrevista?parseFloat(x.quantidadePrevista):null, quantidadeExecutada:null})),
             historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Programação criada'}] })) };
@@ -2198,6 +2293,69 @@ function equipePageUrl(progId){
 const WHATS_SUPORTE = '556496151084';
 function phoneDigits(p){ return String(p||'').replace(/\D/g,''); }
 function waLink(phone, text){ return 'https://wa.me/' + phoneDigits(phone) + '?text=' + encodeURIComponent(text); }
+
+/* =========================================================
+   LOCAL DE EXECUÇÃO — Geoapify (mapa, geocodificação e imagem)
+========================================================= */
+const MAPS_KEY = 'cb9a3186df512370a0b85db130ca34d1';
+function mapsLinkByAddress(addr){ return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(String(addr||'').trim()); }
+function mapsLinkByCoords(lat,lng){ return 'https://www.google.com/maps/search/?api=1&query='+Number(lat)+','+Number(lng); }
+function staticMapUrl(lat,lng,zoom,w,h){
+  const z = zoom||16, width = w||640, height = h||360;
+  return `https://maps.geoapify.com/v1/staticmap?style=osm-bright-smooth&width=${width}&height=${height}&center=lonlat:${Number(lng)},${Number(lat)}&zoom=${z}&scaleFactor=2&marker=lonlat:${Number(lng)},${Number(lat)};type:material;color:%23e02020;size:normal&apiKey=${MAPS_KEY}`;
+}
+async function geoapifyGeocode(addr){
+  if(!String(addr||'').trim()) return null;
+  try{
+    const res = await fetch(`https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(addr)}&apiKey=${MAPS_KEY}&limit=1&format=json`);
+    if(!res.ok) return null;
+    const j = await res.json();
+    const f = j && j.features && j.features[0];
+    if(!f) return null;
+    const p = f.properties||{};
+    return { lat:Number(f.lat??p.lat), lng:Number(f.lon??p.lon), label: p.formatted||String(addr) };
+  }catch(e){ return null; }
+}
+async function geoapifyReverse(lat,lng){
+  try{
+    const res = await fetch(`https://api.geoapify.com/v1/geocode/reverse?lat=${Number(lat)}&lon=${Number(lng)}&apiKey=${MAPS_KEY}&limit=1&format=json`);
+    if(!res.ok) return '';
+    const j = await res.json();
+    const p = j && j.features && j.features[0] && j.features[0].properties;
+    return (p && p.formatted)||'';
+  }catch(e){ return ''; }
+}
+function localMapsHref(local, lat, lng){
+  if(lat!=null && lng!=null) return mapsLinkByCoords(lat,lng);
+  return mapsLinkByAddress(local);
+}
+function localThumbHtml(local, lat, lng){
+  if(lat==null || lng==null) return '';
+  return `<img src="${staticMapUrl(lat,lng,15,640,320)}" alt="Mapa: ${esc(local)}" style="width:100%;max-width:520px;border-radius:8px;border:1px solid var(--border-soft);display:block;">`;
+}
+let _leafletLoaded = null;
+function loadLeaflet(){
+  if(_leafletLoaded) return _leafletLoaded;
+  if(window.L){ _leafletLoaded = Promise.resolve(window.L); return _leafletLoaded; }
+  _leafletLoaded = new Promise((resolve,reject)=>{
+    const link = document.createElement('link');
+    link.rel='stylesheet'; link.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+    const sc = document.createElement('script');
+    sc.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    sc.onload = ()=> resolve(window.L);
+    sc.onerror = ()=> reject(new Error('Falha ao carregar o mapa'));
+    document.head.appendChild(sc);
+  });
+  return _leafletLoaded;
+}
+function localWhatsLine(local, lat, lng){
+  if(!local && (lat==null || lng==null)) return '';
+  if(lat!=null && lng!=null){
+    return [`*Local:* ${local||'Ponto marcado no mapa'}`,`*Ver no mapa:* ${mapsLinkByCoords(lat,lng)}`,`*Imagem da localização:* ${staticMapUrl(lat,lng,15,640,360)}`];
+  }
+  return [`*Local:* ${local}`,`*Ver no mapa:* ${mapsLinkByAddress(local)}`];
+}
 function buildWhatsMessage(prog, atrib){
   const pr = findProjeto(prog.projetoId);
   const eq = findEquipe(atrib.equipeId);
@@ -2213,6 +2371,8 @@ function buildWhatsMessage(prog, atrib){
     `*Setor:* ${pr?.setor||'—'}  ·  *Coordenação:* ${pr?.coordenacao||'—'}`,
     `*Data:* ${fmtDate(atrib.dataProgramada)}  ·  *Ciclo:* ${prog.ciclo||'—'}`,
     `*Equipe:* ${equipeLabel(eq)}`,
+    ``,
+    ...localWhatsLine(prog.local, prog.localLat, prog.localLng),
     ``,
     `*Atividades programadas:*`,
     ativs||'—',
@@ -2298,6 +2458,7 @@ function docAtribuicaoHtml(prog, atrib){
     <table class="ps-info">
       <tr><th>Supervisor</th><td>${esc(eq?.supervisor||'—')}</td><th>Encarregado</th><td>${esc(eq?.encarregado||'—')}</td></tr>
       <tr><th>Motorista</th><td>${esc(eq?.motorista||'—')}</td><th>Eletricistas</th><td>${esc((eq?.eletricistas||[]).filter(Boolean).join(', ')||'—')}</td></tr>
+      ${prog.local? `<tr><th>Local de execução</th><td colspan="3"><strong>${esc(prog.local)}</strong>${(prog.localLat!=null&&prog.localLng!=null)? ` — <a href="${esc(mapsLinkByCoords(prog.localLat,prog.localLng))}">${esc(mapsLinkByCoords(prog.localLat,prog.localLng))}</a>`:''}</td></tr>`:''}
     </table>
     <table>
       <thead><tr><th style="width:26px;">#</th><th>Código</th><th>Descrição</th><th style="width:40px;">Un.</th><th style="width:52px;">Qtd prev.</th><th style="width:64px;">Qtd exec.</th><th>Obs.</th></tr></thead>
@@ -2323,8 +2484,13 @@ function buildDocProgramacao(prog){
       <tr><th>Período do projeto</th><td colspan="3">${fmtDate(pr?.dataInicio)} → ${fmtDate(pr?.dataFim)}</td></tr>
       ${prog.observacoes? `<tr><th>Observações gerais</th><td colspan="3">${esc(prog.observacoes)}</td></tr>`:''}
       ${String(prog.orientacoesPlanejamento||'').trim()? `<tr><th>Orientações do Setor de Planejamento</th><td colspan="3">${esc(prog.orientacoesPlanejamento)}</td></tr>`:''}
+      ${prog.local? `<tr><th>Local de execução</th><td colspan="3"><strong>${esc(prog.local)}</strong>${(prog.localLat!=null&&prog.localLng!=null)? ` — <a href="${esc(mapsLinkByCoords(prog.localLat,prog.localLng))}">${esc(mapsLinkByCoords(prog.localLat,prog.localLng))}</a>`:(prog.local? ` — <a href="${esc(mapsLinkByAddress(prog.local))}">${esc(mapsLinkByAddress(prog.local))}</a>`:'')}</td></tr>`:''}
     </table>
     ${prog.atribuicoes.map(at=> docAtribuicaoHtml(prog, at)).join('')}
+    ${(prog.localLat!=null&&prog.localLng!=null)? `<div class="ps-block" style="page-break-before:auto;break-before:auto;margin-top:8px;">
+      <div class="ps-block-head">Localização no mapa — ${progGid(prog)}</div>
+      <img src="${esc(staticMapUrl(prog.localLat,prog.localLng,15,720,420))}" alt="Mapa: ${esc(prog.local)}" style="width:100%;max-width:620px;border:1px solid #999;border-radius:4px;">
+    </div>`:''}
     <div style="margin-top:8px;font-size:10.5px;color:#000;border-top:1px solid #444;padding-top:6px;">Assinatura do fiscal / responsável: <span class="ps-line"></span> &nbsp;&nbsp; Data: ____/____/____</div>
     ${docAnexosHtml(prog)}
   `;
@@ -2592,6 +2758,8 @@ function paintAdminRdoList(){
         <p><strong>Data programada:</strong> ${fmtDate(entry.prog.dataProgramada)}</p>
         <p><strong>Ciclo:</strong> ${entry.prog.ciclo||'—'}</p>
         <p><strong>Projeto:</strong> ${entry.prog.projetoId ? (DB.projetos||[]).find(p=>p.id===entry.prog.projetoId)?.nome||'—' : '—'}</p>
+        <p><strong>Local de execução:</strong> ${entry.prog.local? esc(entry.prog.local) : '—'}${entry.prog.local||entry.prog.localLat!=null? ` <a href="${esc(localMapsHref(entry.prog.local,entry.prog.localLat,entry.prog.localLng))}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600;font-size:12px;">${icon('pin',11)} Ver no Google Maps</a>`:''}</p>
+        ${(entry.prog.localLat!=null && entry.prog.localLng!=null)? `<a href="${esc(staticMapUrl(entry.prog.localLat,entry.prog.localLng,15,800,360))}" target="_blank" rel="noopener" style="display:inline-block;max-width:480px;">${localThumbHtml(entry.prog.local,entry.prog.localLat,entry.prog.localLng)}</a>`:''}
       </div>
       <div style="margin-bottom:16px;">
         <h4>Respostas RDO</h4>

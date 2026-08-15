@@ -68,6 +68,14 @@ function findAtividade(db,id){ return db.atividades.find(a=>a.id===Number(id)); 
 function equipeLabel(eq){ if(!eq) return '—'; const parts=[]; if(eq.eqtl) parts.push(eq.eqtl); if(eq.prtn) parts.push(eq.prtn); return parts.length? parts.join(' / ') : ('Equipe #'+eq.id); }
 function eqtlLabel(eq){ return (eq && eq.eqtl)? eq.eqtl : '—'; }
 function prtnLabel(eq){ return (eq && eq.prtn)? eq.prtn : '—'; }
+/* --- Local / mapa (Geoapify) --- */
+const MAPS_KEY = 'cb9a3186df512370a0b85db130ca34d1';
+function mapsLinkByAddress(addr){ return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(String(addr||'').trim()); }
+function mapsLinkByCoords(lat,lng){ return 'https://www.google.com/maps/search/?api=1&query='+Number(lat)+','+Number(lng); }
+function staticMapUrl(lat,lng,zoom,w,h){
+  const z = zoom||16, width = w||640, height = h||360;
+  return `https://maps.geoapify.com/v1/staticmap?style=osm-bright-smooth&width=${width}&height=${height}&center=lonlat:${Number(lng)},${Number(lat)}&zoom=${z}&scaleFactor=2&marker=lonlat:${Number(lng)},${Number(lat)};type:material;color:%23e02020;size:normal&apiKey=${MAPS_KEY}`;
+}
 function toast(msg, kind){
   const wrap = document.getElementById('toast-wrap');
   const t = document.createElement('div'); t.className='toast';
@@ -684,7 +692,9 @@ function buildDocEquipeHtml(pg, eqId){
         <tr><th>Supervisor</th><td>${esc(eq?.supervisor||'—')}</td><th>Encarregado</th><td>${esc(eq?.encarregado||'—')}</td></tr>
         <tr><th>Motorista</th><td>${esc(eq?.motorista||'—')}</td><th>Eletricistas</th><td>${esc((eq?.eletricistas||[]).filter(Boolean).join(', ')||'—')}</td></tr>
         <tr><th>Ciclo</th><td>${esc(pg.ciclo||'—')}</td><th>Setor</th><td>${esc(pr?.setor||'—')}</td></tr>
+        ${pg.local? `<tr><th>Local de execução</th><td colspan="3"><strong>${esc(pg.local)}</strong>${(pg.localLat!=null&&pg.localLng!=null)? ` — ${esc(mapsLinkByCoords(pg.localLat,pg.localLng))}`:''}</td></tr>`:''}
       </table>
+      ${(pg.localLat!=null&&pg.localLng!=null)? `<div style="margin:10px 0;"><strong>Localização:</strong><br><img src="${esc(staticMapUrl(pg.localLat,pg.localLng,15,640,360))}" alt="Mapa: ${esc(pg.local)}" style="width:100%;max-width:520px;border:1px solid #999;border-radius:4px;"></div>`:''}
       <table>
         <thead><tr><th style="width:26px;">#</th><th>Código</th><th>Descrição</th><th style="width:40px;">Un.</th><th style="width:52px;">Qtd prev.</th><th style="width:64px;">Qtd exec.</th><th>Obs.</th></tr></thead>
         <tbody>${rows}</tbody>
@@ -703,7 +713,17 @@ function renderPrintDoc(){
   root.innerHTML = buildDocEquipeHtml(pg, PRINT_EQUIPE||(pg.atribuicoes||[])[0]?.equipeId);
   if(printDisparado) return;
   printDisparado = true;
-  setTimeout(()=>{ window.print(); }, 300);
+  const imgs = root.querySelectorAll('img');
+  if(!imgs.length){ window.print(); return; }
+  let pendentes = 0, impresso = false;
+  const tentar = ()=>{ pendentes--; if(pendentes<=0 && !impresso){ impresso = true; window.print(); } };
+  imgs.forEach(img=>{
+    if(img.complete && img.naturalWidth>0) return;
+    pendentes++;
+    img.addEventListener('load', tentar, {once:true});
+    img.addEventListener('error', tentar, {once:true});
+  });
+  setTimeout(()=>{ if(!impresso){ impresso = true; window.print(); } }, 1500);
 }
 function initPrint(){
   document.body.classList.add('print-mode');
