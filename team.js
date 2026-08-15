@@ -93,12 +93,6 @@ function dbToEditors(db){
 
 /* --- RDO QUESTIONNAIRE --- */
 const RDO_PERGUNTAS = [
-  { id: 'rdo_saida_base', label: 'Saída da base', tipo: 'select', options: [''] } ,
-  { id: 'rdo_chegada', label: 'Chegada', tipo: 'select', options: [''] },
-  { id: 'rdo_inicio_atividades', label: 'Início das atividades', tipo: 'select', options: [''] },
-  { id: 'rdo_finalizacao', label: 'Finalização das atividades', tipo: 'select', options: [''] },
-  { id: 'rdo_saida_obra', label: 'Saída da obra', tipo: 'select', options: [''] },
-  { id: 'rdo_chegada_base', label: 'Chegada na base', tipo: 'select', options: [''] },
   { id: 'rdo_condicoes', label: 'Condições climáticas', tipo: 'select', options: ['','Bom','Nublado','Chuvoso','Impraticável'] },
   { id: 'rdo_impedimento', label: 'Impedimento de execução (Marque somente se a resposta for sim)', tipo: 'select', options: ['','Sim'] },
   { id: 'rdo_falta_material', label: 'Falta de material', tipo: 'select', options: ['','Sim'] },
@@ -163,7 +157,10 @@ function getRDORespostas(){
 
 function respostasRDOPreenchidas(){
   const res = getRDORespostas();
-  return RDO_PERGUNTAS.every(p=> res[p.id] && res[p.id] !== '');
+  const perguntasOk = RDO_PERGUNTAS.every(p=> res[p.id] && res[p.id] !== '');
+  const horarios = ['rdo_horario_chegada','rdo_horario_inicio','rdo_horario_finalizacao','rdo_horario_saida_obra','rdo_horario_chegada_base'];
+  const horariosOk = horarios.every(id=> res[id] && res[id] !== '');
+  return perguntasOk && horariosOk;
 }
 
 /* --- render team --- */
@@ -300,7 +297,7 @@ async function syncNow(){
       const v = snap.val();
       db = (typeof v==='string')? JSON.parse(v) : v;
     }else{
-      db = { equipes:[], atividades:[], projetos:[], programacoes:[], usuarios:[], customFields:{equipes:[],atividades:[],projetos:[],programacoes:[]], seq:1 };
+      db = { equipes:[], atividades:[], projetos:[], programacoes:[], usuarios:[], customFields:{equipes:[],atividades:[],projetos:[],programacoes:[]}, seq:1 };
     }
     let changed = false;
     q.forEach(patch=>{

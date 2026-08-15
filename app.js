@@ -74,6 +74,31 @@ const MOTIVOS_REPROG = [
   'Falha de acesso ao local','Outro'
 ];
 const CUSTOM_FIELD_TYPES = [{v:'texto',l:'Texto'},{v:'numero',l:'Número'},{v:'data',l:'Data'},{v:'select',l:'Lista (opções)'}];
+const RDO_QUESTIONS = [
+  { id:'rdo_saida_base', label:'Saída da base' },
+  { id:'rdo_chegada', label:'Chegada' },
+  { id:'rdo_inicio_atividades', label:'Início das atividades' },
+  { id:'rdo_finalizacao', label:'Finalização das atividades' },
+  { id:'rdo_saida_obra', label:'Saída da obra' },
+  { id:'rdo_chegada_base', label:'Chegada na base' },
+  { id:'rdo_condicoes', label:'Condições climáticas' },
+  { id:'rdo_impedimento', label:'Impedimento de execução' },
+  { id:'rdo_falta_material', label:'Falta de material' },
+  { id:'rdo_projeto_incoerente', label:'Projeto incoerente' },
+  { id:'rdo_equipe_incompleta', label:'Equipe incompleta' },
+  { id:'rdo_falta_veiculo', label:'Falta de veículo' },
+  { id:'rdo_impedimento_acesso', label:'Impedimento de acesso' },
+  { id:'rdo_licenca_ambiental', label:'Licença ambiental' },
+  { id:'rdo_autorizacao_embargo', label:'Autorização/embargo' },
+  { id:'rdo_desligamento', label:'Desligamento conforme programado' }
+];
+const RDO_HORARIOS = [
+  { k:'rdoHorarioChegada', label:'Horário Chegada' },
+  { k:'rdoHorarioInicio', label:'Horário Início das atividades' },
+  { k:'rdoHorarioFinalizacao', label:'Horário Finalização das atividades' },
+  { k:'rdoHorarioSaidaObra', label:'Horário Saída da obra' },
+  { k:'rdoHorarioChegadaBase', label:'Horário Chegada na base' }
+];
 const MODULOS_ADMIN = [{k:'equipes',l:'Equipes'},{k:'atividades',l:'Atividades'},{k:'projetos',l:'Projetos'},{k:'programacoes',l:'Programações'}];
 const ROLES = [
   { v:'administrador', l:'Administrador', d:'Acesso total ao sistema' },
@@ -99,9 +124,9 @@ const NAV_ITEMS = [
   { id:'projetos',    label:'Projetos',      sub:'Cadastro de projetos', icon:'folder' },
   { id:'avanco',      label:'Avanço',        sub:'Progresso físico e financeiro', icon:'trend' },
   { id:'programacoes',label:'Programações',  sub:'Agenda, fluxo e reprogramação', icon:'calendar' },
+  { id:'RDO',         label:'RDO',           sub:'Execução das equipes em campo', icon:'check' },
   { id:'historico',   label:'Histórico',     sub:'Linha do tempo de todas as alterações', icon:'clock' },
   { id:'admin',       label:'Administração', sub:'Campos personalizados de cada módulo', icon:'gear' },
-  { id:'execucadas',  label:'Execuídas',     sub:'Programações concluídas com detalhes', icon:'check' },
 ];
 const ICONS = {
   grid:'<path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/>',
@@ -196,6 +221,7 @@ function btnSecondary(label, onClick){
 function fmtDate(iso){ if(!iso) return '—'; const [y,m,d]=iso.split('-'); return `${d}/${m}/${y}`; }
 function fmtDateTime(iso){ const dt=new Date(iso); return dt.toLocaleDateString('pt-BR')+' '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
 function fmtMoney(v){ return (Number(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
+function fmtNum(v){ return (Number(v)||0).toLocaleString('pt-BR',{maximumFractionDigits:2}); }
 function todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function monthRangeISO(){
   const d = new Date();
@@ -2124,11 +2150,11 @@ function paintAdminRdoList(){
       <div style="margin-bottom:16px;">
         <h4>Respostas RDO</h4>
         <table style="width:100%;border-collapse:collapse;">
-          ${RDO_PERGUNTAS.map(p=>`
+          ${RDO_QUESTIONS.map(q=>`
             <tr style="margin-bottom:8px;">
-              <td style="width:40%;font-weight:600;padding-right:16px;">${p.label}</td>
+              <td style="width:40%;font-weight:600;padding-right:16px;">${q.label}</td>
               <td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;min-width:200px;background:rgba(87,199,199,.08);">
-                ${String(entry.respostas[p.id])||'-- não respondido --'}
+                ${String(entry.respostas[q.id])||'-- não respondido --'}
               </td>
             </tr>`).join('')}
         </table>
@@ -2136,11 +2162,8 @@ function paintAdminRdoList(){
       <div style="margin-bottom:16px;">
         <h4>Horários</h4>
         <table style="width:100%;border-collapse:collapse;">
-          <tr><td style="font-weight:600;padding-right:16px;">Horário Chegada</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoHorarioChegada||'--'}</td></tr>
-          <tr><td style="font-weight:600;padding-right:16px;">Horário Início das atividades</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoHorarioInicio||'--'}</td></tr>
-          <tr><td style="font-weight:600;padding-right:16px;">Horário Finalização das atividades</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoHorarioFinalizacao||'--'}</td></tr>
-          <tr><td style="font-weight:600;padding-right:16px;">Horário Saída da obra</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoHorarioSaidaObra||'--'}</td></tr>
-          <tr><td style="font-weight:600;padding-right:16px;">Horário Chegada na base</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoHorarioChegadaBase||'--'}</td></tr>
+          ${RDO_HORARIOS.map(h=>`
+            <tr><td style="font-weight:600;padding-right:16px;">${h.label}</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao[h.k]||'--'}</td></tr>`).join('')}
         </table>
       </div>
       <div style="margin-bottom:16px;">
@@ -2312,236 +2335,400 @@ setTimeout(()=>{
 }, 8000);
 
 /* =========================================================
-   RDO - Respostas da Base Obrigatória
+   RDO - Relatório de Execução das Equipes
    ========================================================= */
-function renderProgramacoesConcluidas(){
-  const el = document.getElementById('content');
-  const concluidas = flatAtribuicoes().filter(x=> x.atribuicao.status=== 'Concluído');
-  if(!concluidas.length){
-    el.innerHTML = `<div class="panel"><div class="empty-state"><p>Nenhuma resposta RDO encontrada.</p><button class="btn btn-primary" style="width:100%;">Voltar ao Painel</button></div></div>`;
-    return;
-  }
-  // Build filter HTML
-  const filterHTML = `
-    <div style="margin-bottom:24px;background:var(--surface);padding:16px;border-radius:8px;">
-      <div style="margin-bottom:12px;">
-        <label style="font-weight:600;margin-right:8px;">Filtrar por data:</label>
-        <input type="date" id="rdo-data-inicial" style="padding:6px 10px;font-size:14px;">
-        <span style="color:var(--muted);margin-left:16px;">até</span>
-        <input type="date" id="rdo-data-final" style="padding:6px 10px;font-size:14px;">
-        <button class="btn btn-sm" id="rdo-filtrar" style="padding:6px 12px;font-size:14px;">Aplicar</button>
-        <button class="btn btn-sm btn-ghost" id="rdo-limpar" style="padding:6px 12px;font-size:14px;">Limpar</button>
-      </div>
-    </div>`;
-
-  // Build table HTML - programações summary
-  const tableHTML = `
-    <div style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:900px;">
-        <thead>
-          <tr>
-            <th style="width:40px;text-align:center;">#</th>
-            <th style="width:200px;">Projeto</th>
-            <th style="width:140px;text-align:center;">Data Programada</th>
-            <th style="width:100px;text-align:center;">Ciclo</th>
-            <th style="width:100px;text-align:center;">Equipe</th>
-            <th style="width:100px;text-align:center;">Status</th>
-            <th style="width:100px;">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${concluidas.map(x=>`
-            <tr style="cursor:pointer;" data-prog="${x.programacao.id}" data-atrib="${x.atribuicao.id}">
-              <td style="text-align:center;">${x.programacao.id}</td>
-              <td>${esc(findProjeto(x.programacao.projetoId)?.nome||'Projeto')}</td>
-              <td style="text-align:center;">${fmtDate(x.atribuicao.dataProgramada)}</td>
-              <td>${x.programacao.ciclo||'—'}</td>
-              <td>${equipeLabel(findEquipe(x.atribuicao.equipeId))}</td>
-              <td><span class="badge" style="background:rgba(34,139,34,.12);color:var(--green);">${x.atribuicao.status}</span></td>
-              <td style="text-align:center;">
-                <button class="icon-btn" style="padding:4px 6px;font-size:12px;" title="Ver detalhes"><icon('search',12)</button>
-              </td>
-            </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>`;
-
-  // Build modals HTML
-  const modalHTML = `
-    <div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center;z-index:9999;" id="rdo-modal">
-      <div class="panel" style="max-width:900px;width:100%;padding:24px;">
-        <div class="panel-head">
-          <h3>RDO - Detalhes da Programação</h3>
-          <button class="icon-btn" style="float:right;padding:4px;" id="rdo-modal-close">&times;</button>
-        </div>
-        <div style="margin-top:24px;" id="rdo-modal-conteudo">
-        </div>
-      </div>
-    </div>`;
-
-  el.innerHTML = `
-    <div class="section-gap">
-      ${filterHTML}
-      ${tableHTML}
-    </div>`;
-  // Append modal to body
-  const modal = document.getElementById('rdo-modal');
-  if(!modal.parentElement) document.body.appendChild(modal);
-
-  // Date filter logic
-  const dataInicial = document.getElementById('rdo-data-inicial');
-  const dataFinal = document.getElementById('rdo-data-final');
-  const aplicarFiltro = ()=>{
-    const ini = dataInicial.value? new Date(dataInicial.value).toISOString().split('T')[0] : null;
-    const fim = dataFinal.value? new Date(dataFinal.value).toISOString().split('T')[0] : null;
-    concluidas.forEach(x=>{
-      const dataProg = x.atribuicao.dataProgramada;
-      const mostrar = (!ini || dataProg >= ini) && (!fim || dataProg <= fim);
-      document.querySelector(`tr[data-prog="${x.programacao.id}"]`).style.display = mostrar? '':'none';
-    });
-  };
-  document.getElementById('rdo-filtrar').addEventListener('click', aplicarFiltro);
-  document.getElementById('rdo-limpar').addEventListener('click', ()=>{
-    dataInicial.value = '';
-    dataFinal.value = '';
-    concluidas.forEach(x=> document.querySelector(`tr[data-prog="${x.programacao.id}"]`).style.display = '');
+function rdoTemExecucao(x){
+  const at = x.atribuicao;
+  const rdo = at.rdoRespostas||{};
+  const temRespostas = Object.values(rdo).some(v=> v && String(v).trim()!=='');
+  const temHorarios = RDO_HORARIOS.some(h=> at[h.k]);
+  const temExec = (at.atividades||[]).some(a=> a.quantidadeExecutada!=null && String(a.quantidadeExecutada).trim()!=='');
+  const temCond = ['rdoCondicoes','rdoImpedimento','rdoFaltaMaterial','rdoProjetoIncoerente','rdoEquipeIncompleta','rdoFaltaVeiculo','rdoImpedimentoAcesso','rdoLicencaAmbiental','rdoAutorizacaoEmbargo','rdoDesligamento'].some(k=> at[k]);
+  return temRespostas || temHorarios || temExec || temCond || at.status==='Concluído';
+}
+function rdoResumo(x){
+  const at = x.atribuicao;
+  let prev=0, exec=0;
+  (at.atividades||[]).forEach(a=>{
+    const p = parseFloat(a.quantidadePrevista)||0;
+    const e = a.quantidadeExecutada==null? null : parseFloat(a.quantidadeExecutada);
+    prev+=p;
+    if(e!=null && !isNaN(e)) exec+=e;
   });
-  // Row click to open modal
-  document.querySelectorAll('tr[data-prog]').forEach(tr=>{
-    tr.addEventListener('click', ()=>{
-      const progId = Number(tr.dataset.prog);
-      const attribId = Number(tr.dataset.atrib);
-      openRDOModal(progId, attribId);
-    });
-  });
-  // Modal close
-  document.getElementById('rdo-modal-close').addEventListener('click', ()=>{ modal.style.display='none'; });
-  modal.addEventListener('click', (e)=>{ if(e.target===modal) modal.style.display='none'; });
-  // Excel export button
-  const exportBtn = document.createElement('button');
-  exportBtn.className = 'btn btn-primary';
-  exportBtn.style.margin = '24px 0 0 0';
-  exportBtn.textContent = 'Exportar Excel';
-  exportBtn.addEventListener('click', ()=> exportRDOExcel(concluidas));
-  el.appendChild(exportBtn);
-  // Add back button
-  const backBtn = document.createElement('button');
-  backBtn.className = 'btn btn-primary';
-  backBtn.style.margin = '24px 0 0 0';
-  backBtn.textContent = 'Voltar ao Painel';
-  backBtn.addEventListener('click', ()=> setView('dashboard'));
-  el.appendChild(backBtn);
+  const pct = prev>0? Math.round(exec/prev*100) : (at.status==='Concluído'? 100 : 0);
+  return { prev, exec, pct };
+}
+function rdoImpedimentos(at){
+  const itens=[];
+  const map = [
+    ['rdoImpedimento','Impedimento de execução'],
+    ['rdoFaltaMaterial','Falta de material'],
+    ['rdoProjetoIncoerente','Projeto incoerente'],
+    ['rdoEquipeIncompleta','Equipe incompleta'],
+    ['rdoFaltaVeiculo','Falta de veículo'],
+    ['rdoImpedimentoAcesso','Impedimento de acesso'],
+    ['rdoLicencaAmbiental','Licença ambiental'],
+    ['rdoAutorizacaoEmbargo','Autorização/embargo'],
+    ['rdoDesligamento','Desligamento não programado']
+  ];
+  map.forEach(([k,l])=>{ if(at[k]==='Sim') itens.push(l); });
+  return itens;
+}
+function rdoConfData(x){
+  const hist = (x.atribuicao.historico||[]).filter(h=>h.tipo==='equipe');
+  const h = hist[hist.length-1];
+  return h ? fmtDateTime(h.ts) : '—';
+}
+function rdoStatusBadge(status){
+  const s = status||'Programado';
+  const cor = { 'Programado':'var(--blue)','Em Execução':'var(--accent)','Concluído':'var(--green)','Reprogramado':'var(--purple)','Cancelado':'var(--red)' }[s]||'var(--muted)';
+  const bg = { 'Programado':'rgba(78,140,235,.14)','Em Execução':'rgba(224,164,88,.14)','Concluído':'rgba(34,139,34,.14)','Reprogramado':'rgba(142,110,235,.14)','Cancelado':'rgba(224,97,91,.14)' }[s]||'rgba(128,128,128,.14)';
+  return `<span class="badge" style="color:${cor};background:${bg};">${esc(s)}</span>`;
 }
 
-// New function: open RDO modal with all details
-function openRDOModal(progId, attribId){
-  const concluidas = flatAtribuicoes().filter(x=> x.atribuicao.status=== 'Concluído');
-  const x = concluidas.find(y=> y.programacao.id===progId && y.atribuicao.id===attribId);
-  if(!x) return;
-  const pr = findProjeto(x.programacao.projetoId);
-  const eq = findEquipe(x.atribuicao.equipeId);
-  const modalConteudo = `
-    <div style="max-height:800px;overflow-y:auto;">
-      <div style="margin-bottom:24px;">
-        <h4>Programação #${x.programacao.id}</h4>
-        <p><strong>Projeto:</strong> ${esc(pr?.nome||'—')} (${esc(pr?.codigo||'—')})</p>
-        <p><strong>Ciclo:</strong> ${x.programacao.ciclo||'—'}</p>
-        <p><strong>Data programada:</strong> ${fmtDate(x.atribuicao.dataProgramada)}</p>
-        <p><strong>Equipe:</strong> ${equipeLabel(eq)}</p>
-        <p><strong>Status:</strong> ${x.atribuicao.status}</p>
+function renderProgramacoesConcluidas(){
+  const el = document.getElementById('content');
+  let registros = flatAtribuicoes().filter(rdoTemExecucao);
+
+  // Ordena: mais recentes primeiro pela data programada
+  registros.sort((a,b)=> String(b.atribuicao.dataProgramada||'').localeCompare(String(a.atribuicao.dataProgramada||'')));
+
+  const stats = (()=>{
+    const total = registros.length;
+    const concluidos = registros.filter(x=>x.atribuicao.status==='Concluído').length;
+    const totalExec = registros.reduce((s,x)=> s+rdoResumo(x).exec, 0);
+    const mediaPct = total? Math.round(registros.reduce((s,x)=> s+rdoResumo(x).pct,0)/total) : 0;
+    const imped = registros.filter(x=> rdoImpedimentos(x.atribuicao).length>0).length;
+    return `
+      <div class="grid-stats">
+        <div class="stat-card"><div class="lbl">Registros de execução</div><div class="val">${total}</div></div>
+        <div class="stat-card" style="--accent-c:var(--green);"><div class="lbl">Concluídas</div><div class="val">${concluidos}</div></div>
+        <div class="stat-card" style="--accent-c:var(--blue);"><div class="lbl">Qtd. executada</div><div class="val">${fmtNum(totalExec)}</div></div>
+        <div class="stat-card" style="--accent-c:var(--accent);"><div class="lbl">Conclusão média</div><div class="val">${mediaPct}<small>%</small></div></div>
+        <div class="stat-card" style="--accent-c:var(--red);"><div class="lbl">Com impedimentos</div><div class="val">${imped}</div></div>
+      </div>`;
+  })();
+
+  const projetos = [...new Set(registros.map(x=>x.programacao.projetoId))].map(id=> findProjeto(id)).filter(Boolean);
+  const equipes = [...new Set(registros.map(x=>x.atribuicao.equipeId))].map(id=> findEquipe(id)).filter(Boolean);
+
+  const filters = `
+    <div class="panel" style="padding:14px 16px;margin-bottom:16px;">
+      <div class="filters">
+        <label style="font-weight:600;">Projeto</label>
+        <select id="rdo-f-projeto"><option value="">Todos</option>${projetos.map(p=>`<option value="${p.id}">${esc(p.nome)}</option>`).join('')}</select>
+        <label style="font-weight:600;">Equipe</label>
+        <select id="rdo-f-equipe"><option value="">Todas</option>${equipes.map(e=>`<option value="${e.id}">${esc(equipeLabel(e))}</option>`).join('')}</select>
+        <label style="font-weight:600;">Status</label>
+        <select id="rdo-f-status"><option value="">Todos</option>${STATUS_PROG.map(s=>`<option>${s}</option>`).join('')}</select>
+        <label style="font-weight:600;">De</label>
+        <input type="date" id="rdo-f-de">
+        <label style="font-weight:600;">Até</label>
+        <input type="date" id="rdo-f-ate">
+        <button class="btn btn-sm" id="rdo-f-aplicar">${icon('grid',13)} Filtrar</button>
+        <button class="btn btn-sm btn-ghost" id="rdo-f-limpar">Limpar</button>
       </div>
-      <div style="margin-bottom:24px;">
-        <h4>Horários RDO</h4>
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
-          <tr><td style="font-weight:600;padding-right:8px;">Horário Chegada</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoHorarioChegada||'—'}</td></tr>
-          <tr><td style="font-weight:600;padding-right:8px;">Horário Início</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoHorarioInicio||'—'}</td></tr>
-          <tr><td style="font-weight:600;padding-right:8px;">Horário Finalização</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoHorarioFinalizacao||'—'}</td></tr>
-          <tr><td style="font-weight:600;padding-right:8px;">Horário Saída da obra</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoHorarioSaidaObra||'—'}</td></tr>
-          <tr><td style="font-weight:600;padding-right:8px;">Horário Chegada na base</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoHorarioChegadaBase||'—'}</td></tr>
-        </table>
+    </div>`;
+
+  const tabela = `
+    <div class="panel" style="padding:0;overflow:hidden;">
+      <div class="panel-head" style="padding:14px 16px;">
+        <div><h3>Execuções das equipes</h3><div class="admin-field-meta">Todos os dados de execução e projetos executados em campo.</div></div>
+        <div class="filters" style="gap:6px;">
+          <button class="btn btn-sm" id="rdo-export">${icon('download',13)} Excel</button>
+          <button class="btn btn-sm btn-ghost" id="rdo-print">${icon('print',13)} Imprimir</button>
+        </div>
       </div>
-      <div style="margin-bottom:24px;">
-        <h4>Condições Climáticas e Impedimentos</h4>
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
-          <tr><td style="font-weight:600;padding-right:8px;">Condições climáticas</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoCondicoes||'—'}</td></tr>
-          <tr><td style="font-weight:600;padding-right:8px;">Impedimento execução (somente se sim)</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoImpedimento||'—'}</td></tr>
-          <tr><td style="font-weight:600;padding-right:8px;">Falta de material</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoFaltaMaterial||'—'}</td></tr>
-          <tr><td style="font-weight:600;padding-right:8px;">Projeto Incoerente</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoProjetoIncoerente||'—'}</td></tr>
-          <tr><td style="font-weight:600;padding-right:8px;">Equipe incompleta</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoEquipeIncompleta||'—'}</td></tr>
-          <tr><td style="font-weight:600;padding-right:8px;">Falta de veículo</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoFaltaVeiculo||'—'}</td></tr>
-          <tr><td style="font-weight:600;padding-right:8px;">Impedimento de acesso</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoImpedimentoAcesso||'—'}</td></tr>
-          <tr><td style="font-weight:600;padding-right:8px;">Licença ambiental</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoLicencaAmbiental||'—'}</td></tr>
-          <tr><td style="font-weight:600;padding-right:8px;">Autorização/embargo</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoAutorizacaoEmbargo||'—'}</td></tr>
-          <tr><td style="font-weight:600;padding-right:8px;">Desligamento conforme programado</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoDesligamento||'—'}</td></tr>
-        </table>
-      </div>
-      <div style="margin-bottom:24px;">
-        <h4>Atividades e Execução</h4>
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <div style="overflow-x:auto;">
+        <table class="data-table" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:1200px;">
           <thead>
             <tr>
-              <th style="width:8px;">#</th>
-              <th>Código</th>
-              <th style="width:40%;">Descrição</th>
-              <th style="width:24px;">Un.</th>
-              <th style="width:24px;">Prev.</th>
-              <th style="width:24px;">Exec.</th>
-              <th style="width:32px;">%</th>
+              <th style="width:30px;">#</th>
+              <th>Projeto</th>
+              <th>Equipe</th>
+              <th style="text-align:center;">Data</th>
+              <th style="text-align:center;">Status</th>
+              <th style="text-align:center;">Horários</th>
+              <th style="text-align:center;">Clima</th>
+              <th style="text-align:center;">Impedimentos</th>
+              <th style="text-align:center;">Prev.</th>
+              <th style="text-align:center;">Exec.</th>
+              <th style="text-align:center;width:110px;">Progresso</th>
+              <th style="text-align:center;">Confirmação</th>
+              <th style="width:40px;"></th>
             </tr>
           </thead>
           <tbody>
-            ${(x.atribuicao.atividades||[]).map((a,idx)=>{
-              const at = findAtividade(a.atividadeId);
-              const exec = x.atribuicao.status==='Concluído' ? (a.quantidadeExecutada!=null? a.quantidadeExecutada : a.quantidadePrevista) : (a.quantidadeExecutada!=null? a.quantidadeExecutada : null);
-              const pct = a.quantidadePrevista? Math.round((exec||0)/a.quantidadePrevista*100) : 0;
-              return `<tr>
-                <td style="text-align:center;">${idx+1}</td>
-                <td class="mono">${esc(at?.codigo||'?')}</td>
-                <td>${esc(at?.descricao||'')}</td>
-                <td style="text-align:center;">${esc(at?.unidade||'')}</td>
-                <td style="text-align:center;">${a.quantidadePrevista||'—'}</td>
-                <td style="text-align:center;">${exec!=null? exec+'':'—'}</td>
-                <td style="text-align:center;color:var(--green);font-weight:700;">${pct}%</td>
-              </tr>`;
+            ${registros.map((x,i)=>{
+              const pr = findProjeto(x.programacao.projetoId);
+              const eq = findEquipe(x.atribuicao.equipeId);
+              const res = rdoResumo(x);
+              const imped = rdoImpedimentos(x.atribuicao);
+              const horarios = [x.atribuicao.rdoHorarioChegada, x.atribuicao.rdoHorarioSaidaObra].filter(Boolean).join(' → ')||'—';
+              return `
+                <tr data-prog="${x.programacao.id}" data-atrib="${x.atribuicao.id}" style="cursor:pointer;" title="Ver detalhes">
+                  <td style="text-align:center;color:var(--muted-2);">${i+1}</td>
+                  <td><strong>${esc(pr?.nome||'—')}</strong><div class="admin-field-meta">${esc(pr?.codigo||'')} · Ciclo ${esc(x.programacao.ciclo||'—')}</div></td>
+                  <td>${esc(equipeLabel(eq))}<div class="admin-field-meta">${esc(eq?.supervisor||'')}</div></td>
+                  <td style="text-align:center;" class="mono">${fmtDate(x.atribuicao.dataProgramada)}</td>
+                  <td style="text-align:center;">${rdoStatusBadge(x.atribuicao.status)}</td>
+                  <td style="text-align:center;" class="mono">${esc(horarios)}</td>
+                  <td style="text-align:center;">${esc(x.atribuicao.rdoCondicoes||'—')}</td>
+                  <td style="text-align:center;">${imped.length? `<span class="badge" style="color:var(--red);background:rgba(224,97,91,.12);">${imped.length}</span>` : '—'}</td>
+                  <td style="text-align:center;" class="mono">${fmtNum(res.prev)}</td>
+                  <td style="text-align:center;" class="mono"><strong>${fmtNum(res.exec)}</strong></td>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <div style="flex:1;height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${Math.min(100,res.pct)}%;background:${res.pct>=100?'var(--green)':res.pct>=50?'var(--accent)':'var(--red)'};border-radius:3px;"></div></div>
+                      <span class="mono" style="font-size:11px;min-width:34px;text-align:right;">${res.pct}%</span>
+                    </div>
+                  </td>
+                  <td style="text-align:center;" class="mono"><span style="font-size:11px;">${rdoConfData(x)}</span></td>
+                  <td style="text-align:center;">${icon('search',13)}</td>
+                </tr>`;
             }).join('')}
           </tbody>
         </table>
       </div>
-      <div style="margin-bottom:24px;">
-        <h4>Observação da Execução</h4>
-        <p>${x.atribuicao.observacao||'—'}</p>
-      </div>
-      <div style="margin-bottom:24px;">
-        <h4>Data da Confirmação</h4>
-        <p>${fmtDateTime(x.atribuicao.historico?.[0]?.ts||x.atribuicao.tsCriacao||Date.now())}</p>
-      </div>
     </div>`;
-  document.getElementById('rdo-modal-conteudo').innerHTML = modalConteudo;
-  document.getElementById('rdo-modal').style.display = 'flex';
+
+  const vazio = `
+    <div class="panel"><div class="empty-state">${icon('check',36)}<h3 style="margin-bottom:6px;">Nenhuma execução registrada</h3><p>Quando as equipes responderem o RDO na página da programação, os dados de execução aparecerão aqui.</p><button class="btn btn-primary" id="rdo-back-dash" style="margin-top:16px;">Voltar ao Painel</button></div></div>`;
+
+  if(!registros.length){
+    el.innerHTML = `<div class="section-gap">${stats}${vazio}</div>`;
+    const b = document.getElementById('rdo-back-dash');
+    if(b) b.addEventListener('click', ()=> setView('dashboard'));
+    return;
+  }
+
+  el.innerHTML = `<div class="section-gap">${stats}${filters}${tabela}</div>`;
+
+  // Filtros
+  const fProj = document.getElementById('rdo-f-projeto');
+  const fEq = document.getElementById('rdo-f-equipe');
+  const fSt = document.getElementById('rdo-f-status');
+  const fDe = document.getElementById('rdo-f-de');
+  const fAte = document.getElementById('rdo-f-ate');
+  const aplicar = ()=>{
+    registros.forEach(x=>{
+      const pr = findProjeto(x.programacao.projetoId);
+      const eq = findEquipe(x.atribuicao.equipeId);
+      const okProj = !fProj.value || String(x.programacao.projetoId)===String(fProj.value);
+      const okEq = !fEq.value || String(x.atribuicao.equipeId)===String(fEq.value);
+      const okSt = !fSt.value || x.atribuicao.status===fSt.value;
+      const data = x.atribuicao.dataProgramada||'';
+      const okDe = !fDe.value || data >= fDe.value;
+      const okAte = !fAte.value || data <= fAte.value;
+      const tr = document.querySelector(`tr[data-prog="${x.programacao.id}"][data-atrib="${x.atribuicao.id}"]`);
+      if(tr) tr.style.display = (okProj&&okEq&&okSt&&okDe&&okAte)? '' : 'none';
+    });
+  };
+  document.getElementById('rdo-f-aplicar').addEventListener('click', aplicar);
+  document.getElementById('rdo-f-limpar').addEventListener('click', ()=>{
+    fProj.value=''; fEq.value=''; fSt.value=''; fDe.value=''; fAte.value='';
+    aplicar();
+  });
+
+  // Linha abre detalhe
+  document.querySelectorAll('tr[data-prog]').forEach(tr=>{
+    tr.addEventListener('click', ()=> openRDOModal(Number(tr.dataset.prog), Number(tr.dataset.atrib)));
+  });
+
+  // Exportar Excel
+  document.getElementById('rdo-export').addEventListener('click', ()=> exportRDOExcel(registros));
+  // Imprimir
+  document.getElementById('rdo-print').addEventListener('click', ()=> printRDOReport(registros));
 }
 
-// Excel export function
-function exportRDOExcel(concluidas){
-  let csv = 'Programação;Projeto;Data;Equipe;Status;Ciclo;Atividade;Codigo;Descricao;Unidade;Prev;Exec;%' + '\n';
-  concluidas.forEach(x=>{
+function openRDOModal(progId, attribId){
+  const x = flatAtribuicoes().find(y=> y.programacao.id===progId && y.atribuicao.id===attribId);
+  if(!x) return;
+  const pr = findProjeto(x.programacao.projetoId);
+  const eq = findEquipe(x.atribuicao.equipeId);
+  const rdo = x.atribuicao.rdoRespostas||{};
+  const res = rdoResumo(x);
+  const imped = rdoImpedimentos(x.atribuicao);
+  const horarios = RDO_HORARIOS.map(h=> `
+    <tr><td style="font-weight:600;padding:5px 12px 5px 0;white-space:nowrap;">${h.label}</td>
+    <td style="padding:5px 10px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao[h.k]||'—'}</td></tr>`).join('');
+
+  const body = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+      <div>
+        <h4 style="margin-bottom:8px;">Programação #${x.programacao.id}</h4>
+        <p class="admin-field-meta" style="margin:2px 0;">${esc(pr?.nome||'—')} <strong>(${esc(pr?.codigo||'—')})</strong></p>
+        <p class="admin-field-meta" style="margin:2px 0;">Setor ${esc(pr?.setor||'—')} · Coordenação ${esc(pr?.coordenacao||'—')}</p>
+        <p class="admin-field-meta" style="margin:2px 0;">Ciclo ${esc(x.programacao.ciclo||'—')} · Data ${fmtDate(x.atribuicao.dataProgramada)}</p>
+        <div style="margin-top:8px;">${rdoStatusBadge(x.atribuicao.status)}</div>
+      </div>
+      <div>
+        <h4 style="margin-bottom:8px;">Equipe</h4>
+        <p class="admin-field-meta" style="margin:2px 0;"><strong>${esc(equipeLabel(eq))}</strong></p>
+        <p class="admin-field-meta" style="margin:2px 0;">Supervisor: ${esc(eq?.supervisor||'—')}</p>
+        <p class="admin-field-meta" style="margin:2px 0;">Encarregado: ${esc(eq?.encarregado||'—')}</p>
+        <p class="admin-field-meta" style="margin:2px 0;">Motorista: ${esc(eq?.motorista||'—')}</p>
+        <p class="admin-field-meta" style="margin:2px 0;">Eletricistas: ${esc((eq?.eletricistas||[]).filter(Boolean).join(', ')||'—')}</p>
+      </div>
+    </div>
+    <div style="margin-bottom:20px;">
+      <h4 style="margin-bottom:8px;">Horários do RDO</h4>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">${horarios}</table>
+    </div>
+    <div style="margin-bottom:20px;">
+      <h4 style="margin-bottom:8px;">Condições do RDO</h4>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        ${RDO_QUESTIONS.map(q=>`
+          <tr><td style="font-weight:600;padding:3px 12px 3px 0;">${q.label}</td>
+          <td style="padding:3px 10px;">${String(rdo[q.id]||'')||'—'}</td></tr>`).join('')}
+      </table>
+      ${imped.length? `<div style="margin-top:10px;">${imped.map(i=>`<span class="badge" style="color:var(--red);background:rgba(224,97,91,.12);margin-right:4px;">${esc(i)}</span>`).join('')}</div>`:''}
+    </div>
+    <div style="margin-bottom:20px;">
+      <h4 style="margin-bottom:8px;">Atividades e quantidades executadas</h4>
+      <div style="display:flex;gap:14px;margin-bottom:12px;">
+        <span class="badge-prefix">Prev. ${fmtNum(res.prev)}</span>
+        <span class="badge-prefix alt">Exec. ${fmtNum(res.exec)}</span>
+        <span class="badge-prefix" style="color:${res.pct>=100?'var(--green)':res.pct>=50?'var(--accent)':'var(--red)'};">${res.pct}%</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr><th style="text-align:left;padding:4px 6px;">#</th><th style="text-align:left;">Código</th><th style="text-align:left;">Descrição</th><th style="text-align:center;">Un.</th><th style="text-align:center;">Prev.</th><th style="text-align:center;">Exec.</th><th style="text-align:center;">%</th></tr></thead>
+        <tbody>
+          ${(x.atribuicao.atividades||[]).map((a,idx)=>{
+            const at = findAtividade(a.atividadeId);
+            const p = parseFloat(a.quantidadePrevista)||0;
+            const e = a.quantidadeExecutada==null? null : parseFloat(a.quantidadeExecutada);
+            const pct = p? Math.round((e||0)/p*100) : 0;
+            return `<tr style="border-top:1px solid var(--border-soft);">
+              <td style="padding:4px 6px;color:var(--muted-2);">${idx+1}</td>
+              <td class="mono" style="padding:4px 6px;">${esc(at?.codigo||'?')}</td>
+              <td style="padding:4px 6px;">${esc(at?.descricao||'')}</td>
+              <td style="text-align:center;">${esc(at?.unidade||'')}</td>
+              <td style="text-align:center;" class="mono">${p? fmtNum(p):'—'}</td>
+              <td style="text-align:center;" class="mono"><strong>${e!=null? fmtNum(e):'—'}</strong></td>
+              <td style="text-align:center;color:${pct>=100?'var(--green)':pct>=50?'var(--accent)':'var(--red)'};font-weight:700;">${p? pct+'%':'—'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-bottom:20px;">
+      <h4 style="margin-bottom:8px;">Observação da execução</h4>
+      <p style="font-size:13px;">${esc(x.atribuicao.observacao)||'—'}</p>
+    </div>
+    <div class="admin-field-meta">Confirmado pela equipe em <strong>${rdoConfData(x)}</strong></div>`;
+
+  openModal({ title:'RDO — Detalhes da execução', bodyHtml: body, submitLabel:'Fechar', wide:true });
+}
+
+function exportRDOExcel(registros){
+  const linhas=[];
+  registros.forEach(x=>{
     const pr = findProjeto(x.programacao.projetoId);
     const eq = findEquipe(x.atribuicao.equipeId);
-    const dataProg = fmtDate(x.atribuicao.dataProgramada);
-    const ciclo = x.programacao.ciclo||'—';
-    const equipe = equipeLabel(eq);
-    const status = x.atribuicao.status;
-    (x.atribuicao.atividades||[]).forEach((a,idx)=>{
+    const rdo = x.atribuicao.rdoRespostas||{};
+    const res = rdoResumo(x);
+    const imped = rdoImpedimentos(x.atribuicao).join(', ');
+    const base = {
+      'Programação': x.programacao.id,
+      'Projeto': pr?.nome||'—',
+      'Código Projeto': pr?.codigo||'',
+      'Ciclo': x.programacao.ciclo||'—',
+      'Data Programada': fmtDate(x.atribuicao.dataProgramada),
+      'Equipe': equipeLabel(eq),
+      'Supervisor': eq?.supervisor||'',
+      'Status': x.atribuicao.status||'Programado',
+      'Quantidade Prevista': res.prev,
+      'Quantidade Executada': res.exec,
+      'Percentual': res.pct+'%',
+      'Condições Climáticas': x.atribuicao.rdoCondicoes||'',
+      'Impedimentos': imped,
+      'Observação': x.atribuicao.observacao||'',
+      'Confirmação': rdoConfData(x)
+    };
+    RDO_HORARIOS.forEach(h=> base[h.label]= x.atribuicao[h.k]||'');
+    const detalhe = (x.atribuicao.atividades||[]).map((a,idx)=>{
       const at = findAtividade(a.atividadeId);
-      const exec = x.atribuicao.status==='Concluído' ? (a.quantidadeExecutada!=null? a.quantidadeExecutada : a.quantidadePrevista) : (a.quantidadeExecutada!=null? a.quantidadeExecutada : null);
-      const pct = a.quantidadePrevista? Math.round((exec||0)/a.quantidadePrevista*100) : 0;
-      csv += `${x.programacao.id};${pr?.nome||'—'};${dataProg};${equipe};${status};${ciclo};${idx+1};${at?.codigo||'—'};${esc(at?.descricao||'')};${at?.unidade||'—'};${a.quantidadePrevista||'—'};${exec!=null? exec:'—'};${pct}` + '\n';
+      const p = parseFloat(a.quantidadePrevista)||0;
+      const e = a.quantidadeExecutada==null? null : parseFloat(a.quantidadeExecutada);
+      return {
+        'Programação': x.programacao.id,
+        'Projeto': pr?.nome||'—',
+        'Código Projeto': pr?.codigo||'',
+        'Ciclo': x.programacao.ciclo||'—',
+        'Data Programada': fmtDate(x.atribuicao.dataProgramada),
+        'Equipe': equipeLabel(eq),
+        'Supervisor': eq?.supervisor||'',
+        'Status': x.atribuicao.status||'Programado',
+        '# Atividade': idx+1,
+        'Código Atividade': at?.codigo||'—',
+        'Descrição Atividade': at?.descricao||'',
+        'Unidade': at?.unidade||'',
+        'Qtd Prevista Atividade': a.quantidadePrevista||'',
+        'Qtd Executada Atividade': e!=null? e:'',
+        'Percentual Atividade': p? Math.round((e||0)/p*100)+'%':''
+      };
     });
+    if(detalhe.length){
+      linhas.push(...detalhe);
+    }else{
+      linhas.push(base);
+    }
   });
-  const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+  const cols = linhas.length? Object.keys(linhas[0]) : ['Programação','Projeto'];
+  const escape = v=> String(v??'').replace(/"/g,'""');
+  let csv = '\ufeff' + cols.join(';') + '\n';
+  linhas.forEach(l=>{ csv += cols.map(c=> `"${escape(l[c])}"`).join(';') + '\n'; });
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = `rdo_execucoes_${todayISO()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+  toast('Exportação gerada.');
+}
+
+function printRDOReport(registros){
+  const w = window.open('', '_blank', 'width=1100,height=800');
+  if(!w) return;
+  const rows = registros.map((x,i)=>{
+    const pr = findProjeto(x.programacao.projetoId);
+    const eq = findEquipe(x.atribuicao.equipeId);
+    const res = rdoResumo(x);
+    const imped = rdoImpedimentos(x.atribuicao).join(', ');
+    return `<tr>
+      <td style="border:1px solid #999;padding:4px 6px;">${i+1}</td>
+      <td style="border:1px solid #999;padding:4px 6px;">${esc(pr?.nome||'—')}</td>
+      <td style="border:1px solid #999;padding:4px 6px;">${esc(equipeLabel(eq))}</td>
+      <td style="border:1px solid #999;padding:4px 6px;">${fmtDate(x.atribuicao.dataProgramada)}</td>
+      <td style="border:1px solid #999;padding:4px 6px;">${x.atribuicao.status||'Programado'}</td>
+      <td style="border:1px solid #999;padding:4px 6px;">${x.atribuicao.rdoHorarioChegada||'—'} → ${x.atribuicao.rdoHorarioSaidaObra||'—'}</td>
+      <td style="border:1px solid #999;padding:4px 6px;">${x.atribuicao.rdoCondicoes||'—'}</td>
+      <td style="border:1px solid #999;padding:4px 6px;">${imped||'—'}</td>
+      <td style="border:1px solid #999;padding:4px 6px;text-align:right;">${fmtNum(res.exec)}</td>
+      <td style="border:1px solid #999;padding:4px 6px;text-align:right;">${res.pct}%</td>
+    </tr>`;
+  }).join('');
+  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>RDO — Execução das equipes</title></head><body style="font-family:Arial,sans-serif;font-size:12px;">
+    <h2 style="margin:0 0 4px;">RDO — Relatório de Execução das Equipes</h2>
+    <p style="margin:0 0 16px;color:#555;">Gerado em ${fmtDateTime(Date.now())} · ${registros.length} registro(s)</p>
+    <table style="border-collapse:collapse;width:100%;">
+      <thead><tr style="background:#eee;">
+        <th style="border:1px solid #999;padding:4px 6px;text-align:left;">#</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:left;">Projeto</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:left;">Equipe</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:left;">Data</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:left;">Status</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:left;">Horários</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:left;">Clima</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:left;">Impedimentos</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:right;">Exec.</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:right;">%</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <script>window.onload=function(){setTimeout(function(){window.print();},200);};<\/script>
+  </body></html>`);
+  w.document.close();
 }
