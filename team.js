@@ -467,11 +467,15 @@ function abrirModalAcidente(){
           confirmadoPor: null,
           confirmadoTs: null
         };
+        console.log('[team] Enviando acidente para:', ACCIDENT_REF.toString(), acidente);
         await ACCIDENT_REF.push(acidente);
+        console.log('[team] Acidente enviado com sucesso');
         toast('Alerta de acidente enviado a todas as telas do escritório!');
       }catch(e){
         console.error('[team] Erro ao enviar acidente:', e);
-        toast('Erro ao enviar alerta: '+e.message, 'error');
+        console.error('[team] Error code:', e.code);
+        console.error('[team] Error message:', e.message);
+        toast('Erro ao enviar alerta: '+ (e.code || e.message), 'error');
         return false;
       }
     }
