@@ -1976,9 +1976,17 @@ function openAtribDetalhe(atribId){
   let localLng = pg?.localLng??null;
 
   function atribBlockHtml(a,i){
+    const eqList = equipesDoProjeto(selProjeto);
+    // Garante que a equipe atual (se houver) apareça no dropdown mesmo se não passar no filtro
+    if(a.equipeId){
+      const currentEq = DB.equipes.find(e=>String(e.id)===String(a.equipeId));
+      if(currentEq && !eqList.some(e=>String(e.id)===String(currentEq.id))){
+        eqList.push(currentEq);
+      }
+    }
     return `<div class="atrib-block" data-idx="${i}">
       <div class="atrib-head">
-        <select class="atrib-equipe" data-idx="${i}"><option value="">Selecione a equipe…</option>${equipesDoProjeto(selProjeto).map(e=>`<option value="${e.id}" ${String(a.equipeId)===String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' · '+esc(e.encarregado):''}</option>`).join('')}</select>
+        <select class="atrib-equipe" data-idx="${i}"><option value="">Selecione a equipe…</option>${eqList.map(e=>`<option value="${e.id}" ${String(a.equipeId)===String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' · '+esc(e.encarregado):''}</option>`).join('')}</select>
         ${atribs.length>1? `<button type="button" class="icon-btn atrib-remove" data-idx="${i}">${icon('trash',14)}</button>`:''}
       </div>
       <div class="atrib-meta-live" data-idx="${i}"></div>
@@ -2054,7 +2062,12 @@ function openAtribDetalhe(atribId){
       applyProjetoData();
       function refreshContainer(){
         const ok = equipesDoProjeto(selProjeto);
-        atribs.forEach(a=>{ if(a.equipeId && !ok.some(e=>String(e.id)===String(a.equipeId))) a.equipeId=''; });
+        atribs.forEach(a=>{
+          if(a.equipeId && !ok.some(e=>String(e.id)===String(a.equipeId))){
+            const currentEq = DB.equipes.find(e=>String(e.id)===String(a.equipeId));
+            if(!currentEq) a.equipeId=''; // só limpa se a equipe não existe mais
+          }
+        });
         document.getElementById('atribs-container').innerHTML = renderAtribsHtml(); bindDynamic();
       }
       function atualizarMetaIndicadores(){
