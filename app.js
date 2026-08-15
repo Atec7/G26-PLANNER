@@ -98,6 +98,7 @@ const RDO_HORARIOS = [
   { k:'rdoHorarioSaidaObra', label:'Horário Saída da obra' },
   { k:'rdoHorarioChegadaBase', label:'Horário Chegada na base' }
 ];
+const IMGGB_KEY = '95bb16ee776d7e20f26857cec98bd372';
 const MODULOS_ADMIN = [{k:'equipes',l:'Equipes'},{k:'atividades',l:'Atividades'},{k:'projetos',l:'Projetos'},{k:'programacoes',l:'Programações'}];
 const ROLES = [
   { v:'administrador', l:'Administrador', d:'Acesso total ao sistema' },
@@ -278,36 +279,20 @@ function findEquipe(id){ return DB.equipes.find(e=>e.id===Number(id)); }
 function findAtividade(id){ return DB.atividades.find(a=>a.id===Number(id)); }
 function findProjeto(id){ return DB.projetos.find(p=>p.id===Number(id)); }
 function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function resizeImageToDataUrl(file, maxDim=800){
-  return new Promise((resolve, reject)=>{
-    const reader = new FileReader();
-    reader.onerror = ()=>reject(new Error('read'));
-    reader.onload = ()=>{
-      const img = new Image();
-      img.onerror = ()=>reject(new Error('img'));
-      img.onload = ()=>{
-        let {width, height} = img;
-        if(width>maxDim || height>maxDim){
-          const k = Math.min(maxDim/width, maxDim/height);
-          width = Math.round(width*k); height = Math.round(height*k);
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width; canvas.height = height;
-        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        try{ resolve(canvas.toDataURL('image/jpeg', 0.7)); }
-        catch(e){ resolve(reader.result); }
-      };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
+function anexoSrc(a){ return (a&&(a.url||a.dataUrl))||''; }
+function uploadToImgbb(file){
+  const fd = new FormData();
+  fd.append('image', file);
+  return fetch('https://api.imgbb.com/1/upload?key='+IMGGB_KEY, { method:'POST', body: fd })
+    .then(res=>res.json())
+    .then(j=>{ if(!j.success) throw new Error((j.error&&j.error.message)||'Falha no upload'); return (j.data && (j.data.url || j.data.display_url)) || ''; });
 }
 function anexosGridHtml(anexos, editable){
   const list = anexos||[];
   if(!list.length) return editable? '<div class="field-hint">Nenhum anexo ainda. Envie imagens para a equipe visualizar (croqui, localização, detalhe do serviço) — elas também saem no RDO.</div>' : '';
   return `<div class="anexos-grid">${list.map((a,i)=>`
     <div class="anexo-thumb">
-      <img src="${esc(a.dataUrl)}" alt="${esc(a.nome||'anexo')}" loading="lazy">
+      <img src="${esc(anexoSrc(a))}" alt="${esc(a.nome||'anexo')}" loading="lazy">
       <div class="anexo-meta">${esc(a.nome||'')}</div>
       ${editable? `<button type="button" class="icon-btn anexo-remove" data-i="${i}" title="Remover anexo">${icon('close',12)}</button>`:''}
     </div>`).join('')}</div>`;
@@ -315,10 +300,10 @@ function anexosGridHtml(anexos, editable){
 function anexosDisplayHtml(anexos, print=false){
   const list = anexos||[];
   if(!list.length) return '';
-  if(print) return `<div class="fotos">${list.map(a=>`<figure><img src="${esc(a.dataUrl)}" alt="${esc(a.nome||'anexo')}"><figcaption>${esc(a.nome||'Anexo do programador')}</figcaption></figure>`).join('')}</div>`;
+  if(print) return `<div class="fotos">${list.map(a=>`<figure><img src="${esc(anexoSrc(a))}" alt="${esc(a.nome||'anexo')}"><figcaption>${esc(a.nome||'Anexo do programador')}</figcaption></figure>`).join('')}</div>`;
   return `<div class="anexos-grid">${list.map(a=>`
-    <a class="anexo-thumb" href="${esc(a.dataUrl)}" target="_blank" rel="noopener">
-      <img src="${esc(a.dataUrl)}" alt="${esc(a.nome||'anexo')}" loading="lazy">
+    <a class="anexo-thumb" href="${esc(anexoSrc(a))}" target="_blank" rel="noopener">
+      <img src="${esc(anexoSrc(a))}" alt="${esc(a.nome||'anexo')}" loading="lazy">
       <div class="anexo-meta">${esc(a.nome||'')}</div>
     </a>`).join('')}</div>`;
 }
@@ -1837,6 +1822,11 @@ function openAtribDetalhe(atribId){
         </table></div>
       </div>
 
+      ${(programacao.anexos&&programacao.anexos.length)? `<div class="dtl-section">
+        <div class="dtl-section-head"><h4>Anexos do programador</h4><span class="mono">${programacao.anexos.length} imagem(ns)</span></div>
+        ${anexosDisplayHtml(programacao.anexos)}
+      </div>`:''}
+
       <div class="dtl-actions">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <span class="dtl-actions-lbl">Alterar status:</span>
@@ -1959,12 +1949,16 @@ function openAtribDetalhe(atribId){
       }
       anexosInput.addEventListener('change', async ()=>{
         const files = Array.from(anexosInput.files||[]);
+        if(files.length) anexosInput.disabled = true;
         for(const f of files){
           if(anexos.length>=8){ toast('Máximo de 8 anexos por programação.', 'error'); break; }
-          try{ const dataUrl = await resizeImageToDataUrl(f); anexos.push({ nome: f.name||('anexo-'+Date.now()), dataUrl, ts: Date.now() }); }
-          catch(e){ toast('Não foi possível carregar a imagem '+esc(f.name), 'error'); }
+          try{
+            const url = await uploadToImgbb(f);
+            if(url) anexos.push({ nome: f.name||('anexo-'+Date.now()), url, ts: Date.now() });
+          }catch(e){ toast('Falha ao enviar a imagem '+esc(f.name)+' ('+e.message+'). Tente novamente.', 'error'); }
+          paintAnexos();
         }
-        anexosInput.value=''; paintAnexos();
+        anexosInput.disabled = false; anexosInput.value=''; paintAnexos();
       });
       paintAnexos();
     },
@@ -2156,7 +2150,21 @@ function buildDocProgramacao(prog){
     </table>
     ${prog.atribuicoes.map(at=> docAtribuicaoHtml(prog, at)).join('')}
     <div style="margin-top:8px;font-size:10.5px;color:#000;border-top:1px solid #444;padding-top:6px;">Assinatura do fiscal / responsável: <span class="ps-line"></span> &nbsp;&nbsp; Data: ____/____/____</div>
+    ${docAnexosHtml(prog)}
   `;
+}
+function docAnexosHtml(prog){
+  const anexos = prog.anexos||[];
+  if(!anexos.length) return '';
+  return `
+  <div class="ps-block" style="page-break-before:always;break-before:page;">
+    <div class="ps-block-head">Anexos do programador — ${progGid(prog)}</div>
+    <div class="ps-anexos">
+      ${anexos.map(a=>`<figure class="ps-anexo"><img src="${esc(anexoSrc(a))}" alt="${esc(a.nome||'anexo')}"><figcaption>${esc(a.nome||'')}</figcaption></figure>`).join('')}
+    </div>
+    <div class="ps-check"><div><strong>Imagens conferidas pela equipe?</strong> &nbsp;☐ SIM &nbsp;☐ NÃO</div></div>
+    <div class="ps-sign"><strong>Assinatura do encarregado:</strong> <span class="ps-line"></span></div>
+  </div>`;
 }
 function buildDocData(data, list){
   return `

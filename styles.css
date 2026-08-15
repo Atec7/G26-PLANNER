@@ -142,6 +142,10 @@ input,select,textarea{font-family:'Inter',sans-serif;}
   .print-sheet .ps-sign{margin-top:16px;font-size:12px;}
   .print-sheet .ps-line{display:inline-block;width:320px;border-bottom:1px solid #444;height:14px;vertical-align:middle;}
   .print-sheet .ps-obs{height:64px;border-bottom:1px solid #444;margin-top:6px;}
+  .print-sheet .ps-anexos{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;}
+  .print-sheet .ps-anexo{margin:0;border:1px solid #444;padding:6px;width:200px;break-inside:avoid;}
+  .print-sheet .ps-anexo img{width:100%;height:auto;}
+  .print-sheet .ps-anexo figcaption{font-size:9.5px;margin-top:4px;color:#000;}
   .print-sheet .mono{color:#000;}
 }
 

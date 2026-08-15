@@ -111,7 +111,7 @@ const RDO_PERGUNTAS = [
   { id: 'rdo_impedimento_acesso', label: 'Impedimento de acesso', tipo: 'select', options: ['Não','Sim'] },
   { id: 'rdo_licenca_ambiental', label: 'Licença ambiental', tipo: 'select', options: ['Não','Sim'] },
   { id: 'rdo_autorizacao_embargo', label: 'Autorização/embargo', tipo: 'select', options: ['Não','Sim'] },
-  { id: 'rdo_desligamento', label: 'Desligamento conforme programado', tipo: 'select', options: ['Não','Sim'] },
+  { id: 'rdo_desligamento', label: 'Desligamento conforme programado', tipo: 'select', options: ['Não','Sim'], padrao: 'Sim' },
 ];
 
 function renderRDOForm(){
@@ -129,7 +129,7 @@ function renderRDOForm(){
           <div style="margin-bottom:14px;">
             <label style="display:block;font-weight:600;margin-bottom:4px;">${p.label}</label>
             <select class="rdo-select" data-rdo="${p.id}" style="width:100%;padding:8px;font-size:14px;">
-              ${p.options.map((v,j)=>`<option value="${v}" ${j===0?'selected':''}>${v}</option>`).join('')}
+              ${p.options.map(v=>`<option value="${v}" ${(p.padrao? v===p.padrao : v===p.options[0])?'selected':''}>${v}</option>`).join('')}
             </select>
           </div>`).join('')}
         <div style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);">
@@ -156,7 +156,7 @@ function anexosDoProgramadorHtml(){
     <div class="panel section-gap" style="max-width:600px;margin:0 auto;margin-bottom:14px;">
       <div class="panel-head"><h3>Anexos do programador</h3><span class="badge-prefix">${anexos.length} imagem(ns)</span></div>
       <div style="padding:14px;display:flex;flex-wrap:wrap;gap:10px;">
-        ${anexos.map(a=>`<a href="${esc(a.dataUrl)}" target="_blank" rel="noopener" title="${esc(a.nome||'')}"><img src="${esc(a.dataUrl)}" alt="${esc(a.nome||'anexo')}" style="width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--border);" loading="lazy"></a>`).join('')}
+        ${anexos.map(a=>{ const src=a.url||a.dataUrl||''; return `<a href="${esc(src)}" target="_blank" rel="noopener" title="${esc(a.nome||'')}"><img src="${esc(src)}" alt="${esc(a.nome||'anexo')}" style="width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--border);" loading="lazy"></a>`; }).join('')}
       </div>
     </div>`;
 }
