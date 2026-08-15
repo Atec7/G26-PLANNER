@@ -509,8 +509,93 @@ async function syncNow(){
   }
 }
 
+/* --- documento de campo (PDF / impressão) --- */
+const PRINT_PROG = Number(new URLSearchParams(location.search).get('print')) || null;
+const PRINT_EQUIPE = new URLSearchParams(location.search).get('e') || null;
+function teamPageUrl(pgId){ return location.origin + location.pathname + '?equipe=' + pgId; }
+function qrSvgHtml(url, cellSize){
+  if(typeof qrcode==='undefined' || !url) return '';
+  try{
+    const qr = qrcode(0,'M');
+    qr.addData(url);
+    qr.make();
+    return qr.createSvgTag(cellSize||3, 2);
+  }catch(e){ return ''; }
+}
+function buildDocEquipeHtml(pg, eqId){
+  const pr = findProjeto(DB, pg.projetoId);
+  const eq = findEquipe(DB, Number(eqId)) || (pg.atribuicoes||[]).map(a=>findEquipe(DB, a.equipeId)).find(Boolean);
+  const atrib = (pg.atribuicoes||[]).find(a=>String(a.equipeId)===String(eqId)) || (pg.atribuicoes||[])[0];
+  const rows = (atrib?.atividades||[]).map((a,idx)=>{
+    const at = findAtividade(DB, a.atividadeId);
+    return `<tr>
+      <td style="text-align:center;">${idx+1}</td>
+      <td class="mono" style="font-weight:700;">${esc(at?.codigo||'?')}</td>
+      <td>${esc(at?.descricao||'')}</td>
+      <td style="text-align:center;">${esc(at?.unidade||'')}</td>
+      <td style="text-align:center;">${a.quantidadePrevista??'—'}</td>
+      <td style="height:22px;"></td>
+      <td></td>
+    </tr>`;
+  }).join('');
+  return `
+  <div class="print-sheet">
+    <div class="ps-head">
+      <div><h1>G26 Planner · Programação de Redes Elétricas</h1><div class="ps-sub">Documento de campo — equipe</div></div>
+      <div style="text-align:right;"><div style="font-size:14px;font-weight:700;">${fmtDate(atrib?.dataProgramada||pg.dataProgramada)}</div><div class="ps-sub">Emissão: ${fmtDateTime(Date.now())}</div></div>
+    </div>
+    <div class="ps-block">
+      <div class="ps-block-head">
+        <div>${esc(pr?.nome||'Projeto')} (${esc(pr?.codigo||'')}) — ${esc(equipeLabel(eq))} — ${fmtDate(atrib?.dataProgramada||pg.dataProgramada)}</div>
+        <div class="ps-qr">${qrSvgHtml(teamPageUrl(pg.id), 3)}<div class="ps-qr-cap">Escaneie para alterar as atividades</div></div>
+      </div>
+      <table class="ps-info">
+        <tr><th>Supervisor</th><td>${esc(eq?.supervisor||'—')}</td><th>Encarregado</th><td>${esc(eq?.encarregado||'—')}</td></tr>
+        <tr><th>Motorista</th><td>${esc(eq?.motorista||'—')}</td><th>Eletricistas</th><td>${esc((eq?.eletricistas||[]).filter(Boolean).join(', ')||'—')}</td></tr>
+        <tr><th>Ciclo</th><td>${esc(pg.ciclo||'—')}</td><th>Setor</th><td>${esc(pr?.setor||'—')}</td></tr>
+      </table>
+      <table>
+        <thead><tr><th style="width:26px;">#</th><th>Código</th><th>Descrição</th><th style="width:40px;">Un.</th><th style="width:52px;">Qtd prev.</th><th style="width:64px;">Qtd exec.</th><th>Obs.</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="ps-check"><div><strong>Executou?</strong> &nbsp;☐ SIM &nbsp;☐ NÃO &nbsp;☐ PARCIAL</div><div><strong>Data da execução:</strong> ____/____/____</div></div>
+      <div class="ps-sign"><strong>Observações do campo:</strong><div class="ps-obs"></div></div>
+      <div class="ps-sign"><strong>Assinatura do encarregado:</strong> <span class="ps-line"></span></div>
+    </div>
+  </div>`;
+}
+let printDisparado = false;
+function renderPrintDoc(){
+  const root = document.getElementById('team-body');
+  const pg = DB?.programacoes?.find(p=>p.id===PRINT_PROG);
+  if(!pg){ root.innerHTML = `<div class="panel"><div class="empty-state"><p>Programação não encontrada.</p></div></div>`; return; }
+  root.innerHTML = buildDocEquipeHtml(pg, PRINT_EQUIPE||(pg.atribuicoes||[])[0]?.equipeId);
+  if(printDisparado) return;
+  printDisparado = true;
+  setTimeout(()=>{ window.print(); }, 300);
+}
+function initPrint(){
+  document.body.classList.add('print-mode');
+  const root = document.getElementById('team-body');
+  if(!PRINT_PROG){ root.innerHTML = `<div class="panel"><div class="empty-state"><p>Link inválido para o documento.</p></div></div>`; return; }
+  const cached = loadCache();
+  if(cached){ DB = cached; renderPrintDoc(); }
+  DB_REF.once('value').then(snap=>{
+    if(snap.exists()){
+      const v = snap.val();
+      DB = (typeof v==='string')? JSON.parse(v) : v;
+      saveCache(DB);
+    }
+    renderPrintDoc();
+  }).catch(()=>{ renderPrintDoc(); });
+}
+
 /* --- init --- */
 function init(){
+  if(PRINT_PROG){
+    initPrint();
+    return;
+  }
   if(!progId){
     render();
     setStatus('Link inválido', 'warn');

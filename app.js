@@ -142,6 +142,7 @@ const ICONS = {
   star:'<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
   download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>',
   print:'<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
+  whatsapp:'<path d="M21.11 4.88A11.47 11.47 0 0 0 12 2a11.5 11.5 0 0 0-8.14 19.5L2 22l2.6-1.82A11.47 11.47 0 0 0 12 23.5a11.5 11.5 0 0 0 8.14-19.62Z"/><path d="M8.6 8.9c.3-.1.6-.1.8.2l.9 1.4c.1.3.1.6-.1.8l-.5.6c.2.6.7 1.4 1.5 2.1.9.8 1.7 1.1 2.3 1.3l.6-.5c.2-.2.5-.3.8-.1l1.4.9c.3.2.4.5.2.8-.3.6-1 1.1-1.6 1.1-1.4 0-3.6-.8-5.8-3-2.3-2.3-3-4.5-3-5.9.1-.7.6-1.4 1.4-1.7Z"/>',
 };
 function icon(name,size=16){ return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`; }
 
@@ -866,6 +867,7 @@ function crewCard(eq){
       <div class="crew-role"><span class="r-lbl">Supervisor</span><span class="r-val">${esc(eq.supervisor||'—')}</span></div>
       <div class="crew-role"><span class="r-lbl">Encarregado</span><span class="r-val">${esc(eq.encarregado||'—')}</span></div>
       <div class="crew-role"><span class="r-lbl">Motorista</span><span class="r-val">${esc(eq.motorista||'—')}</span></div>
+      <div class="crew-role"><span class="r-lbl">WhatsApp</span><span class="r-val">${eq.whatsapp? `<a href="${esc(waLink(eq.whatsapp, 'Olá!'))}" target="_blank" rel="noopener" style="color:var(--green);font-weight:600;">${esc(eq.whatsapp)}</a>` : '—'}</span></div>
       <div class="crew-role"><span class="r-lbl">Meta diária</span><span class="r-val mono">${metaDiaria(eq)? fmtMoney(metaDiaria(eq)) : '—'}</span></div>
       <div class="crew-role"><span class="r-lbl">Eletricistas</span><span class="r-val">${eletricistas.length? esc(eletricistas.join(', ')) : '—'}</span></div>
       ${customFields.map(f=>`<div class="crew-role"><span class="r-lbl">${esc(f.label)}</span><span class="r-val">${esc(eq.custom?.[f.id]||'—')}</span></div>`).join('')}
@@ -884,6 +886,7 @@ function crewCard(eq){
     <div class="field"><label>Supervisor</label><input type="text" name="supervisor" value="${esc(eq?.supervisor||'')}" placeholder="Nome do supervisor"></div>
     <div class="field"><label>Encarregado</label><input type="text" name="encarregado" value="${esc(eq?.encarregado||'')}" placeholder="Nome do encarregado"></div>
     <div class="field"><label>Motorista</label><input type="text" name="motorista" value="${esc(eq?.motorista||'')}" placeholder="Nome do motorista"></div>
+    <div class="field"><label>WhatsApp</label><input type="text" name="whatsapp" value="${esc(eq?.whatsapp||'')}" placeholder="Ex: (11) 98765-4321" inputmode="tel"><div class="field-hint">Usado no botão "Encaminhar para equipe" das programações. Informe com DDD.</div></div>
     <div class="field"><label>Meta diária (R$)</label><input type="number" step="0.01" min="0" name="metaDiaria" value="${eq?.metaDiaria??''}" placeholder="0,00"><div class="field-hint">Se a programação do dia ficar abaixo deste valor, o sistema alerta na programação.</div></div>
     <div class="field"><label>Eletricistas</label><input type="text" name="eletricistas" value="${esc((eq?.eletricistas||[]).join(', '))}" placeholder="Separe por vírgula: Fulano, Ciclano"><div class="field-hint">Separe os nomes por vírgula.</div></div>
     ${renderCustomFieldsInputs('equipes', eq)}
@@ -894,7 +897,7 @@ function crewCard(eq){
     onSubmit:(fd)=>{
       const eqtl = fd.get('eqtl').trim(), prtn = fd.get('prtn').trim();
       if(!eqtl && !prtn){ toast('Preencha ao menos o nome da equipe.', 'error'); return false; }
-      const data = { eqtl, prtn, supervisor: fd.get('supervisor').trim(), encarregado: fd.get('encarregado').trim(), motorista: fd.get('motorista').trim(), metaDiaria: parseFloat(fd.get('metaDiaria'))||0,
+      const data = { eqtl, prtn, supervisor: fd.get('supervisor').trim(), encarregado: fd.get('encarregado').trim(), motorista: fd.get('motorista').trim(), whatsapp: fd.get('whatsapp').trim(), metaDiaria: parseFloat(fd.get('metaDiaria'))||0,
         eletricistas: fd.get('eletricistas').split(',').map(s=>s.trim()).filter(Boolean), ativo: fd.get('ativo')==='on', custom: parseCustomFieldsFromForm('equipes', fd) };
       if(eq){ Object.assign(eq, data); toast('Equipe atualizada.'); } else { data.id = nextId(); DB.equipes.push(data); toast('Equipe cadastrada.'); }
       saveData(); renderContent();
@@ -1407,6 +1410,7 @@ function renderProgListaInto(area, list){
         <td class="mono">${fmtMoney(valPrev)}</td>
         <td>${statusBadge(p.status, late)}${teamBadgeHtml(p)? `<div style="margin-top:4px;">${teamBadgeHtml(p)}</div>`:''}</td>
         <td><div class="row-actions">
+          <button class="icon-btn" title="Encaminhar para equipe no WhatsApp" data-whats="${x.programacao.id}|${p.id}">${icon('whatsapp',14)}</button>
           <button class="icon-btn" title="Imprimir documento de campo" data-doc-prog="${x.programacao.id}">${icon('print',14)}</button>
           <button class="icon-btn" title="Histórico" data-hist="${p.id}">${icon('history',14)}</button>
           <button class="icon-btn" title="Reprogramar" data-reprog="${x.programacao.id}|${p.id}">${icon('reprog',14)}</button>
@@ -1418,6 +1422,7 @@ function renderProgListaInto(area, list){
   bindProgRowActions(area);
 }
 function bindProgRowActions(area){
+  area.querySelectorAll('[data-whats]').forEach(b=>b.addEventListener('click', ()=>{ const [pgId,atId]=b.dataset.whats.split('|'); encaminharWhats(pgId, atId); }));
   area.querySelectorAll('[data-doc-prog]').forEach(b=>b.addEventListener('click', ()=>openDocProgramacao(b.dataset.docProg)));
   area.querySelectorAll('[data-hist]').forEach(b=>b.addEventListener('click', ()=>openHistoricoModal(b.dataset.hist)));
   area.querySelectorAll('[data-reprog]').forEach(b=>b.addEventListener('click', ()=>{ const [pgId,atId]=b.dataset.reprog.split('|'); openReprogramarManual(pgId, atId); }));
@@ -1678,6 +1683,7 @@ function openAtribDetalhe(atribId){
           ${STATUS_PROG.filter(s=>s!==atrib.status).map(s=>`<button type="button" class="btn btn-sm" data-set-status="${s}">→ ${s}</button>`).join('')}
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm" data-whats-detail="${programacao.id}|${atrib.id}">${icon('whatsapp',13)} Encaminhar WhatsApp</button>
           <button type="button" class="btn btn-sm" data-edit-detail="${programacao.id}">${icon('edit',13)} Editar programação</button>
           <button type="button" class="btn btn-sm" data-doc-detail="${programacao.id}">${icon('print',13)} Documento de campo</button>
           <button type="button" class="btn btn-sm" data-reprog-detail="${programacao.id}|${atrib.id}">${icon('reprog',13)} Reprogramar</button>
@@ -1693,6 +1699,7 @@ function openAtribDetalhe(atribId){
         atrib.historico.push({ts:Date.now(), tipo:'status', de, para:atrib.status, motivo:null}); saveData();
         document.getElementById('modal-overlay')?.remove(); document.getElementById('modal-root').innerHTML=''; renderContent(); renderBanner();
       }));
+      root.querySelectorAll('[data-whats-detail]').forEach(b=>b.addEventListener('click', ()=>{ const [pgId,atId]=b.dataset.whatsDetail.split('|'); encaminharWhats(pgId, atId); }));
       root.querySelectorAll('[data-edit-detail]').forEach(b=>b.addEventListener('click', ()=>{
         document.getElementById('modal-root').innerHTML='';
         openProgramacaoModal(b.dataset.editDetail);
@@ -1841,6 +1848,53 @@ function equipePageUrl(progId){
   base = base.replace(/[\\/]index\.html$/i, '');
   if(base && !base.endsWith('/')) base += '/';
   return base + 'team.html?equipe=' + progId;
+}
+function equipePrintUrl(progId, equipeId){
+  let base = location.href.split(/[?#]/)[0];
+  base = base.replace(/[\\/]index\.html$/i, '');
+  if(base && !base.endsWith('/')) base += '/';
+  return base + 'team.html?print=' + progId + '&e=' + equipeId;
+}
+
+/* ── WHATSAPP ── */
+function phoneDigits(p){ return String(p||'').replace(/\D/g,''); }
+function waLink(phone, text){ return 'https://wa.me/' + phoneDigits(phone) + '?text=' + encodeURIComponent(text); }
+function buildWhatsMessage(prog, atrib){
+  const pr = findProjeto(prog.projetoId);
+  const eq = findEquipe(atrib.equipeId);
+  const ativs = (atrib.atividades||[]).map((a,i)=>{
+    const at = findAtividade(a.atividadeId);
+    return `${i+1}. *${at?.codigo||'?'}* · ${at?.descricao||''} — ${a.quantidadePrevista??'—'} ${at?.unidade||''}`;
+  }).join('\n');
+  return [
+    `*G26 PLANNER · Programação de Redes Elétricas*`,
+    ``,
+    `*Projeto:* ${pr?.nome||'—'} (${pr?.codigo||''})`,
+    `*Setor:* ${pr?.setor||'—'}  ·  *Coordenação:* ${pr?.coordenacao||'—'}`,
+    `*Data:* ${fmtDate(atrib.dataProgramada)}  ·  *Ciclo:* ${prog.ciclo||'—'}`,
+    `*Equipe:* ${equipeLabel(eq)}`,
+    ``,
+    `*Atividades programadas:*`,
+    ativs||'—',
+    ``,
+    `*Supervisor:* ${eq?.supervisor||'—'}`,
+    `*Encarregado:* ${eq?.encarregado||'—'}  ·  *Motorista:* ${eq?.motorista||'—'}`,
+    ``,
+    `*Acesso da equipe (QR):*`,
+    equipePageUrl(prog.id),
+    ``,
+    `*Documento de campo (PDF):*`,
+    equipePrintUrl(prog.id, atrib.equipeId)
+  ].join('\n');
+}
+function encaminharWhats(progId, atribId){
+  const prog = DB.programacoes.find(p=>p.id===Number(progId));
+  if(!prog) return;
+  const atrib = (prog.atribuicoes||[]).find(a=>a.id===Number(atribId));
+  if(!atrib) return;
+  const eq = findEquipe(atrib.equipeId);
+  if(!eq?.whatsapp || !phoneDigits(eq.whatsapp)){ toast('Esta equipe não possui WhatsApp cadastrado. Edite a equipe e informe o número.', 'error'); return; }
+  window.open(waLink(eq.whatsapp, buildWhatsMessage(prog, atrib)), '_blank');
 }
 function qrSvgHtml(url, cellSize){
   if(typeof qrcode==='undefined' || !url) return '';

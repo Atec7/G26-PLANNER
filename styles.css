@@ -112,6 +112,8 @@ input,select,textarea{font-family:'Inter',sans-serif;}
 @media print{
   #app,#modal-root,.toast-wrap{display:none !important;}
   body{background:#fff !important;color:#000 !important;}
+  body.print-mode .team-top{display:none !important;}
+  body.print-mode .team-wrap{max-width:none;padding:0;}
   #print-root{display:block !important;}
   .print-sheet{color:#000;font-family:'Inter',sans-serif;font-size:12px;}
   .print-sheet h1{font-size:17px;margin:0;}
