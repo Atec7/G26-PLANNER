@@ -1851,35 +1851,6 @@ function docAtribuicaoHtml(prog, atrib){
     </tr>`;
   }).join('');
   const qrUrl = equipePageUrl(prog.id);
-  // Dados do RDO
-  const rdo = atrib.rdoRespostas||{};
-  const rdoHorarios = `
-    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
-      <h4 style="margin:0 0 8px 0; font-size:13px; color:var(--dark;">Horários do RDO</h4>
-      <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <tr><td style="font-weight:600;padding-right:16px;">Horário Chegada</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_horario_chegada||'--'}</td></tr>
-        <tr><td style="font-weight:600;padding-right:16px;">Horário Início</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_horario_inicio||'--'}</td></tr>
-        <tr><td style="font-weight:600;padding-right:16px;">Horário Finalização</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_horario_finalizacao||'--'}</td></tr>
-        <tr><td style="font-weight:600;padding-right:16px;">Horário Saída da obra</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_horario_saida_obra||'--'}</td></tr>
-        <tr><td style="font-weight:600;padding-right:16px;">Horário Chegada na base</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_horario_chegada_base||'--'}</td></tr>
-      </table>
-    </div>`;
-  const rdoCondicoes = `
-    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
-      <h4 style="margin:0 0 8px 0; font-size:13px; color:var(--dark;">Condições do RDO</h4>
-      <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <tr><td style="font-weight:600;padding-right:16px;">Condições climáticas</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_condicoes||'--'}</td></tr>
-        <tr><td style="font-weight:600;padding-right:16px;">Impedimento execução (somente se sim)</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_impedimento||'--'}</td></tr>
-        <tr><td style="font-weight:600;padding-right:16px;">Falta de material</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_falta_material||'--'}</td></tr>
-        <tr><td style="font-weight:600;padding-right:16px;">Projeto Incoerente</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_projeto_incoerente||'--'}</td></tr>
-        <tr><td style="font-weight:600;padding-right:16px;">Equipe incompleta</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_equipe_incompleta||'--'}</td></tr>
-        <tr><td style="font-weight:600;padding-right:16px;">Falta de veículo</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_falta_veiculo||'--'}</td></tr>
-        <tr><td style="font-weight:600;padding-right:16px;">Impedimento de acesso</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_impedimento_acesso||'--'}</td></tr>
-        <tr><td style="font-weight:600;padding-right:16px;">Licença ambiental</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_licenca_ambiental||'--'}</td></tr>
-        <tr><td style="font-weight:600;padding-right:16px;">Autorização/embargo</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_autorizacao_embargo||'--'}</td></tr>
-        <tr><td style="font-weight:600;padding-right:16px;">Desligamento conforme programado</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_desligamento||'--'}</td></tr>
-      </table>
-    </div>`;
   return `
   <div class="ps-block">
     <div class="ps-block-head">
@@ -1894,8 +1865,6 @@ function docAtribuicaoHtml(prog, atrib){
       <thead><tr><th style="width:26px;">#</th><th>Código</th><th>Descrição</th><th style="width:40px;">Un.</th><th style="width:52px;">Qtd prev.</th><th style="width:64px;">Qtd exec.</th><th>Obs.</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
-    ${rdoHorarios}
-    ${rdoCondicoes}
     <div class="ps-check"><div><strong>Executou?</strong> &nbsp;☐ SIM &nbsp;☐ NÃO &nbsp;☐ PARCIAL</div><div><strong>Data da execução:</strong> ____/____/____</div></div>
     <div class="ps-sign"><strong>Observações do campo:</strong><div class="ps-obs"></div></div>
     <div class="ps-sign"><strong>Assinatura do encarregado:</strong> <span class="ps-line"></span></div>
