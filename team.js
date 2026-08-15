@@ -3,6 +3,9 @@
    Permite editar APENAS as atividades/quantidades da programação,
    com observação obrigatória. Funciona offline (fila local) e
    sincroniza sozinho quando a internet volta.
+   - RDO: antes de visualizar os dados da equipe, o usuário deve
+     responder ao questionário Saída da Base Obrigatória (RDO).
+   - Acesso bloqueado se a data da programação vencer.
 ========================================================= */
 const firebaseConfig = {
   apiKey: "AIzaSyDFQCMsX04fwh7MVyEpvXnXD0U4TD5Or5w",
@@ -60,12 +63,20 @@ let editors = {};
 let observacao = '';
 let online = navigator.onLine !== false;
 let syncing = false;
+let rdoCompletado = false;
 const statusEl = document.getElementById('team-status');
 
 function setStatus(txt, kind){
   if(!statusEl) return;
   statusEl.textContent = txt;
   statusEl.className = 'team-conn ' + (kind||'');
+}
+
+function checkDataProgramadaExpirada(){
+  if(!prog || !prog.dataProgramada) return false;
+  const hoje = new Date().toISOString().split('T')[0];
+  const progData = new Date(prog.dataProgramada).toISOString().split('T')[0];
+  return progData < hoje && !['Concluído','Cancelado'].includes(prog.status||'');
 }
 
 function dbToEditors(db){
@@ -80,11 +91,114 @@ function dbToEditors(db){
   return pg;
 }
 
-/* --- render --- */
+/* --- RDO QUESTIONNAIRE --- */
+const RDO_PERGUNTAS = [
+  { id: 'rdo_saida_base', label: 'Saída da base', tipo: 'select', options: [''] } ,
+  { id: 'rdo_chegada', label: 'Chegada', tipo: 'select', options: [''] },
+  { id: 'rdo_inicio_atividades', label: 'Início das atividades', tipo: 'select', options: [''] },
+  { id: 'rdo_finalizacao', label: 'Finalização das atividades', tipo: 'select', options: [''] },
+  { id: 'rdo_saida_obra', label: 'Saída da obra', tipo: 'select', options: [''] },
+  { id: 'rdo_chegada_base', label: 'Chegada na base', tipo: 'select', options: [''] },
+  { id: 'rdo_condicoes', label: 'Condições climáticas', tipo: 'select', options: ['','Bom','Nublado','Chuvoso','Impraticável'] },
+  { id: 'rdo_impedimento', label: 'Impedimento de execução (Marque somente se a resposta for sim)', tipo: 'select', options: ['','Sim'] },
+  { id: 'rdo_falta_material', label: 'Falta de material', tipo: 'select', options: ['','Sim'] },
+  { id: 'rdo_projeto_incoerente', label: 'Projeto Incoerente', tipo: 'select', options: ['','Sim'] },
+  { id: 'rdo_equipe_incompleta', label: 'Equipe incompleta', tipo: 'select', options: ['','Sim'] },
+  { id: 'rdo_falta_veiculo', label: 'Falta de veículo', tipo: 'select', options: ['','Sim'] },
+  { id: 'rdo_impedimento_acesso', label: 'Impedimento de acesso', tipo: 'select', options: ['','Sim'] },
+  { id: 'rdo_licenca_ambiental', label: 'Licença ambiental', tipo: 'select', options: ['','Sim'] },
+  { id: 'rdo_autorizacao_embargo', label: 'Autorização/embargo', tipo: 'select', options: ['','Sim'] },
+  { id: 'rdo_desligamento', label: 'Desligamento conforme programado', tipo: 'select', options: ['','Sim'] },
+];
+
+function renderRDOForm(){
+  return `
+    <div class="panel section-gap" style=" max-width:600px; margin:0 auto;">
+      <div class="panel-head"><h3>Questionário RDO - Saída da Base</h3></div>
+      <div style="padding:24px;">
+        <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">Responda todas as questões abaixo antes de acessar os dados da equipe.</p>
+        ${RDO_PERGUNTAS.map((p,i)=>`
+          <div style="margin-bottom:16px;">
+            <label style="display:block;font-weight:600;margin-bottom:4px;">${p.label}</label>
+            <select class="rdo-select" data-rdo="${p.id}" style="width:100%;padding:8px;font-size:14px;">
+              ${p.options.map(v=>`<option value="${v}" ${v===''?'selected':''}>${v||'-- seletor--'}</option>`).join('')}
+            </select>
+          </div>`).join('')}
+        <div style="margin-top:24px; padding-top:24px; border-top:1px solid var(--border);">
+          <button class="btn btn-primary" id="rdo-concluir" style="width:100%;padding:12px;font-size:16px;">Concluir RDO</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function getRDORespostas(){
+  const respostas = {};
+  document.querySelectorAll('.rdo-select').forEach(s=>{ respostas[s.dataset.rdo] = s.value; });
+  return respostas;
+}
+
+function respostasRDOPreenchidas(){
+  const res = getRDORespostas();
+  return RDO_PERGUNTAS.every(p=> res[p.id] && res[p.id] !== '');
+}
+
+/* --- render team --- */
 function render(){
   const root = document.getElementById('team-body');
   if(!progId){ root.innerHTML = `<div class="panel"><div class="empty-state"><p>Link inválido — faltou identificar a programação.</p></div></div>`; return; }
   if(!prog){ root.innerHTML = `<div class="panel"><div class="empty-state"><p>Programação não encontrada.</p><p style="font-size:12px;color:var(--muted-2);">Conecte-se ao menos uma vez para carregar os dados, ou tente novamente com internet.</p></div></div>`; return; }
+  
+  /* Verificar se data da programação venceu */
+  if(checkDataProgramadaExpirada()){
+    root.innerHTML = `
+      <div class="panel" style="background:var(--red);color:#fff;padding:40px 20px;">
+        <div style="max-width:500px;margin:0 auto;">
+          <h3 style="color:#fff;">Acesso negado — Programação vencida</h3>
+          <p style="font-size:16px;margin:16px 0 8px;">A data da programação ${fmtDate(prog.dataProgramada)} já venceu.</p>
+          <p style="font-size:14px;opacity:0.9;">Equipe não pode mais acessar esta programação após o prazo.</p>
+          <button class="btn btn-secondary" id="voltar-dashboard" style="margin-top:24px;padding:12px 24px;">Voltar ao Dashboard</button>
+        </div>
+      </div>`;
+    document.getElementById('voltar-dashboard').addEventListener('click', ()=>{ window.location.href='index.html'; });
+    return;
+  }
+  
+  /* Se RDO nao completado, mostrar questionario */
+  if(!rdoCompletado){
+    root.innerHTML = renderRDOForm();
+    document.getElementById('rdo-concluir').addEventListener('click', ()=>{
+      const respostas = getRDORespostas();
+      if(!respostasRDOPreenchidas()){
+        toast('Responda todas as questões do RDO antes de continuar.', 'error');
+        return;
+      }
+      // Armazenar respostas no localStorage e marcar como completado
+      try{
+        const queue = loadQueue();
+        const rdoPatch = {
+          id: 'rdo_'+Date.now(),
+          programacaoId: progId,
+          ts: Date.now(),
+          respostas: respostas
+        };
+        queue.push(rdoPatch);
+        saveQueue(queue);
+      }catch(e){}
+      rdoCompletado = true;
+      // Salvar no cache/db se disponivel
+      const cached = loadCache();
+      if(cached && DB){
+        const pg = (DB.programacoes||[]).find(p=>p.id===progId);
+        if(pg){
+          pg.rdoRespostas = respostas;
+          DB = db; saveCache(DB);
+        }
+      }
+      render();
+    });
+    return;
+  }
+  
   const pr = findProjeto(DB, prog.projetoId);
   root.innerHTML = `
     <div class="panel section-gap">
@@ -162,7 +276,7 @@ async function syncNow(){
       const v = snap.val();
       db = (typeof v==='string')? JSON.parse(v) : v;
     }else{
-      db = { equipes:[], atividades:[], projetos:[], programacoes:[], usuarios:[], customFields:{equipes:[],atividades:[],projetos:[],programacoes:[]}, seq:1 };
+      db = { equipes:[], atividades:[], projetos:[], programacoes:[], usuarios:[], customFields:{equipes:[],atividades:[],projetos:[],programacoes:[]], seq:1 };
     }
     let changed = false;
     q.forEach(patch=>{
@@ -217,6 +331,20 @@ function init(){
       const v = snap.val();
       DB = (typeof v==='string')? JSON.parse(v) : v;
       saveCache(DB); dbToEditors(DB);
+    }
+    // Verificar acesso após carregar dados
+    const pg = DB?.programacoes?.find(p=>p.id===progId);
+    if(pg){
+      // Verificar se data venceu
+      if(checkDataProgramadaExpirada()){
+        setStatus('Programação vencida — acesso negado', 'warn');
+        // A render() será chamada dentro do fluxo depois
+      }
+      // Verificar RDO
+      const rdoSalvo = pg.rdoRespostas;
+      if(rdoSalvo){
+        rdoCompletado = true;
+      }
     }
     render();
   }).catch(()=>{ render(); }).finally(()=>{ syncNow(); });
