@@ -2095,8 +2095,21 @@ function qrSvgHtml(url, cellSize){
   }catch(e){ return ''; }
 }
 function printDocumento(html){
-  document.getElementById('print-root').innerHTML = `<div class="print-sheet">${html}</div>`;
-  window.print();
+  const root = document.getElementById('print-root');
+  root.innerHTML = `<div class="print-sheet">${html}</div>`;
+  const imgs = root.querySelectorAll('img');
+  if(!imgs.length){ window.print(); return; }
+  let pendentes = 0, impresso = false;
+  const tentar = ()=>{
+    pendentes--;
+    if(pendentes<=0 && !impresso){ impresso = true; window.print(); }
+  };
+  imgs.forEach(img=>{
+    pendentes++;
+    img.addEventListener('load', tentar, {once:true});
+    img.addEventListener('error', tentar, {once:true});
+  });
+  setTimeout(()=>{ if(!impresso){ impresso = true; window.print(); } }, 1500);
 }
 function docAtribuicaoHtml(prog, atrib){
   const pr = findProjeto(prog.projetoId);
@@ -2162,7 +2175,6 @@ function docAnexosHtml(prog){
     <div class="ps-anexos">
       ${anexos.map(a=>`<figure class="ps-anexo"><img src="${esc(anexoSrc(a))}" alt="${esc(a.nome||'anexo')}"><figcaption>${esc(a.nome||'')}</figcaption></figure>`).join('')}
     </div>
-    <div class="ps-check"><div><strong>Imagens conferidas pela equipe?</strong> &nbsp;☐ SIM &nbsp;☐ NÃO</div></div>
     <div class="ps-sign"><strong>Assinatura do encarregado:</strong> <span class="ps-line"></span></div>
   </div>`;
 }
