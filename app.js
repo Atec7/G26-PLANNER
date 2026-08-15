@@ -48,12 +48,12 @@ function nextId(){ DB.seq = (DB.seq||1)+1; return DB.seq; }
 
 let DB = structuredClone(DEFAULT_DATA);
 let currentView = 'dashboard';
-let progFilters = { projeto:'', equipe:'', status:'', ciclo:'', dataDe:'', dataAte:'', modo:'lista', calView:'mes', calDay:todayISO() };
+let progFilters = (()=>{ const r=monthRangeISO(); return { projeto:'', equipe:'', status:'', ciclo:'', dataDe:r.de, dataAte:r.ate, modo:'lista', calView:'mes', calDay:todayISO() }; })();
 let ativFilters = { q:'', fav:'' };
 let equipeFilters = { q:'', status:'' };
 let projFilters = { q:'', status:'' };
 let avancoFilters = { q:'', status:'' };
-let histFilters = { tipo:'', projeto:'' };
+let histFilters = (()=>{ const r=monthRangeISO(); return { tipo:'', projeto:'', dataDe:r.de, dataAte:r.ate }; })();
 let calRef = new Date();
 let CURRENT_USER = null;
 function currentAutor(){ return { usuarioNome: CURRENT_USER?.nome || 'Sistema', usuarioLogin: CURRENT_USER?.login || '' }; }
@@ -196,6 +196,13 @@ function fmtDate(iso){ if(!iso) return '—'; const [y,m,d]=iso.split('-'); retu
 function fmtDateTime(iso){ const dt=new Date(iso); return dt.toLocaleDateString('pt-BR')+' '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
 function fmtMoney(v){ return (Number(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
 function todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function monthRangeISO(){
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const lastDay = new Date(y, d.getMonth()+1, 0).getDate();
+  return { de: y+'-'+m+'-01', ate: y+'-'+m+'-'+String(lastDay).padStart(2,'0') };
+}
 function diasEntre(de, ate){
   if(!de || !ate) return null;
   return Math.round((new Date(ate+'T12:00:00') - new Date(de+'T12:00:00'))/86400000);
@@ -424,6 +431,13 @@ function alertaCount(){
   const reprog = flatAtribuicoes().filter(x=>x.atribuicao.status==='Reprogramado').length;
   return vencidos + viabAtraso + reprog;
 }
+function teamEdits(atrib){ return (atrib?.historico||[]).filter(h=>h.tipo==='equipe'); }
+function lastTeamEdit(atrib){ const l=teamEdits(atrib); return l[l.length-1]||null; }
+function teamBadgeHtml(atrib){
+  const e = lastTeamEdit(atrib);
+  if(!e) return '';
+  return `<span class="badge team-badge" title="Alterada pela equipe em ${fmtDateTime(e.ts)} — ${esc(e.motivo||'')}">${icon('alert',11)} Alterada pela equipe</span>`;
+}
 
 /* =========================================================
    CAMPOS PERSONALIZADOS
@@ -646,7 +660,7 @@ function renderDashboard(){
               <td><span class="badge-prefix">${prtnLabel(eq)}</span></td>
               <td style="font-size:12px;color:var(--muted);">${atividadesResumo(p.atividades)}</td>
               <td class="mono">${fmtMoney(valPrev)}</td>
-              <td>${statusBadge(p.status, late)}</td>
+              <td>${statusBadge(p.status, late)}${teamBadgeHtml(p)? `<div style="margin-top:4px;">${teamBadgeHtml(p)}</div>`:''}</td>
             </tr>`;
           }).join('') : `<tr class="empty-row"><td colspan="7">Nenhuma programação futura cadastrada no ciclo ${cicloAtivo||'atual'}.</td></tr>`}
         </tbody>
@@ -1323,6 +1337,8 @@ function renderProgramacoes(){
         <input type="date" id="f-data-de" value="${progFilters.dataDe}" title="Data inicial">
         <span style="color:var(--muted);font-size:12px;">até</span>
         <input type="date" id="f-data-ate" value="${progFilters.dataAte}" title="Data final">
+        <button class="btn btn-sm" id="f-mes-atual" title="Filtrar pelo mês vigente">${icon('calendar',12)} Mês atual</button>
+        <button class="btn btn-sm btn-ghost" id="f-limpar-datas" title="Remover o filtro de datas">Limpar</button>
       </div>
       <div class="tabs">
         <button class="tab ${progFilters.modo==='lista'?'active':''}" data-modo="lista">Lista</button>
@@ -1337,6 +1353,8 @@ function renderProgramacoes(){
   document.getElementById('f-ciclo').addEventListener('change', e=>{progFilters.ciclo=e.target.value; renderContent();});
   document.getElementById('f-data-de').addEventListener('change', e=>{progFilters.dataDe=e.target.value; renderContent();});
   document.getElementById('f-data-ate').addEventListener('change', e=>{progFilters.dataAte=e.target.value; renderContent();});
+  document.getElementById('f-mes-atual').addEventListener('click', ()=>{ const r=monthRangeISO(); progFilters.dataDe=r.de; progFilters.dataAte=r.ate; renderContent(); });
+  document.getElementById('f-limpar-datas').addEventListener('click', ()=>{ progFilters.dataDe=''; progFilters.dataAte=''; renderContent(); });
   el.querySelectorAll('.tab').forEach(t=>t.addEventListener('click', ()=>{progFilters.modo=t.dataset.modo; renderContent();}));
 
   const area = document.getElementById('prog-area');
@@ -1366,7 +1384,7 @@ function renderProgListaInto(area, list){
         <td><span class="badge-prefix">${prtnLabel(eq)}</span>${metaWarn? `<div style="margin-top:4px;">${metaWarn}</div>`:''}</td>
         <td style="font-size:12px;color:var(--muted);">${atividadesResumo(p.atividades)}</td>
         <td class="mono">${fmtMoney(valPrev)}</td>
-        <td>${statusBadge(p.status, late)}</td>
+        <td>${statusBadge(p.status, late)}${teamBadgeHtml(p)? `<div style="margin-top:4px;">${teamBadgeHtml(p)}</div>`:''}</td>
         <td><div class="row-actions">
           <button class="icon-btn" title="Imprimir documento de campo" data-doc-prog="${x.programacao.id}">${icon('print',14)}</button>
           <button class="icon-btn" title="Histórico" data-hist="${p.id}">${icon('history',14)}</button>
@@ -1409,6 +1427,7 @@ function renderProgFluxoInto(area, list){
           <div class="kc-meta"><span>${esc(pr?.nome||'—')}<span style="color:var(--muted-2);"> · ${esc(pr?.setor||'')} · ${esc(pr?.coordenacao||'')}</span></span><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);font-size:10px;">${esc(x.programacao.ciclo||'')}</span></div>
           <div class="kc-meta"><span>${fmtDate(p.dataProgramada)}</span><span class="mono" style="color:var(--muted);">${p.atividades.length} ativ. · ${fmtMoney(valPrev)}</span></div>
           ${metaWarn? `<div class="kc-meta" style="justify-content:flex-start;">${metaWarn}</div>`:''}
+          ${teamBadgeHtml(p)? `<div class="kc-meta" style="justify-content:flex-start;">${teamBadgeHtml(p)}</div>`:''}
         </div>`;
       }).join('') || `<div style="padding:14px;color:var(--muted-2);font-size:11.5px;">Vazio</div>`}</div>
     </div>`;
@@ -1552,7 +1571,7 @@ function renderDayList(dayList){
     return `<div class="panel">
       <div class="panel-head">
         <div><h3>${esc(pr?.nome||'—')}</h3><div class="admin-field-meta">${esc(pr?.codigo||'')} · ${esc(x.programacao.ciclo||'')} · ${equipeLabel(eq)} · ${fmtDate(p.dataProgramada)}</div></div>
-        <div style="display:flex;align-items:center;gap:8px;">${metaWarningHtml(p)}${statusBadge(p.status, late)}</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${metaWarningHtml(p)}${teamBadgeHtml(p)}${statusBadge(p.status, late)}</div>
       </div>
       <div style="padding:12px 16px;">
         <div class="table-scroll"><table class="min">
@@ -1593,44 +1612,56 @@ function openAtribDetalhe(atribId){
   const totPrev = rows.reduce((s,r)=>s+r.vp,0);
   const totExec = rows.reduce((s,r)=>s+r.ve,0);
   const av = projetoAvanco(pr);
+  const teamE = lastTeamEdit(atrib);
   const body = `
-    <div style="display:flex;flex-direction:column;gap:10px;">
-      <div>
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-          <strong style="font-size:15px;">${esc(pr?.nome||'—')}</strong>
-          ${projStatusBadge(pr?.status)}
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div class="dtl-header">
+        <div style="min-width:0;">
+          <div class="dtl-code">${esc(pr?.codigo||'—')} · ${esc(pr?.setor||'')} · ${esc(pr?.coordenacao||'')}</div>
+          <div class="dtl-title">${esc(pr?.nome||'—')}</div>
+          <div class="dtl-meta"><span>${icon('calendar',12)} Ciclo ${esc(programacao.ciclo||'—')}</span><span>${icon('trend',12)} Orçado ${fmtMoney(pr?.valorOrcado||0)}</span><span>${icon('star',12)} Avanço físico ${av.fisicoPct.toFixed(1)}%</span></div>
         </div>
-        <div class="admin-field-meta" style="margin-top:2px;">${esc(pr?.codigo||'')} · ${esc(pr?.setor||'')} · ${esc(pr?.coordenacao||'')} · Ciclo: ${esc(programacao.ciclo||'—')} · Orçado: ${fmtMoney(pr?.valorOrcado||0)} · Avanço físico: ${av.fisicoPct.toFixed(1)}%</div>
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">${projStatusBadge(pr?.status)}${teamBadgeHtml(atrib)}</div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:12px;">
-        <div><div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">Equipe</div><div class="badge-prefix" style="margin-top:4px;">${equipeLabel(eq)}</div>${metaWarningHtml(atrib)? `<div style="margin-top:6px;">${metaWarningHtml(atrib)}</div>`:''}</div>
-        <div><div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">Data programada</div><div class="mono" style="margin-top:5px;">${fmtDate(atrib.dataProgramada)}</div></div>
-        <div><div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">Encarregado</div><div style="margin-top:4px;font-size:12.5px;">${esc(eq?.encarregado||'—')}</div></div>
-        <div><div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">Status</div><div style="margin-top:4px;">${statusBadge(atrib.status, late)}</div></div>
+
+      <div class="dtl-grid">
+        <div class="dtl-tile"><div class="dtl-tile-lbl">Equipe</div><div class="dtl-tile-val"><span class="badge-prefix">${equipeLabel(eq)}</span></div>${metaWarningHtml(atrib)? `<div style="margin-top:6px;">${metaWarningHtml(atrib)}</div>`:''}</div>
+        <div class="dtl-tile"><div class="dtl-tile-lbl">Data programada</div><div class="dtl-tile-val mono">${fmtDate(atrib.dataProgramada)}</div>${late? `<div class="blink-red" style="font-size:11px;color:var(--red);margin-top:4px;">VENCIDA</div>`:''}</div>
+        <div class="dtl-tile"><div class="dtl-tile-lbl">Encarregado</div><div class="dtl-tile-val">${esc(eq?.encarregado||'—')}</div></div>
+        <div class="dtl-tile"><div class="dtl-tile-lbl">Status</div><div class="dtl-tile-val">${statusBadge(atrib.status, late)}</div></div>
       </div>
-      <div class="table-scroll"><table class="min">
-        <thead><tr><th>Código</th><th>Descrição</th><th>Un.</th><th>Prev.</th><th>Exec.</th><th>V. unit.</th><th>V. prev.</th><th>V. exec.</th></tr></thead>
-        <tbody>${rows.map(r=>`<tr>
-          <td class="mono" style="color:var(--accent);font-weight:700;">${esc(r.at?.codigo||'?')}</td>
-          <td>${esc(r.at?.descricao||'')}</td><td>${esc(r.at?.unidade||'')}</td>
-          <td class="mono">${r.prev||'—'}</td>
-          <td class="mono">${r.exec!=null? r.exec:'—'}</td>
-          <td class="mono">${fmtMoney(r.vu)}</td>
-          <td class="mono">${fmtMoney(r.vp)}</td>
-          <td class="mono">${fmtMoney(r.ve)}</td>
-        </tr>`).join('')}
-        <tr style="font-weight:700;"><td colspan="6" style="text-align:right;">Totais</td><td class="mono">${fmtMoney(totPrev)}</td><td class="mono">${fmtMoney(totExec)}</td></tr>
-        </tbody>
-      </table></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <span style="font-size:12px;color:var(--muted);margin-right:4px;">Alterar status:</span>
-        ${STATUS_PROG.filter(s=>s!==atrib.status).map(s=>`<button type="button" class="btn btn-sm" data-set-status="${s}">→ ${s}</button>`).join('')}
+
+      ${teamE? `<div class="dtl-team-note">${icon('alert',14)} <div><strong>Alterada pela equipe</strong> em ${fmtDateTime(teamE.ts)} — ${esc(teamE.motivo||'')}</div></div>`:''}
+
+      <div class="dtl-section">
+        <div class="dtl-section-head"><h4>Atividades</h4><span class="mono">${fmtMoney(totPrev)} previsto</span></div>
+        <div class="table-scroll"><table class="min">
+          <thead><tr><th>Código</th><th>Descrição</th><th>Un.</th><th>Prev.</th><th>Exec.</th><th>V. unit.</th><th>V. prev.</th><th>V. exec.</th></tr></thead>
+          <tbody>${rows.map(r=>`<tr>
+            <td class="mono" style="color:var(--accent);font-weight:700;">${esc(r.at?.codigo||'?')}</td>
+            <td>${esc(r.at?.descricao||'')}</td><td>${esc(r.at?.unidade||'')}</td>
+            <td class="mono">${r.prev||'—'}</td>
+            <td class="mono">${r.exec!=null? r.exec:'—'}</td>
+            <td class="mono">${fmtMoney(r.vu)}</td>
+            <td class="mono">${fmtMoney(r.vp)}</td>
+            <td class="mono">${fmtMoney(r.ve)}</td>
+          </tr>`).join('')}
+          <tr class="dtl-total-row"><td colspan="6">Totais</td><td class="mono">${fmtMoney(totPrev)}</td><td class="mono">${fmtMoney(totExec)}</td></tr>
+          </tbody>
+        </table></div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--border-soft);padding-top:12px;">
-        <button type="button" class="btn btn-sm" data-edit-detail="${programacao.id}">${icon('edit',13)} Editar programação</button>
-        <button type="button" class="btn btn-sm" data-doc-detail="${programacao.id}">${icon('print',13)} Documento de campo</button>
-        <button type="button" class="btn btn-sm" data-reprog-detail="${programacao.id}|${atrib.id}">${icon('reprog',13)} Reprogramar</button>
-        <button type="button" class="btn btn-sm" data-hist-detail="${atrib.id}">${icon('history',13)} Histórico</button>
+
+      <div class="dtl-actions">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span class="dtl-actions-lbl">Alterar status:</span>
+          ${STATUS_PROG.filter(s=>s!==atrib.status).map(s=>`<button type="button" class="btn btn-sm" data-set-status="${s}">→ ${s}</button>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm" data-edit-detail="${programacao.id}">${icon('edit',13)} Editar programação</button>
+          <button type="button" class="btn btn-sm" data-doc-detail="${programacao.id}">${icon('print',13)} Documento de campo</button>
+          <button type="button" class="btn btn-sm" data-reprog-detail="${programacao.id}|${atrib.id}">${icon('reprog',13)} Reprogramar</button>
+          <button type="button" class="btn btn-sm" data-hist-detail="${atrib.id}">${icon('history',13)} Histórico</button>
+        </div>
       </div>
     </div>`;
   openModal({ title:'Detalhe da programação', bodyHtml: body, submitLabel:'Fechar', wide:true,
@@ -1784,6 +1815,21 @@ function openReprogramarManual(pgId, atId){
 /* =========================================================
    DOCUMENTO DE CAMPO (impressão / PDF)
 ========================================================= */
+function equipePageUrl(progId){
+  let base = location.href.split(/[?#]/)[0];
+  base = base.replace(/[\\/]index\.html$/i, '');
+  if(base && !base.endsWith('/')) base += '/';
+  return base + 'team.html?equipe=' + progId;
+}
+function qrSvgHtml(url, cellSize){
+  if(typeof qrcode==='undefined' || !url) return '';
+  try{
+    const qr = qrcode(0, 'M');
+    qr.addData(url);
+    qr.make();
+    return qr.createSvgTag(cellSize||3, 2);
+  }catch(e){ return ''; }
+}
 function printDocumento(html){
   document.getElementById('print-root').innerHTML = `<div class="print-sheet">${html}</div>`;
   window.print();
@@ -1803,9 +1849,13 @@ function docAtribuicaoHtml(prog, atrib){
       <td></td>
     </tr>`;
   }).join('');
+  const qrUrl = equipePageUrl(prog.id);
   return `
   <div class="ps-block">
-    <div class="ps-block-head">${esc(pr?.nome||'Projeto')} (${esc(pr?.codigo||'')}) — ${equipeLabel(eq)} — ${fmtDate(atrib.dataProgramada)}</div>
+    <div class="ps-block-head">
+      <div>${esc(pr?.nome||'Projeto')} (${esc(pr?.codigo||'')}) — ${equipeLabel(eq)} — ${fmtDate(atrib.dataProgramada)}</div>
+      <div class="ps-qr">${qrSvgHtml(qrUrl, 3)}<div class="ps-qr-cap">Escaneie para alterar as atividades</div></div>
+    </div>
     <table class="ps-info">
       <tr><th>Supervisor</th><td>${esc(eq?.supervisor||'—')}</td><th>Encarregado</th><td>${esc(eq?.encarregado||'—')}</td></tr>
       <tr><th>Motorista</th><td>${esc(eq?.motorista||'—')}</td><th>Eletricistas</th><td>${esc((eq?.eletricistas||[]).filter(Boolean).join(', ')||'—')}</td></tr>
@@ -1877,12 +1927,14 @@ function globalHistorico(){
   flatAtribuicoes().forEach(x=> (x.atribuicao.historico||[]).forEach(h=> events.push({...h, atribId:x.atribuicao.id, projetoId:x.programacao.projetoId, equipeId:x.atribuicao.equipeId})));
   return events.sort((a,b)=> b.ts - a.ts);
 }
-const HIST_TIPOS = [{v:'',l:'Todos os eventos'},{v:'criacao',l:'Criação'},{v:'status',l:'Mudança de status'},{v:'reprogramacao',l:'Reprogramação'},{v:'confirmacao',l:'Confirmação de execução'}];
+const HIST_TIPOS = [{v:'',l:'Todos os eventos'},{v:'criacao',l:'Criação'},{v:'status',l:'Mudança de status'},{v:'reprogramacao',l:'Reprogramação'},{v:'confirmacao',l:'Confirmação de execução'},{v:'equipe',l:'Alteração da equipe'}];
 function renderHistorico(){
   const el = document.getElementById('content');
   const events = globalHistorico().filter(h=>{
     if(histFilters.tipo && h.tipo!==histFilters.tipo) return false;
     if(histFilters.projeto && String(h.projetoId)!==histFilters.projeto) return false;
+    if(histFilters.dataDe && h.ts < new Date(histFilters.dataDe+'T00:00:00').getTime()) return false;
+    if(histFilters.dataAte && h.ts > new Date(histFilters.dataAte+'T23:59:59').getTime()) return false;
     return true;
   });
   el.innerHTML = `
@@ -1890,12 +1942,21 @@ function renderHistorico(){
       <div class="filters">
         <select id="f-h-tipo">${HIST_TIPOS.map(t=>`<option value="${t.v}" ${histFilters.tipo===t.v?'selected':''}>${t.l}</option>`).join('')}</select>
         <select id="f-h-projeto"><option value="">Todos os projetos</option>${DB.projetos.map(p=>`<option value="${p.id}" ${histFilters.projeto==String(p.id)?'selected':''}>${esc(p.nome)}</option>`).join('')}</select>
+        <input type="date" id="f-h-data-de" value="${histFilters.dataDe}" title="Data inicial">
+        <span style="color:var(--muted);font-size:12px;">até</span>
+        <input type="date" id="f-h-data-ate" value="${histFilters.dataAte}" title="Data final">
+        <button class="btn btn-sm" id="f-h-mes-atual" title="Filtrar pelo mês vigente">${icon('calendar',12)} Mês atual</button>
+        <button class="btn btn-sm btn-ghost" id="f-h-limpar-datas" title="Remover o filtro de datas">Limpar</button>
       </div>
       <span style="font-size:12px;color:var(--muted);">${events.length} eventos</span>
     </div>
     ${events.length? `<div class="panel">${renderHistoricoTimeline(events, true)}</div>` : `<div class="panel"><div class="empty-state">${icon('empty',34)}<p>Nenhum evento encontrado com os filtros.</p></div></div>`}`;
   document.getElementById('f-h-tipo').addEventListener('change', e=>{ histFilters.tipo=e.target.value; renderContent(); });
   document.getElementById('f-h-projeto').addEventListener('change', e=>{ histFilters.projeto=e.target.value; renderContent(); });
+  document.getElementById('f-h-data-de').addEventListener('change', e=>{ histFilters.dataDe=e.target.value; renderContent(); });
+  document.getElementById('f-h-data-ate').addEventListener('change', e=>{ histFilters.dataAte=e.target.value; renderContent(); });
+  document.getElementById('f-h-mes-atual').addEventListener('click', ()=>{ const r=monthRangeISO(); histFilters.dataDe=r.de; histFilters.dataAte=r.ate; renderContent(); });
+  document.getElementById('f-h-limpar-datas').addEventListener('click', ()=>{ histFilters.dataDe=''; histFilters.dataAte=''; renderContent(); });
   el.querySelectorAll('[data-open-atrib]').forEach(r=>r.addEventListener('click', ()=>openAtribDetalhe(r.dataset.openAtrib)));
 }
 function renderHistoricoTimeline(events, withContext){
@@ -1909,6 +1970,7 @@ function renderHistoricoTimeline(events, withContext){
     else if(h.tipo==='status'){ dotColor=STATUS_COLOR[h.para]||'var(--muted)'; title=`Status alterado: ${h.de} → ${h.para}`; }
     else if(h.tipo==='reprogramacao'){ dotColor='var(--purple)'; title=`Reprogramada: ${fmtDate(h.de)} → ${fmtDate(h.para)}`; }
     else if(h.tipo==='confirmacao'){ dotColor='var(--green)'; title='Execução confirmada'; }
+    else if(h.tipo==='equipe'){ dotColor='var(--accent)'; title='Atividades alteradas pela equipe'; }
     const ctx = withContext && pg ? `<div class="tl-meta">${esc(findProjeto(pg.projetoId)?.nome||'')} · Equipe ${equipeLabel(eq)}</div>` : '';
     return `<div class="tl-item ${withContext?'clickable':''}" ${withContext?`data-open-atrib="${h.atribId}"`:''} style="--dot-c:${dotColor}"><div class="tl-title">${title}</div><div class="tl-meta">${fmtDateTime(h.ts)} · <strong style="color:var(--muted);">${autor(h)}</strong></div>${ctx}${h.motivo? `<div class="tl-motivo"><strong>Motivo:</strong> ${esc(h.motivo)}${h.obs? ' — '+esc(h.obs):''}</div>`:''}</div>`;
   }).join('')}</div>`;
