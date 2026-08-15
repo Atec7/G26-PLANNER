@@ -2231,7 +2231,7 @@ document.getElementById('import-file').addEventListener('change', (e)=>{
    ROUTER
 ========================================================= */
 function renderContent(){
-  const map = { dashboard: renderDashboard, alertas: renderAlertas, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin, execucadas: renderProgramacoesConcluidas };
+  const map = { dashboard: renderDashboard, alertas: renderAlertas, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin, RDO: renderProgramacoesConcluidas };
   (map[currentView]||renderDashboard)();
 }
 
@@ -2343,77 +2343,236 @@ setTimeout(()=>{
 }, 8000);
 
 /* =========================================================
-   PROGRAMAÇÕES CONCLUÍDAS
+   RDO - Respostas da Base Obrigatória
    ========================================================= */
 function renderProgramacoesConcluidas(){
   const el = document.getElementById('content');
   const concluidas = flatAtribuicoes().filter(x=> x.atribuicao.status=== 'Concluído');
   if(!concluidas.length){
-    el.innerHTML = `<div class="panel"><div class="empty-state"><p>Nenhuma programação concluída encontrada.</p><button class="btn btn-primary" style="width:100%;">Voltar ao Painel</button></div></div>`;
+    el.innerHTML = `<div class="panel"><div class="empty-state"><p>Nenhuma resposta RDO encontrada.</p><button class="btn btn-primary" style="width:100%;">Voltar ao Painel</button></div></div>`;
     return;
   }
-  el.innerHTML = `
-    <div class="section-gap">
-      <div class="panel-head">
-        <div><h3>Programações Concluídas</h3><div class="admin-field-meta">${concluidas.length} programação(s) finalizada(s)</div></div>
-      </div>
-      <div style="max-height:700px;overflow-y:auto;">
-        ${concluidas.map(x=>`
-          <div class="panel" style="margin-bottom:24px;">
-            <div class="panel-head">
-              <div><h4>${esc(findProjeto(x.programacao.projetoId)?.nome||'Projeto')} (${esc(findProjeto(x.programacao.projetoId)?.codigo||'')})</h4><span class="badge" style="background:rgba(34,139,34,.12);color:var(--green);">${fmtDate(x.atribuicao.dataProgramada)}</span></div>
-              <div style="text-align:right;font-size:12px;color:var(--muted);">${fmtDateTime(x.atribuicao.tsCriacao||x.atribuicao.historico?.[0]?.ts||Date.now())}</div>
-            </div>
-            <div style="padding:16px;">
-              <table style="width:100%;border-collapse:collapse;font-size:13px;">
-                <thead>
-                  <tr>
-                    <th style="width:8px;">#</th>
-                    <th>Código</th>
-                    <th style="width:40%;">Descrição</th>
-                    <th style="width:24px;">Un.</th>
-                    <th style="width:24px;">Prev.</th>
-                    <th style="width:24px;">Exec.</th>
-                    <th style="width:32px;">%</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${(x.atribuicao.atividades||[]).map((a,idx)=>{
-                    const at = findAtividade(a.atividadeId);
-                    const exec = x.atribuicao.status==='Concluído' ? (a.quantidadeExecutada!=null? a.quantidadeExecutada : a.quantidadePrevista) : (a.quantidadeExecutada!=null? a.quantidadeExecutada : null);
-                    const pct = a.quantidadePrevista? Math.round((exec||0)/a.quantidadePrevista*100) : 0;
-                    return `<tr>
-                      <td style="text-align:center;">${idx+1}</td>
-                      <td class="mono">${esc(at?.codigo||'?')}</td>
-                      <td>${esc(at?.descricao||'')}</td>
-                      <td style="text-align:center;">${esc(at?.unidade||'')}</td>
-                      <td style="text-align:center;">${a.quantidadePrevista??'—'}</td>
-                      <td style="text-align:center;">${exec!=null? exec+'' : '—'}</td>
-                      <td style="text-align:center;color:var(--green);font-weight:700;">${pct}%</td>
-                    </tr>`;
-                  }).join('')}
-                </tbody>
-              </table>
-              <div style="margin-top:12px;">
-                <h4>Dados da Execução</h4>
-                <table style="width:100%;border-collapse:collapse;font-size:13px;">
-                  <tr><td style="font-weight:600;padding-right:8px;">Status</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:rgba(34,139,34,.08);">Concluído</td></tr>
-                  <tr><td style="font-weight:600;padding-right:8px;">Horário Confirmação</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoHorarioFinalizacao||'—'}</td></tr>
-                  <tr><td style="font-weight:600;padding-right:8px;">Cond. Climáticas</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoCondicoes||'—'}</td></tr>
-                  <tr><td style="font-weight:600;padding-right:8px;">Impedimento Exec.</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoImpedimento||'—'}</td></tr>
-                  <tr><td style="font-weight:600;padding-right:8px;">Falta Material</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoFaltaMaterial||'—'}</td></tr>
-                  <tr><td style="font-weight:600;padding-right:8px;">Obs. Execução</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.observacao||'—'}</td></tr>
-                </table>
-              </div>
-            </div>
-          </div>`).join('')}
+  // Build filter HTML
+  const filterHTML = `
+    <div style="margin-bottom:24px;background:var(--surface);padding:16px;border-radius:8px;">
+      <div style="margin-bottom:12px;">
+        <label style="font-weight:600;margin-right:8px;">Filtrar por data:</label>
+        <input type="date" id="rdo-data-inicial" style="padding:6px 10px;font-size:14px;">
+        <span style="color:var(--muted);margin-left:16px;">até</span>
+        <input type="date" id="rdo-data-final" style="padding:6px 10px;font-size:14px;">
+        <button class="btn btn-sm" id="rdo-filtrar" style="padding:6px 12px;font-size:14px;">Aplicar</button>
+        <button class="btn btn-sm btn-ghost" id="rdo-limpar" style="padding:6px 12px;font-size:14px;">Limpar</button>
       </div>
     </div>`;
+
+  // Build table HTML - programações summary
+  const tableHTML = `
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:900px;">
+        <thead>
+          <tr>
+            <th style="width:40px;text-align:center;">#</th>
+            <th style="width:200px;">Projeto</th>
+            <th style="width:140px;text-align:center;">Data Programada</th>
+            <th style="width:100px;text-align:center;">Ciclo</th>
+            <th style="width:100px;text-align:center;">Equipe</th>
+            <th style="width:100px;text-align:center;">Status</th>
+            <th style="width:100px;">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${concluidas.map(x=>`
+            <tr style="cursor:pointer;" data-prog="${x.programacao.id}" data-atrib="${x.atribuicao.id}">
+              <td style="text-align:center;">${x.programacao.id}</td>
+              <td>${esc(findProjeto(x.programacao.projetoId)?.nome||'Projeto')}</td>
+              <td style="text-align:center;">${fmtDate(x.atribuicao.dataProgramada)}</td>
+              <td>${x.programacao.ciclo||'—'}</td>
+              <td>${equipeLabel(findEquipe(x.atribuicao.equipeId))}</td>
+              <td><span class="badge" style="background:rgba(34,139,34,.12);color:var(--green);">${x.atribuicao.status}</span></td>
+              <td style="text-align:center;">
+                <button class="icon-btn" style="padding:4px 6px;font-size:12px;" title="Ver detalhes"><icon('search',12)</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  // Build modals HTML
+  const modalHTML = `
+    <div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center;z-index:9999;" id="rdo-modal">
+      <div class="panel" style="max-width:900px;width:100%;padding:24px;">
+        <div class="panel-head">
+          <h3>RDO - Detalhes da Programação</h3>
+          <button class="icon-btn" style="float:right;padding:4px;" id="rdo-modal-close">&times;</button>
+        </div>
+        <div style="margin-top:24px;" id="rdo-modal-conteudo">
+        </div>
+      </div>
+    </div>`;
+
+  el.innerHTML = `
+    <div class="section-gap">
+      ${filterHTML}
+      ${tableHTML}
+    </div>`;
+  // Append modal to body
+  const modal = document.getElementById('rdo-modal');
+  if(!modal.parentElement) document.body.appendChild(modal);
+
+  // Date filter logic
+  const dataInicial = document.getElementById('rdo-data-inicial');
+  const dataFinal = document.getElementById('rdo-data-final');
+  const aplicarFiltro = ()=>{
+    const ini = dataInicial.value? new Date(dataInicial.value).toISOString().split('T')[0] : null;
+    const fim = dataFinal.value? new Date(dataFinal.value).toISOString().split('T')[0] : null;
+    concluidas.forEach(x=>{
+      const dataProg = x.atribuicao.dataProgramada;
+      const mostrar = (!ini || dataProg >= ini) && (!fim || dataProg <= fim);
+      document.querySelector(`tr[data-prog="${x.programacao.id}"]`).style.display = mostrar? '':'none';
+    });
+  };
+  document.getElementById('rdo-filtrar').addEventListener('click', aplicarFiltro);
+  document.getElementById('rdo-limpar').addEventListener('click', ()=>{
+    dataInicial.value = '';
+    dataFinal.value = '';
+    concluidas.forEach(x=> document.querySelector(`tr[data-prog="${x.programacao.id}"]`).style.display = '');
+  });
+  // Row click to open modal
+  document.querySelectorAll('tr[data-prog]').forEach(tr=>{
+    tr.addEventListener('click', ()=>{
+      const progId = Number(tr.dataset.prog);
+      const attribId = Number(tr.dataset.atrib);
+      openRDOModal(progId, attribId);
+    });
+  });
+  // Modal close
+  document.getElementById('rdo-modal-close').addEventListener('click', ()=>{ modal.style.display='none'; });
+  modal.addEventListener('click', (e)=>{ if(e.target===modal) modal.style.display='none'; });
+  // Excel export button
+  const exportBtn = document.createElement('button');
+  exportBtn.className = 'btn btn-primary';
+  exportBtn.style.margin = '24px 0 0 0';
+  exportBtn.textContent = 'Exportar Excel';
+  exportBtn.addEventListener('click', ()=> exportRDOExcel(concluidas));
+  el.appendChild(exportBtn);
   // Add back button
   const backBtn = document.createElement('button');
   backBtn.className = 'btn btn-primary';
-  backBtn.style.margin = '16px 0 0 0';
+  backBtn.style.margin = '24px 0 0 0';
   backBtn.textContent = 'Voltar ao Painel';
   backBtn.addEventListener('click', ()=> setView('dashboard'));
   el.appendChild(backBtn);
+}
+
+// New function: open RDO modal with all details
+function openRDOModal(progId, attribId){
+  const concluidas = flatAtribuicoes().filter(x=> x.atribuicao.status=== 'Concluído');
+  const x = concluidas.find(y=> y.programacao.id===progId && y.atribuicao.id===attribId);
+  if(!x) return;
+  const pr = findProjeto(x.programacao.projetoId);
+  const eq = findEquipe(x.atribuicao.equipeId);
+  const modalConteudo = `
+    <div style="max-height:800px;overflow-y:auto;">
+      <div style="margin-bottom:24px;">
+        <h4>Programação #${x.programacao.id}</h4>
+        <p><strong>Projeto:</strong> ${esc(pr?.nome||'—')} (${esc(pr?.codigo||'—')})</p>
+        <p><strong>Ciclo:</strong> ${x.programacao.ciclo||'—'}</p>
+        <p><strong>Data programada:</strong> ${fmtDate(x.atribuicao.dataProgramada)}</p>
+        <p><strong>Equipe:</strong> ${equipeLabel(eq)}</p>
+        <p><strong>Status:</strong> ${x.atribuicao.status}</p>
+      </div>
+      <div style="margin-bottom:24px;">
+        <h4>Horários RDO</h4>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tr><td style="font-weight:600;padding-right:8px;">Horário Chegada</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoHorarioChegada||'—'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:8px;">Horário Início</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoHorarioInicio||'—'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:8px;">Horário Finalização</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoHorarioFinalizacao||'—'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:8px;">Horário Saída da obra</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoHorarioSaidaObra||'—'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:8px;">Horário Chegada na base</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoHorarioChegadaBase||'—'}</td></tr>
+        </table>
+      </div>
+      <div style="margin-bottom:24px;">
+        <h4>Condições Climáticas e Impedimentos</h4>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tr><td style="font-weight:600;padding-right:8px;">Condições climáticas</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoCondicoes||'—'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:8px;">Impedimento execução (somente se sim)</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoImpedimento||'—'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:8px;">Falta de material</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoFaltaMaterial||'—'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:8px;">Projeto Incoerente</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoProjetoIncoerente||'—'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:8px;">Equipe incompleta</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoEquipeIncompleta||'—'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:8px;">Falta de veículo</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoFaltaVeiculo||'—'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:8px;">Impedimento de acesso</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoImpedimentoAcesso||'—'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:8px;">Licença ambiental</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoLicencaAmbiental||'—'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:8px;">Autorização/embargo</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoAutorizacaoEmbargo||'—'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:8px;">Desligamento conforme programado</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao.rdoDesligamento||'—'}</td></tr>
+        </table>
+      </div>
+      <div style="margin-bottom:24px;">
+        <h4>Atividades e Execução</h4>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr>
+              <th style="width:8px;">#</th>
+              <th>Código</th>
+              <th style="width:40%;">Descrição</th>
+              <th style="width:24px;">Un.</th>
+              <th style="width:24px;">Prev.</th>
+              <th style="width:24px;">Exec.</th>
+              <th style="width:32px;">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(x.atribuicao.atividades||[]).map((a,idx)=>{
+              const at = findAtividade(a.atividadeId);
+              const exec = x.atribuicao.status==='Concluído' ? (a.quantidadeExecutada!=null? a.quantidadeExecutada : a.quantidadePrevista) : (a.quantidadeExecutada!=null? a.quantidadeExecutada : null);
+              const pct = a.quantidadePrevista? Math.round((exec||0)/a.quantidadePrevista*100) : 0;
+              return `<tr>
+                <td style="text-align:center;">${idx+1}</td>
+                <td class="mono">${esc(at?.codigo||'?')}</td>
+                <td>${esc(at?.descricao||'')}</td>
+                <td style="text-align:center;">${esc(at?.unidade||'')}</td>
+                <td style="text-align:center;">${a.quantidadePrevista||'—'}</td>
+                <td style="text-align:center;">${exec!=null? exec+'':'—'}</td>
+                <td style="text-align:center;color:var(--green);font-weight:700;">${pct}%</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-bottom:24px;">
+        <h4>Observação da Execução</h4>
+        <p>${x.atribuicao.observacao||'—'}</p>
+      </div>
+      <div style="margin-bottom:24px;">
+        <h4>Data da Confirmação</h4>
+        <p>${fmtDateTime(x.atribuicao.historico?.[0]?.ts||x.atribuicao.tsCriacao||Date.now())}</p>
+      </div>
+    </div>`;
+  document.getElementById('rdo-modal-conteudo').innerHTML = modalConteudo;
+  document.getElementById('rdo-modal').style.display = 'flex';
+}
+
+// Excel export function
+function exportRDOExcel(concluidas){
+  let csv = 'Programação;Projeto;Data;Equipe;Status;Ciclo;Atividade;Codigo;Descricao;Unidade;Prev;Exec;%' + '\n';
+  concluidas.forEach(x=>{
+    const pr = findProjeto(x.programacao.projetoId);
+    const eq = findEquipe(x.atribuicao.equipeId);
+    const dataProg = fmtDate(x.atribuicao.dataProgramada);
+    const ciclo = x.programacao.ciclo||'—';
+    const equipe = equipeLabel(eq);
+    const status = x.atribuicao.status;
+    (x.atribuicao.atividades||[]).forEach((a,idx)=>{
+      const at = findAtividade(a.atividadeId);
+      const exec = x.atribuicao.status==='Concluído' ? (a.quantidadeExecutada!=null? a.quantidadeExecutada : a.quantidadePrevista) : (a.quantidadeExecutada!=null? a.quantidadeExecutada : null);
+      const pct = a.quantidadePrevista? Math.round((exec||0)/a.quantidadePrevista*100) : 0;
+      csv += `${x.programacao.id};${pr?.nome||'—'};${dataProg};${equipe};${status};${ciclo};${idx+1};${at?.codigo||'—'};${esc(at?.descricao||'')};${at?.unidade||'—'};${a.quantidadePrevista||'—'};${exec!=null? exec:'—'};${pct}` + '\n';
+    });
+  });
+  const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `rdo_execucoes_${todayISO()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
