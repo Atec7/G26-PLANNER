@@ -1951,6 +1951,7 @@ function openAtribDetalhe(atribId){
         <select class="atrib-equipe" data-idx="${i}"><option value="">Selecione a equipe…</option>${equipesDoProjeto(selProjeto).map(e=>`<option value="${e.id}" ${String(a.equipeId)===String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' · '+esc(e.encarregado):''}</option>`).join('')}</select>
         ${atribs.length>1? `<button type="button" class="icon-btn atrib-remove" data-idx="${i}">${icon('trash',14)}</button>`:''}
       </div>
+      <div class="atrib-meta-live" data-idx="${i}"></div>
       <div class="atrib-activities">${a.atividades.map((at,j)=>activityRowHtml(a,i,at,j)).join('')}</div>
       <button type="button" class="btn btn-sm btn-ghost atrib-add-activity" data-idx="${i}">${icon('plus',13)} Adicionar atividade</button>
     </div>`;
@@ -2013,13 +2014,40 @@ function openAtribDetalhe(atribId){
         atribs.forEach(a=>{ if(a.equipeId && !ok.some(e=>String(e.id)===String(a.equipeId))) a.equipeId=''; });
         document.getElementById('atribs-container').innerHTML = renderAtribsHtml(); bindDynamic();
       }
+      function atualizarMetaIndicadores(){
+        root.querySelectorAll('.atrib-meta-live').forEach(el=>{
+          const i = Number(el.dataset.idx);
+          const a = atribs[i];
+          const eq = a && a.equipeId? findEquipe(a.equipeId) : null;
+          const meta = metaDiaria(eq);
+          const total = (a?.atividades||[]).reduce((s,at)=>{
+            const atDef = at.atividadeId? findAtividade(at.atividadeId) : null;
+            return s + (parseFloat(at.quantidadePrevista)||0) * (atDef?.valorUnitario||0);
+          },0);
+          if(!eq){ el.innerHTML=''; return; }
+          if(!meta){
+            el.innerHTML = `<div class="atrib-meta-wrap"><span style="font-size:11px;color:var(--muted);">Programação total: <strong>${fmtMoney(total)}</strong> (meta diária não definida para esta equipe)</span></div>`;
+            return;
+          }
+          const pct = Math.round(total/meta*100);
+          const cor = pct>=100? 'var(--green)' : pct>=50? 'var(--accent)' : 'var(--red)';
+          el.innerHTML = `<div class="atrib-meta-wrap">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+              <strong style="font-size:11px;letter-spacing:.02em;">PROGRAMAÇÃO EM <span style="color:${cor};">${pct}%</span> DA META DA EQUIPE</strong>
+              <span style="font-size:11px;color:var(--muted);">${fmtMoney(total)} de ${fmtMoney(meta)}</span>
+            </div>
+            <div class="atrib-meta-bar"><div style="width:${Math.min(100,pct)}%;background:${cor};"></div></div>
+          </div>`;
+        });
+      }
       function bindDynamic(){
-        root.querySelectorAll('.atrib-equipe').forEach(s=>s.addEventListener('change', e=>{ atribs[e.target.dataset.idx].equipeId = e.target.value; }));
+        root.querySelectorAll('.atrib-equipe').forEach(s=>s.addEventListener('change', e=>{ atribs[e.target.dataset.idx].equipeId = e.target.value; atualizarMetaIndicadores(); }));
         root.querySelectorAll('.atrib-remove').forEach(b=>b.addEventListener('click', e=>{ atribs.splice(Number(e.currentTarget.dataset.idx),1); refreshContainer(); }));
         root.querySelectorAll('.atrib-add-activity').forEach(b=>b.addEventListener('click', e=>{ atribs[Number(e.currentTarget.dataset.idx)].atividades.push({atividadeId:'',quantidadePrevista:''}); refreshContainer(); }));
-        root.querySelectorAll('.act-select').forEach(s=>s.addEventListener('change', e=>{ atribs[e.target.dataset.idx].atividades[e.target.dataset.jdx].atividadeId = e.target.value; }));
-        root.querySelectorAll('.act-qty').forEach(s=>s.addEventListener('input', e=>{ atribs[e.target.dataset.idx].atividades[e.target.dataset.jdx].quantidadePrevista = e.target.value; }));
+        root.querySelectorAll('.act-select').forEach(s=>s.addEventListener('change', e=>{ atribs[e.target.dataset.idx].atividades[e.target.dataset.jdx].atividadeId = e.target.value; atualizarMetaIndicadores(); }));
+        root.querySelectorAll('.act-qty').forEach(s=>s.addEventListener('input', e=>{ atribs[e.target.dataset.idx].atividades[e.target.dataset.jdx].quantidadePrevista = e.target.value; atualizarMetaIndicadores(); }));
         root.querySelectorAll('.act-remove').forEach(b=>b.addEventListener('click', e=>{ const i=Number(e.currentTarget.dataset.idx), j=Number(e.currentTarget.dataset.jdx); atribs[i].atividades.splice(j,1); refreshContainer(); }));
+        atualizarMetaIndicadores();
       }
       bindDynamic();
       document.getElementById('add-atrib-btn').addEventListener('click', ()=>{ atribs.push({equipeId:'',atividades:[{atividadeId:'',quantidadePrevista:''}]}); refreshContainer(); });
@@ -2670,18 +2698,33 @@ function progGid(pg){ return (pg && pg.gid) || (pg? 'G26-'+String(pg.id).padStar
 function showLoginScreen(){
   document.getElementById('login-screen').classList.remove('hidden');
   const u = document.getElementById('login-user');
+  const p = document.getElementById('login-pass');
   const st = document.getElementById('login-status');
   st.style.color = 'var(--muted)';
-  st.textContent = 'Faça login para acessar o G26 Planner.';
-  if(u.value==='') u.focus();
+  st.textContent = '';
+  try{
+    const saved = JSON.parse(localStorage.getItem('g26_login_saved')||'null');
+    if(saved && saved.login){
+      u.value = saved.login;
+      p.value = saved.senha||'';
+      document.getElementById('login-remember').checked = true;
+    }
+  }catch(e){ localStorage.removeItem('g26_login_saved'); }
+  if(u.value==='') u.focus(); else p.focus();
   document.getElementById('nav-user').textContent = CURRENT_USER? 'Conectado: '+CURRENT_USER.nome : 'Dados sincronizados na nuvem (Firebase)';
 }
 function tryLogin(){
   const login = document.getElementById('login-user').value.trim();
   const senha = document.getElementById('login-pass').value;
+  const remember = document.getElementById('login-remember').checked;
   const u = (DB.usuarios||[]).find(x=> x.ativo!==false && String(x.login)===login && String(x.senha)===senha);
   const st = document.getElementById('login-status');
   if(!u){ st.textContent = 'Usuário ou senha inválidos.'; st.style.color='var(--red)'; return; }
+  if(remember){
+    try{ localStorage.setItem('g26_login_saved', JSON.stringify({login, senha})); }catch(e){}
+  } else {
+    try{ localStorage.removeItem('g26_login_saved'); }catch(e){}
+  }
   CURRENT_USER = u;
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('login-pass').value='';
@@ -2699,6 +2742,16 @@ function logout(){
 document.getElementById('login-btn').addEventListener('click', tryLogin);
 document.getElementById('login-user').addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('login-pass').focus(); });
 document.getElementById('login-pass').addEventListener('keydown', e=>{ if(e.key==='Enter') tryLogin(); });
+const EYE_OPEN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+const EYE_CLOSED = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"></path><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"></path><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"></path><path d="M1 1l22 22"></path></svg>';
+document.getElementById('pwd-eye').addEventListener('click', ()=>{
+  const input = document.getElementById('login-pass');
+  const show = input.type==='password';
+  input.type = show? 'text' : 'password';
+  const btn = document.getElementById('pwd-eye');
+  btn.innerHTML = show? EYE_CLOSED : EYE_OPEN;
+  btn.title = show? 'Ocultar senha' : 'Mostrar senha';
+});
 document.getElementById('btn-logout').addEventListener('click', logout);
 
 /* =========================================================
@@ -2771,10 +2824,10 @@ function rdoImpedimentos(at){
     ['rdoFaltaVeiculo','Falta de veículo'],
     ['rdoImpedimentoAcesso','Impedimento de acesso'],
     ['rdoLicencaAmbiental','Licença ambiental'],
-    ['rdoAutorizacaoEmbargo','Autorização/embargo'],
-    ['rdoDesligamento','Desligamento não programado']
+    ['rdoAutorizacaoEmbargo','Autorização/embargo']
   ];
   map.forEach(([k,l])=>{ if(at[k]==='Sim') itens.push(l); });
+  if(at.rdoDesligamento==='Não') itens.push('Desligamento não programado');
   return itens;
 }
 function rdoConfData(x){
