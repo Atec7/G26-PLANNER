@@ -373,7 +373,7 @@ function render(){
         <div><h3>${esc(pr?.nome||'Projeto')}</h3><div class="admin-field-meta">${prog.gid||'G26-'+String(prog.id).padStart(7,'0')} · ${esc(pr?.codigo||'')} · Ciclo ${esc(prog.ciclo||'—')}</div></div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${fmtDate(prog.dataProgramada)}</span>
-          <button type="button" class="btn btn-danger-solid" id="btn-informar-acidente" style="font-weight:700;${icon('alert',14)} INFORMAR ACIDENTE</button>
+          <button type="button" class="btn btn-danger-solid" id="btn-informar-acidente" style="font-weight:700;">${icon('alert',14)} INFORMAR ACIDENTE</button>
         </div>
       </div>
       <div style="padding:16px;display:flex;flex-direction:column;gap:16px;">
