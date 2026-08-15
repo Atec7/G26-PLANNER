@@ -21,6 +21,7 @@ const rtdb = firebase.initializeApp(firebaseConfig);
 const database = firebase.database(rtdb);
 const DB_REF = database.ref('g26_planner/data');
 const PRES_REF = database.ref('g26_planner/presenca');
+const ACCIDENT_REF = database.ref('g26_planner/acidentes');
 let presTeamHeartbeat = null;
 function registrarPresencaTeam(){
   if(!progId) return;
@@ -370,7 +371,10 @@ function render(){
     <div class="panel section-gap">
       <div class="panel-head">
         <div><h3>${esc(pr?.nome||'Projeto')}</h3><div class="admin-field-meta">${prog.gid||'G26-'+String(prog.id).padStart(7,'0')} · ${esc(pr?.codigo||'')} · Ciclo ${esc(prog.ciclo||'—')}</div></div>
-        <span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${fmtDate(prog.dataProgramada)}</span>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${fmtDate(prog.dataProgramada)}</span>
+          <button type="button" class="btn btn-danger-solid" id="btn-informar-acidente" style="font-weight:700;${icon('alert',14)} INFORMAR ACIDENTE</button>
+        </div>
       </div>
       <div style="padding:16px;display:flex;flex-direction:column;gap:16px;">
         <div class="team-hint">${icon('alert',14)} <div>Edite apenas as <strong>atividades e quantidades</strong> da programação. A <strong>observação é obrigatória</strong> e cada atividade exige <strong>pelo menos 1 foto</strong> (câmera ou galeria). As alterações ficam salvas neste aparelho e são enviadas automaticamente quando houver internet.</div></div>
@@ -394,6 +398,54 @@ function render(){
     h.className = 'te-photo-hint ' + (n? 'ok':'missing');
   });
   document.getElementById('team-submit').addEventListener('click', submitEdit);
+  document.getElementById('btn-informar-acidente').addEventListener('click', ()=> abrirModalAcidente());
+}
+function abrirModalAcidente(){
+  const eq = findEquipe(DB, (prog.atribuicoes||[])[0]?.equipeId);
+  const progGidLabel = prog.gid || ('G26-'+String(prog.id).padStart(7,'0'));
+  const body = `
+    <div style="color:var(--red);font-weight:700;font-size:14px;margin-bottom:12px;">${icon('alert',16)} CONFIRMAR INFORMAÇÃO DE ACIDENTE</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:16px;">Preencha o motivo/descrição do acidente. Isso enviará um alerta vermelho bloqueante para todas as telas do escritório (Admin) com localização, equipe e QR Code. O alarme sonoro tocará até que alguém confirme "Reportado".</div>
+    <div class="field"><label>Motivo / Descrição do acidente <span class="req">*</span></label><textarea id="acidente-motivo" rows="4" required placeholder="Ex.: Colisão de veículo na rota, queda de poste, choque elétrico..."></textarea></div>
+    <div style="margin-top:8px;padding:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:11px;color:#991b1b;">
+      <strong>Equipe:</strong> ${esc(equipeLabel(eq))}<br>
+      <strong>Programação:</strong> ${esc(progGidLabel)} · ${fmtDate(prog.dataProgramada)}<br>
+      <strong>Projeto:</strong> ${esc(pr?.nome||'—')} (${esc(pr?.codigo||'—')})<br>
+      <strong>Local:</strong> ${esc(prog.local||'—')}${prog.localLat!=null && prog.localLng!=null ? ` — <a href="${esc(mapsLinkByCoords(prog.localLat,prog.localLng))}" target="_blank" style="color:var(--blue);">${icon('pin',12)} Ver no Google Maps</a>` : ''}
+    </div>
+  `;
+  openModal({
+    title: 'Informar Acidente', bodyHtml: body, submitLabel: 'ENVIAR ALERTA DE ACIDENTE',
+    onSubmit: async (fd)=>{
+      const motivo = fd.get('acidente-motivo').trim();
+      if(!motivo){ toast('Informe o motivo/descrição do acidente.', 'error'); return false; }
+      try{
+        const acidente = {
+          ts: Date.now(),
+          programacaoId: progId,
+          progGid: progGidLabel,
+          dataProgramada: prog.dataProgramada,
+          projetoId: prog.projetoId,
+          projetoNome: pr?.nome||'',
+          projetoCodigo: pr?.codigo||'',
+          equipeId: eq?.id,
+          equipeLabel: equipeLabel(eq),
+          local: prog.local||'',
+          localLat: prog.localLat??null,
+          localLng: prog.localLng??null,
+          motivo,
+          status: 'ativo',
+          confirmadoPor: null,
+          confirmadoTs: null
+        };
+        await ACCIDENT_REF.push(acidente);
+        toast('Alerta de acidente enviado a todas as telas do escritório!');
+      }catch(e){
+        toast('Erro ao enviar alerta: '+e.message, 'error');
+        return false;
+      }
+    }
+  });
 }
 function renderTeamBlock(eqId){
   const eq = findEquipe(DB, Number(eqId));

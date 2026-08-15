@@ -17,6 +17,7 @@ const analytics = firebase.analytics(app);
 const rtdb = firebase.database(app);
 const DB_REF = rtdb.ref('g26_planner/data');
 const PRES_REF = rtdb.ref('g26_planner/presenca');
+const ACCIDENT_REF = rtdb.ref('g26_planner/acidentes');
 
 const DEFAULT_DATA = {
   equipes: [], atividades: [], projetos: [], programacoes: [], usuarios: [],
@@ -3349,6 +3350,111 @@ let monLastSig = '';
     monPresList = arr;
     const sig = arr.map(p=> p.login+'|'+p.view+'|'+(monOnline(p)?'on':'off')).join(',');
     if(sig!==monLastSig){ monLastSig=sig; if(CURRENT_USER && currentView==='admin') renderContent(); }
+  });
+})();
+/* --- ACIDENTE ALERT (blocking modal + sound) --- */
+const ALARM_URL = 'https://www.dropbox.com/scl/fi/pabmfo1nimawmo4tmh1qz/SOM-DE-ALERTA-VERMELHO-ALARME-DE-PERIGO-Efeito-Sonoro-HQ-DOWNLOAD-M4A_128K.m4a?rlkey=65edgvg3rpfrf47xsrp6qzvw2&st=1jo7z52n&dl=1';
+let acidenteAtivo = null;
+let alarmAudio = null;
+function initAlarmAudio(){
+  if(!alarmAudio){
+    alarmAudio = new Audio(ALARM_URL);
+    alarmAudio.loop = true;
+    alarmAudio.volume = 1.0;
+  }
+}
+function playAlarm(){
+  initAlarmAudio();
+  alarmAudio.play().catch(()=>{});
+}
+function stopAlarm(){
+  if(alarmAudio){ alarmAudio.pause(); alarmAudio.currentTime=0; }
+}
+function renderAcidenteModal(acid){
+  const acidente = acidenteAtivo;
+  if(!acidente) return;
+  const eqLabel = acidente.equipeLabel || '—';
+  const progGid = acidente.progGid || '—';
+  const local = acidente.local || '—';
+  const mapsLink = (acidente.localLat!=null && acidente.localLng!=null) ? mapsLinkByCoords(acidente.localLat, acidente.localLng) : mapsLinkByAddress(local);
+  const qr = qrCodeUrl(mapsLink, 140);
+  const projNome = acidente.projetoNome || '—';
+  const projCod = acidente.projetoCodigo || '—';
+  const motivo = acidente.motivo || '—';
+  const ts = fmtDateTime(acidente.ts);
+  return `
+  <div style="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;" id="acidente-overlay">
+    <div style="width:100%;max-width:720px;background:#fff;border:4px solid #dc2626;border-radius:12px;overflow:hidden;animation:pulseRed 1.5s infinite;">
+      <style>@keyframes pulseRed{0%,100%{box-shadow:0 0 0 0 #dc262680;}50%{box-shadow:0 0 30px 10px #dc262680;}}</style>
+      <div style="background:#dc2626;color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:10px;"><span style="font-size:28px;">${icon('alert',28)}</span><div><div style="font-size:20px;font-weight:800;">ALERTA DE ACIDENTE</div><div style="font-size:12px;opacity:.9;">Recebido em ${ts}</div></div></div>
+        <div style="font-size:11px;background:#fff2;padding:4px 10px;border-radius:20px;white-space:nowrap;">ATIVO</div>
+      </div>
+      <div style="padding:20px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+          <div style="border:1px solid #fecaca;background:#fef2f2;border-radius:8px;padding:12px;">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#dc2626;margin-bottom:4px;">Equipe</div>
+            <div style="font-size:16px;font-weight:700;color:#000;">${esc(eqLabel)}</div>
+          </div>
+          <div style="border:1px solid #fecaca;background:#fef2f2;border-radius:8px;padding:12px;">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#dc2626;margin-bottom:4px;">Programação</div>
+            <div style="font-size:16px;font-weight:700;color:#000;">${esc(progGid)}</div>
+          </div>
+          <div style="border:1px solid #fecaca;background:#fef2f2;border-radius:8px;padding:12px;grid-column:1/-1;">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#dc2626;margin-bottom:4px;">Projeto</div>
+            <div style="font-size:14px;font-weight:700;color:#000;">${esc(projNome)} <span style="font-weight:400;color:#666;">(${esc(projCod)})</span></div>
+          </div>
+          <div style="border:1px solid #fecaca;background:#fef2f2;border-radius:8px;padding:12px;grid-column:1/-1;">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#dc2626;margin-bottom:4px;">Localização</div>
+            <div style="font-size:13px;color:#000;">${esc(local)}</div>
+            <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">
+              <a href="${esc(mapsLink)}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#dc2626;color:#fff;padding:6px 12px;border-radius:6px;font-weight:700;font-size:12px;text-decoration:none;">${icon('pin',13)} Abrir no Google Maps</a>
+              <img src="${esc(qr)}" alt="QR Code localização" style="width:80px;height:80px;border:1px solid #fecaca;border-radius:4px;">
+            </div>
+          </div>
+        </div>
+        <div style="border:1px solid #fecaca;background:#fef2f2;border-radius:8px;padding:16px;margin-bottom:16px;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#dc2626;margin-bottom:8px;">Descrição do acidente</div>
+          <div style="font-size:14px;color:#000;white-space:pre-wrap;line-height:1.5;">${esc(motivo)}</div>
+        </div>
+        <div style="display:flex;gap:12px;justify-content:flex-end;">
+          <button type="button" id="acidente-reportado" class="btn btn-primary" style="font-size:16px;padding:14px 32px;font-weight:800;">${icon('check',16)} REPORTADO — Repassarei as informações adiante</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+function confirmarAcidente(acidenteKey){
+  stopAlarm();
+  const overlay = document.getElementById('acidente-overlay');
+  if(overlay) overlay.remove();
+  try{
+    ACCIDENT_REF.child(acidenteKey).update({ status: 'confirmado', confirmadoPor: CURRENT_USER? CURRENT_USER.nome:'Desconhecido', confirmadoTs: Date.now() });
+  }catch(e){}
+  acidenteAtivo = null;
+  toast('Acidente confirmado e repassado adiante.');
+}
+(function watchAcidentes(){
+  ACCIDENT_REF.orderByChild('status').equalTo('ativo').on('value', snap=>{
+    const data = snap.val()||{};
+    const entries = Object.entries(data);
+    if(!entries.length){
+      if(acidenteAtivo){
+        stopAlarm();
+        const overlay = document.getElementById('acidente-overlay');
+        if(overlay) overlay.remove();
+        acidenteAtivo = null;
+      }
+      return;
+    }
+    entries.sort((a,b)=> (b[1].ts||0)-(a[1].ts||0));
+    const [key, acidente] = entries[0];
+    if(acidenteAtivo && acidenteAtivo.key===key) return;
+    acidenteAtivo = { key, ...acidente };
+    playAlarm();
+    const root = document.getElementById('modal-root');
+    root.insertAdjacentHTML('beforeend', renderAcidenteModal(acidente));
+    document.getElementById('acidente-reportado').addEventListener('click', ()=> confirmarAcidente(key));
   });
 })();
 function showLoginScreen(){
