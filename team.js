@@ -430,6 +430,7 @@ function render(){
 function abrirModalAcidente(){
   console.log('[team] abrirModalAcidente chamado');
   const eq = findEquipe(DB, (prog.atribuicoes||[])[0]?.equipeId);
+  const pr = findProjeto(DB, prog.projetoId);
   const progGidLabel = prog.gid || ('G26-'+String(prog.id).padStart(7,'0'));
   const body = `
     <div style="color:var(--red);font-weight:700;font-size:14px;margin-bottom:12px;">${icon('alert',16)} CONFIRMAR INFORMAÇÃO DE ACIDENTE</div>
