@@ -1201,7 +1201,7 @@ function renderProjetos(){
         <td style="min-width:130px;">${progBarHtml(av.fisicoPct,{thin:true})}<div style="font-size:10.5px;color:var(--muted);margin-top:3px;">${av.fisicoPct.toFixed(1)}% · ${av.concluidoLinhas}/${av.totalLinhas}</div></td>
         <td>${projStatusBadge(p.status)}</td><td>${count}</td>
         ${customFields.map(f=>`<td>${esc(p.custom?.[f.id]||'—')}</td>`).join('')}
-        <td><div class="row-actions"><button class="icon-btn" title="Ver avanço" data-avanco-detalhe="${p.id}">${icon('trend',14)}</button><button class="icon-btn" data-edit-pj="${p.id}">${icon('edit',14)}</button><button class="icon-btn" data-del-pj="${p.id}">${icon('trash',14)}</button></div></td>
+        <td><div class="row-actions"><button class="icon-btn" title="Imprimir projeto" data-print-pj="${p.id}">${icon('printer',14)}</button><button class="icon-btn" title="Ver avanço" data-avanco-detalhe="${p.id}">${icon('trend',14)}</button><button class="icon-btn" data-edit-pj="${p.id}">${icon('edit',14)}</button><button class="icon-btn" data-del-pj="${p.id}">${icon('trash',14)}</button></div></td>
       </tr>${alerta}`;
     }).join('') || `<tr class="empty-row"><td colspan="${13+customFields.length}">Nenhum projeto encontrado com os filtros.</td></tr>`}</tbody></table></div></div>`;
   document.getElementById('f-pj-q').addEventListener('input', e=>{ projFilters.q=e.target.value; renderContent(); });
@@ -1210,6 +1210,7 @@ function renderProjetos(){
   el.querySelectorAll('[data-edit-pj]').forEach(b=>b.addEventListener('click', ()=>openProjetoModal(b.dataset.editPj)));
   el.querySelectorAll('[data-del-pj]').forEach(b=>b.addEventListener('click', ()=>deleteProjeto(b.dataset.delPj)));
   el.querySelectorAll('[data-encerrar-pj]').forEach(b=>b.addEventListener('click', ()=>encerrarProjeto(b.dataset.encerrarPj)));
+  el.querySelectorAll('[data-print-pj]').forEach(b=>b.addEventListener('click', ()=>printProjeto(b.dataset.printPj)));
 }
 function projStatusBadge(status){
   const colors = {'Aguardando Viabilidade':'var(--blue)','Em Andamento':'var(--accent)','Concluído':'var(--green)','Encerrado':'var(--muted)','Cancelado':'var(--red)'};
@@ -2473,6 +2474,124 @@ function printDocumento(html){
     img.addEventListener('error', tentar, {once:true});
   });
   setTimeout(()=>{ if(!impresso){ impresso = true; window.print(); } }, 1500);
+}
+function printProjeto(id){
+  const pj = findProjeto(id);
+  if(!pj){ toast('Projeto não encontrado.', 'error'); return; }
+  printDocumento(buildDocProjeto(pj));
+}
+function buildDocProjeto(pj){
+  const av = projetoAvanco(pj);
+  const programacoes = DB.programacoes.filter(p=>p.projetoId===pj.id);
+  const countProg = programacoes.length;
+  const countEquipes = programacoes.reduce((s,pg)=>s+(pg.atribuicoes?.length||0),0);
+  const totalAtividades = programacoes.reduce((s,pg)=>s+pg.atribuicoes.reduce((t,a)=>t+(a.atividades?.length||0),0),0);
+  const qrUrl = location.origin + location.pathname.replace(/\/[^/]*$/,'') + '/team.html?projeto=' + pj.id;
+  const statusColors = {'Aguardando Viabilidade':'#2563eb','Em Andamento':'#f59e0b','Concluído':'#16a34a','Encerrado':'#6b7280','Cancelado':'#dc2626'};
+  const statusColor = statusColors[pj.status]||'#6b7280';
+  const diasVencimento = pj.dataVencimento ? diasEntre(todayISO(), pj.dataVencimento) : null;
+  const diasViabilidade = pj.dataRecebimentoCarteira && !pj.dataViabilizacao ? diasEntre(todayISO(), prazoViabilidadeProjeto(pj)) : null;
+  const alertaVenc = (diasVencimento!=null && diasVencimento<0) ? `VENCIDO há ${-diasVencimento} dia(s)` : (diasVencimento!=null && diasVencimento===0 ? 'Vence hoje' : (diasVencimento!=null && diasVencimento<=5 ? `Vence em ${diasVencimento} dia(s)` : ''));
+  const alertaViab = (diasViabilidade!=null && diasViabilidade<0) ? `VIABILIDADE ATRASADA ${-diasViabilidade} dia(s)` : (diasViabilidade!=null && diasViabilidade<=5 ? `Viabilizar em ${diasViabilidade} dia(s)` : '');
+  const plano = pj.planoFisico||[];
+  const rowsPlano = plano.map((x,idx)=>{
+    const at = findAtividade(x.atividadeId);
+    return `<tr><td style="text-align:center;">${idx+1}</td><td class="mono" style="font-weight:700;">${esc(at?.codigo||'?')}</td><td>${esc(at?.descricao||'')}</td><td style="text-align:center;">${esc(at?.unidade||'')}</td><td style="text-align:center;">${x.quantidade??'—'}</td></tr>`;
+  }).join('') || '<tr><td colspan="5" style="text-align:center;color:#666;padding:12px;">Nenhuma atividade no plano físico</td></tr>';
+  const rowsProg = programacoes.map(pg=>{
+    const atrCount = pg.atribuicoes?.length||0;
+    const atvCount = pg.atribuicoes.reduce((s,a)=>s+(a.atividades?.length||0),0);
+    const eqLabels = pg.atribuicoes.map(a=>equipeLabel(findEquipe(a.equipeId))).join(', ')||'—';
+    return `<tr><td>${esc(progGid(pg))}</td><td>${fmtDate(pg.dataProgramada)}</td><td>${esc(pg.ciclo||'—')}</td><td>${atrCount}</td><td>${atvCount}</td><td>${esc(eqLabels)}</td><td>${progStatusBadge(pg.status)}</td></tr>`;
+  }).join('') || '<tr><td colspan="7" style="text-align:center;color:#666;padding:12px;">Nenhuma programação vinculada</td></tr>';
+  const customFields = DB.customFields.projetos||[];
+  const customRows = customFields.map(f=>`<tr><th>${esc(f.label)}</th><td colspan="3">${esc(pj.custom?.[f.id]||'—')}</td></tr>`).join('');
+  return `
+  <div class="ps-head" style="display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:14px;">
+    <div style="border:2px solid ${statusColor};border-radius:8px;padding:12px;background:${statusColor}15;">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:${statusColor};font-weight:700;margin-bottom:6px;">STATUS DO PROJETO</div>
+      <div style="font-size:14px;font-weight:700;color:${statusColor};">${pj.status}</div>
+      ${alertaVenc? `<div style="margin-top:8px;padding:6px 8px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;font-size:11px;color:#991b1b;">${icon('alert',12)} ${alertaVenc}</div>`:''}
+      ${alertaViab? `<div style="margin-top:8px;padding:6px 8px;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;font-size:11px;color:#92400e;">${icon('alert',12)} ${alertaViab}</div>`:''}
+      <div style="margin-top:10px;border-top:1px solid ${statusColor}40;padding-top:10px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#666;margin-bottom:4px;">AÇÕES DISPONÍVEIS</div>
+        <ul style="margin:0;padding-left:16px;font-size:11px;line-height:1.8;color:#333;">
+          <li>${pj.status==='Aguardando Viabilidade'? 'Viabilizar projeto (preencha data de viabilização)' : pj.status==='Em Andamento'? 'Criar programações, acompanhar avanço' : pj.status==='Concluído'? 'Encerrar projeto' : '—'}</li>
+          <li>Imprimir / exportar PDF deste relatório</li>
+          <li>Ver programações vinculadas</li>
+          <li>${pj.status!=='Encerrado' && pj.status!=='Cancelado'? 'Editar dados do projeto' : 'Projeto finalizado'}</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <h1 style="margin:0;font-size:18px;font-weight:700;color:#000;">${esc(pj.codigo)} · ${esc(pj.nome)}</h1>
+      <div style="margin-top:4px;font-size:12px;color:#333;">${esc(pj.descricao||'')}</div>
+      <div style="display:flex;gap:24px;margin-top:10px;font-size:11px;color:#444;flex-wrap:wrap;">
+        <div><strong>Setor/Coord.:</strong> ${esc(pj.setor||'—')} / ${esc(pj.coordenacao||'—')}</div>
+        <div><strong>Cidade:</strong> ${esc(pj.cidade||'—')}</div>
+        <div><strong>Ciclo:</strong> ${esc(pj.ciclo||'—')}</div>
+        <div><strong>Período:</strong> ${fmtDate(pj.dataInicio)} → ${fmtDate(pj.dataFim||'—')}</div>
+        <div><strong>Receb. carteira:</strong> ${fmtDate(pj.dataRecebimentoCarteira)}${pj.dataViabilizacao? ` · Viabilizado: ${fmtDate(pj.dataViabilizacao)}` : ''}</div>
+        <div><strong>Vencimento:</strong> ${fmtDate(pj.dataVencimento||'—')}</div>
+        <div><strong>Orçado:</strong> ${fmtMoney(pj.valorOrcado||0)}</div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <div class="ps-qr" style="flex-shrink:0;">${qrSvgHtml(qrUrl, 3)}<div class="ps-qr-cap">Escaneie para ver detalhes</div></div>
+        <div style="font-size:10px;color:#666;max-width:280px;">Link do projeto: ${esc(qrUrl)}</div>
+      </div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px;">
+    <div class="ps-block" style="break-inside:avoid;">
+      <div class="ps-block-head">AVANÇO FÍSICO / FINANCEIRO</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div style="border:1px solid #ddd;border-radius:6px;padding:10px;background:#fafafa;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#666;margin-bottom:4px;">FÍSICO</div>
+          <div style="font-size:22px;font-weight:700;color:${av.fisicoPct>=100?'#16a34a':av.fisicoPct>=80?'#f59e0b':'#2563eb'};">${av.fisicoPct.toFixed(1)}%</div>
+          <div style="font-size:10.5px;color:#666;margin-top:2px;">${av.concluidoLinhas}/${av.totalLinhas} linhas concluídas</div>
+        </div>
+        <div style="border:1px solid #ddd;border-radius:6px;padding:10px;background:#fafafa;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#666;margin-bottom:4px;">FINANCEIRO</div>
+          <div style="font-size:22px;font-weight:700;color:${av.financeiroPct>=100?'#16a34a':av.financeiroPct>=80?'#f59e0b':'#2563eb'};">${av.financeiroPct.toFixed(1)}%</div>
+          <div style="font-size:10.5px;color:#666;margin-top:2px;">Executado: ${fmtMoney(av.financeiroExecutado)} / ${fmtMoney(pj.valorOrcado||0)}</div>
+        </div>
+      </div>
+    </div>
+    <div class="ps-block" style="break-inside:avoid;">
+      <div class="ps-block-head">RESUMO DE PROGRAMAÇÕES</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:11px;text-align:center;">
+        <div style="border:1px solid #ddd;border-radius:6px;padding:8px;background:#f0f9ff;"><div style="font-size:20px;font-weight:700;color:#2563eb;">${countProg}</div><div style="font-size:10px;color:#666;">Programações</div></div>
+        <div style="border:1px solid #ddd;border-radius:6px;padding:8px;background:#f0fdf4;"><div style="font-size:20px;font-weight:700;color:#16a34a;">${countEquipes}</div><div style="font-size:10px;color:#666;">Equipes</div></div>
+        <div style="border:1px solid #ddd;border-radius:6px;padding:8px;background:#fef3c7;"><div style="font-size:20px;font-weight:700;color:#f59e0b;">${totalAtividades}</div><div style="font-size:10px;color:#666;">Atividades</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="ps-block" style="break-inside:avoid;margin-bottom:14px;">
+    <div class="ps-block-head">PLANO FÍSICO — ATIVIDADES PREVISTAS</div>
+    <table style="width:100%;border-collapse:collapse;font-size:10.5px;">
+      <thead><tr style="background:#f4f4f4;"><th style="width:30px;border:1px solid #444;padding:4px;">#</th><th style="width:70px;border:1px solid #444;padding:4px;">Código</th><th style="border:1px solid #444;padding:4px;">Descrição</th><th style="width:50px;border:1px solid #444;padding:4px;">Unid.</th><th style="width:60px;border:1px solid #444;padding:4px;">Qtd.</th></tr></thead>
+      <tbody>${rowsPlano}</tbody>
+    </table>
+  </div>
+  ${programacoes.length? `
+  <div class="ps-block" style="break-inside:avoid;margin-bottom:14px;">
+    <div class="ps-block-head">PROGRAMAÇÕES VINCULADAS</div>
+    <table style="width:100%;border-collapse:collapse;font-size:10px;">
+      <thead><tr style="background:#f4f4f4;"><th style="border:1px solid #444;padding:4px;">GID</th><th style="border:1px solid #444;padding:4px;">Data</th><th style="border:1px solid #444;padding:4px;">Ciclo</th><th style="width:50px;border:1px solid #444;padding:4px;">Eqps</th><th style="width:50px;border:1px solid #444;padding:4px;">Atvs</th><th style="border:1px solid #444;padding:4px;">Equipes</th><th style="border:1px solid #444;padding:4px;">Status</th></tr></thead>
+      <tbody>${rowsProg}</tbody>
+    </table>
+  </div>`:''}
+  ${customRows? `
+  <div class="ps-block" style="break-inside:avoid;margin-bottom:14px;">
+    <div class="ps-block-head">CAMPOS PERSONALIZADOS</div>
+    <table style="width:100%;border-collapse:collapse;font-size:10.5px;">
+      <tbody>${customRows}</tbody>
+    </table>
+  </div>`:''}
+  <div style="margin-top:10px;font-size:10.5px;color:#000;border-top:1px solid #444;padding-top:6px;display:flex;justify-content:space-between;">
+    <div>Assinatura do responsável: <span class="ps-line" style="width:260px;"></span></div>
+    <div>Data: ____/____/____</div>
+  </div>`;
 }
 function docAtribuicaoHtml(prog, atrib){
   const pr = findProjeto(prog.projetoId);
