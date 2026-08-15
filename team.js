@@ -97,6 +97,8 @@ function toast(msg, kind){
   setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.25s'; setTimeout(()=>t.remove(),250); }, 3400);
 }
 function openModal({title, bodyHtml, onSubmit, submitLabel='Salvar'}){
+  const existing = document.getElementById('team-modal-overlay');
+  if(existing) existing.remove();
   const root = document.body;
   const modalHtml = `
     <div class="modal-overlay" id="team-modal-overlay">
@@ -109,11 +111,12 @@ function openModal({title, bodyHtml, onSubmit, submitLabel='Salvar'}){
       </div>
     </div>`;
   root.insertAdjacentHTML('beforeend', modalHtml);
-  const close = ()=>{ document.getElementById('team-modal-overlay').remove(); };
-  document.getElementById('team-modal-close').addEventListener('click', close);
-  document.getElementById('team-modal-cancel').addEventListener('click', close);
-  document.getElementById('team-modal-overlay').addEventListener('click', (e)=>{ if(e.target.id==='team-modal-overlay') close(); });
-  document.getElementById('team-modal-form').addEventListener('submit', (e)=>{ e.preventDefault(); const ok = onSubmit(new FormData(e.target)); if(ok!==false) close(); });
+  const overlay = document.getElementById('team-modal-overlay');
+  const close = ()=>{ overlay.remove(); };
+  overlay.querySelector('#team-modal-close').addEventListener('click', close);
+  overlay.querySelector('#team-modal-cancel').addEventListener('click', close);
+  overlay.addEventListener('click', (e)=>{ if(e.target===overlay) close(); });
+  overlay.querySelector('#team-modal-form').addEventListener('submit', (e)=>{ e.preventDefault(); const ok = onSubmit(new FormData(e.target)); if(ok!==false) close(); });
 }
 const ICONS = {
   plus:'<path d="M12 5v14M5 12h14"/>',
