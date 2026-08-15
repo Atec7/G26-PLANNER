@@ -27,7 +27,12 @@ function mergeData(raw){
   const merged = Object.assign(structuredClone(DEFAULT_DATA), raw);
   merged.customFields = Object.assign(structuredClone(DEFAULT_DATA.customFields), raw.customFields||{});
   merged.seq = Number(merged.seq)||1;
+  migrarGids(merged);
   return merged;
+}
+function migrarGids(db){
+  (db||DB).programacoes = (db||DB).programacoes||[];
+  (db||DB).programacoes.forEach(pg=>{ if(!pg.gid) pg.gid = novoGid(); });
 }
 let saveQueue = Promise.resolve();
 let saveTimer = null;
@@ -53,7 +58,7 @@ let ativFilters = { q:'', fav:'' };
 let equipeFilters = { q:'', status:'' };
 let projFilters = { q:'', status:'' };
 let avancoFilters = { q:'', status:'' };
-let histFilters = (()=>{ const r=monthRangeISO(); return { tipo:'', projeto:'', dataDe:r.de, dataAte:r.ate }; })();
+let histFilters = { tipo:'', projeto:'', dataDe:'', dataAte:'', ultimasHs:12 };
 let calRef = new Date();
 let CURRENT_USER = null;
 function currentAutor(){ return { usuarioNome: CURRENT_USER?.nome || 'Sistema', usuarioLogin: CURRENT_USER?.login || '' }; }
@@ -67,7 +72,7 @@ function autor(h){
 ========================================================= */
 const STATUS_PROG = ['Programado','Em Execução','Concluído','Reprogramado','Cancelado'];
 const STATUS_COLOR = { 'Programado':'var(--blue)','Em Execução':'var(--accent)','Concluído':'var(--green)','Reprogramado':'var(--purple)','Cancelado':'var(--red)' };
-const STATUS_PROJETO = ['Planejado','Em Andamento','Concluído','Cancelado'];
+const STATUS_PROJETO = ['Planejado','Em Andamento','Concluído','Encerrado','Cancelado'];
 const MOTIVOS_REPROG = [
   'Condições climáticas','Falta de material','Falta de equipamento','Indisponibilidade de equipe',
   'Prioridade emergencial (urgência)','Solicitação da concessionária / cliente','Pendência de liberação / desligamento',
@@ -96,7 +101,7 @@ const RDO_HORARIOS = [
 const MODULOS_ADMIN = [{k:'equipes',l:'Equipes'},{k:'atividades',l:'Atividades'},{k:'projetos',l:'Projetos'},{k:'programacoes',l:'Programações'}];
 const ROLES = [
   { v:'administrador', l:'Administrador', d:'Acesso total ao sistema' },
-  { v:'supervisor', l:'Supervisor', d:'Programa, edita e acompanha execução' },
+  { v:'supervisor', l:'Programador', d:'Programa, edita e acompanha execução' },
   { v:'operador', l:'Operador', d:'Somente leitura (visualização)' }
 ];
 const NIVEIS_ACESSO = [
@@ -143,6 +148,7 @@ const ICONS = {
   download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>',
   print:'<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
   whatsapp:'<path d="M21.11 4.88A11.47 11.47 0 0 0 12 2a11.5 11.5 0 0 0-8.14 19.5L2 22l2.6-1.82A11.47 11.47 0 0 0 12 23.5a11.5 11.5 0 0 0 8.14-19.62Z"/><path d="M8.6 8.9c.3-.1.6-.1.8.2l.9 1.4c.1.3.1.6-.1.8l-.5.6c.2.6.7 1.4 1.5 2.1.9.8 1.7 1.1 2.3 1.3l.6-.5c.2-.2.5-.3.8-.1l1.4.9c.3.2.4.5.2.8-.3.6-1 1.1-1.6 1.1-1.4 0-3.6-.8-5.8-3-2.3-2.3-3-4.5-3-5.9.1-.7.6-1.4 1.4-1.7Z"/>',
+  hash:'<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
 };
 function icon(name,size=16){ return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`; }
 
@@ -287,7 +293,7 @@ function statusBadge(status, pending){
   return `<span class="badge ${pending?'blink-red':''}" style="color:${pending?'var(--red)':c};background:${bgFromVar(pending?'var(--red)':c)}"><span class="badge-dot"></span>${status}</span>`;
 }
 function atividadesResumo(atividadesArr){
-  return atividadesArr.map(a=>{ const at=findAtividade(a.atividadeId); return `${esc(at?.codigo||'?')} ×${a.quantidadePrevista??'—'}`; }).join(', ');
+  return atividadesArr.map(a=>{ const at=findAtividade(a.atividadeId); return `${esc(at?.codigo||'?')} · ${esc(at?.descricao||'')} ×${a.quantidadePrevista??'—'}`; }).join(', ');
 }
 
 /* --- Exportação Excel (CSV) --- */
@@ -313,7 +319,7 @@ function exportAtividadesCSV(){
 function exportProjetosCSV(){
   exportCSV('projetos.csv',
     ['Código','Nome','Início','Fim','Receb. carteira','Vencimento','Viabilização','Setor','Coordenação','Ciclo','Status','Orçado (R$)','Executado (R$)','Restante (R$)','% Físico','% Financeiro','Atividades concluídas','Atividades totais'],
-    DB.projetos.map(p=>{
+    projetosVisiveis().map(p=>{
       const av = projetoAvanco(p);
       return [p.codigo, p.nome, fmtDate(p.dataInicio), fmtDate(p.dataFim), fmtDate(p.dataRecebimentoCarteira), fmtDate(p.dataVencimento), fmtDate(p.dataViabilizacao), p.setor||'', p.coordenacao||'', p.ciclo||'', p.status, fmtMoney(av.valorOrcado), fmtMoney(av.valorExecutado), fmtMoney(av.restante), av.fisicoPct.toFixed(1)+'%', av.financeiroPct.toFixed(1)+'%', av.concluidoLinhas, av.totalLinhas];
     }));
@@ -321,7 +327,7 @@ function exportProjetosCSV(){
 function exportAlertasCSV(){
   const hoje = todayISO();
   const rows = [];
-  DB.projetos.forEach(p=>{
+  projetosVisiveis().forEach(p=>{
     if(['Concluído','Cancelado'].includes(p.status)) return;
     if(p.dataVencimento){
       const dias = diasEntre(hoje, p.dataVencimento);
@@ -352,7 +358,7 @@ function exportProgramacoesCSV(){
 function exportAvancoCSV(){
   exportCSV('avanco.csv',
     ['Código','Projeto','Status','Orçado (R$)','Executado (R$)','Restante (R$)','% Físico','% Financeiro','Concluídas','Total'],
-    DB.projetos.map(p=>{
+    projetosVisiveis().map(p=>{
       const av = projetoAvanco(p);
       return [p.codigo, p.nome, p.status, fmtMoney(av.valorOrcado), fmtMoney(av.valorExecutado), fmtMoney(av.restante), av.fisicoPct.toFixed(1)+'%', av.financeiroPct.toFixed(1)+'%', av.concluidoLinhas, av.totalLinhas];
     }));
@@ -440,7 +446,8 @@ function openImportAtividadesModal(){
 ========================================================= */
 function flatAtribuicoes(){
   const out=[];
-  DB.programacoes.forEach(pg=> (pg.atribuicoes||[]).forEach(at=> out.push({ programacao: pg, atribuicao: at })));
+  const vis = projetosVisiveis().map(p=>p.id);
+  DB.programacoes.forEach(pg=>{ if(vis.includes(pg.projetoId)) (pg.atribuicoes||[]).forEach(at=> out.push({ programacao: pg, atribuicao: at })); });
   return out;
 }
 function pendingList(){
@@ -448,10 +455,12 @@ function pendingList(){
 }
 function alertaCount(){
   const hoje = todayISO();
-  const vencidos = DB.projetos.filter(p=> p.dataVencimento && !['Concluído','Cancelado'].includes(p.status) && p.dataVencimento < hoje).length;
-  const viabAtraso = DB.projetos.filter(p=> p.dataRecebimentoCarteira && !p.dataViabilizacao && prazoViabilidadeProjeto(p) < hoje).length;
+  const ps = projetosVisiveis();
+  const vencidos = ps.filter(p=> p.dataVencimento && !['Concluído','Cancelado'].includes(p.status) && p.dataVencimento < hoje).length;
+  const viabAtraso = ps.filter(p=> p.dataRecebimentoCarteira && !p.dataViabilizacao && prazoViabilidadeProjeto(p) < hoje).length;
   const reprog = flatAtribuicoes().filter(x=>x.atribuicao.status==='Reprogramado').length;
-  return vencidos + viabAtraso + reprog;
+  const cem = ps.filter(p=> !['Encerrado','Cancelado'].includes(p.status) && (projetoAvanco(p).fisicoPct>=100 || projetoAvanco(p).financeiroPct>=100)).length;
+  return vencidos + viabAtraso + reprog + cem;
 }
 function teamEdits(atrib){ return (atrib?.historico||[]).filter(h=>h.tipo==='equipe'); }
 function lastTeamEdit(atrib){ const l=teamEdits(atrib); return l[l.length-1]||null; }
@@ -486,7 +495,7 @@ function parseCustomFieldsFromForm(moduleKey, fd){
 /* =========================================================
    MODAL GENÉRICO
 ========================================================= */
-function openModal({title, bodyHtml, onMount, onSubmit, submitLabel='Salvar', wide=false}){
+function openModal({title, bodyHtml, onMount, onSubmit, submitLabel='Salvar', wide=false, footerBtns=[]}){
   const root = document.getElementById('modal-root');
   root.innerHTML = `
     <div class="modal-overlay" id="modal-overlay">
@@ -494,7 +503,7 @@ function openModal({title, bodyHtml, onMount, onSubmit, submitLabel='Salvar', wi
         <div class="modal-head"><h3>${title}</h3><button class="icon-btn" id="modal-close">${icon('close')}</button></div>
         <form id="modal-form">
           <div class="modal-body">${bodyHtml}</div>
-          <div class="modal-foot"><button type="button" class="btn btn-ghost" id="modal-cancel">Cancelar</button><button type="submit" class="btn btn-primary">${submitLabel}</button></div>
+          <div class="modal-foot">${footerBtns.map((b,i)=>`<button type="button" class="${b.cls||'btn btn-ghost'}" id="modal-btn-${i}">${b.label}</button>`).join('')}<button type="button" class="btn btn-ghost" id="modal-cancel">Cancelar</button><button type="submit" class="btn btn-primary">${submitLabel}</button></div>
         </form>
       </div>
     </div>`;
@@ -503,6 +512,7 @@ function openModal({title, bodyHtml, onMount, onSubmit, submitLabel='Salvar', wi
   document.getElementById('modal-cancel').addEventListener('click', close);
   document.getElementById('modal-overlay').addEventListener('click', (e)=>{ if(e.target.id==='modal-overlay') close(); });
   document.getElementById('modal-form').addEventListener('submit', (e)=>{ e.preventDefault(); const ok = onSubmit(new FormData(e.target), e.target); if(ok!==false) close(); });
+  footerBtns.forEach((b,i)=>{ const el=document.getElementById('modal-btn-'+i); if(el) el.addEventListener('click', ()=> b.onClick(el)); });
   if(onMount) onMount(root);
 }
 
@@ -643,12 +653,13 @@ function renderDashboard(){
   const cicloAtivo = progFilters.ciclo || cicloPadrao();
   const flat = flatPorCicloPadrao();
   const equipesAtivas = DB.equipes.filter(e=>e.ativo).length;
-  const projetosAndamento = DB.projetos.filter(p=>p.status==='Em Andamento').length;
+  const ps = projetosVisiveis();
+  const projetosAndamento = ps.filter(p=>p.status==='Em Andamento').length;
   const progHoje = flat.filter(x=> x.atribuicao.dataProgramada===hoje && x.atribuicao.status!=='Cancelado').length;
   const atrasadas = flat.filter(x=> isLate(x.atribuicao)).length;
   const concluidas = flat.filter(x=> x.atribuicao.status==='Concluído').length;
-  const valorOrcadoTotal = DB.projetos.reduce((s,p)=> s + (p.valorOrcado||0), 0);
-  const valorExecutadoTotal = DB.projetos.reduce((s,p)=> s + projetoAvanco(p).valorExecutado, 0);
+  const valorOrcadoTotal = ps.reduce((s,p)=> s + (p.valorOrcado||0), 0);
+  const valorExecutadoTotal = ps.reduce((s,p)=> s + projetoAvanco(p).valorExecutado, 0);
 
   const proximas = flat.filter(x=>!['Concluído','Cancelado'].includes(x.atribuicao.status))
     .sort((a,b)=> a.atribuicao.dataProgramada.localeCompare(b.atribuicao.dataProgramada)).slice(0,7);
@@ -661,7 +672,7 @@ function renderDashboard(){
     </div>
     <div class="grid-stats">
       <div class="stat-card clickable" data-go="equipes" style="--accent-c:var(--blue)"><div class="lbl">Equipes ativas</div><div class="val">${equipesAtivas}<small> / ${DB.equipes.length}</small></div></div>
-      <div class="stat-card clickable" data-go="projetos" style="--accent-c:var(--teal)"><div class="lbl">Projetos em andamento</div><div class="val">${projetosAndamento}<small> / ${DB.projetos.length}</small></div></div>
+      <div class="stat-card clickable" data-go="projetos" style="--accent-c:var(--teal)"><div class="lbl">Projetos em andamento</div><div class="val">${projetosAndamento}<small> / ${ps.length}</small></div></div>
       <div class="stat-card clickable" data-go="hoje" style="--accent-c:var(--accent)"><div class="lbl">Programado p/ hoje</div><div class="val">${progHoje}</div></div>
       <div class="stat-card clickable" data-go="vencidas" style="--accent-c:var(--red)"><div class="lbl">Vencidas (aguardando confirmação)</div><div class="val">${atrasadas}</div></div>
       <div class="stat-card clickable" data-go="concluidas" style="--accent-c:var(--green)"><div class="lbl">Programações concluídas</div><div class="val">${concluidas}</div></div>
@@ -712,8 +723,9 @@ function renderAlertas(){
   const el = document.getElementById('content');
   const hoje = todayISO();
   const ativos = p=> !['Concluído','Cancelado'].includes(p.status);
+  const ps = projetosVisiveis();
 
-  const projetosVencendo = DB.projetos.filter(p=> p.dataVencimento && ativos(p) && p.dataVencimento <= shiftISO(hoje, ALERT_VENCER_DIAS))
+  const projetosVencendo = ps.filter(p=> p.dataVencimento && ativos(p) && p.dataVencimento <= shiftISO(hoje, ALERT_VENCER_DIAS))
     .map(p=>({ p, dias: diasEntre(hoje, p.dataVencimento) }))
     .sort((a,b)=> a.p.dataVencimento.localeCompare(b.p.dataVencimento));
   const vencidos = projetosVencendo.filter(x=>x.dias<0);
@@ -721,25 +733,50 @@ function renderAlertas(){
 
   const reprog = flatAtribuicoes().filter(x=>x.atribuicao.status==='Reprogramado');
 
-  const viabilidade = DB.projetos.filter(p=> p.dataRecebimentoCarteira && ativos(p)).map(p=>{
+  const viabilidade = ps.filter(p=> p.dataRecebimentoCarteira && ativos(p)).map(p=>{
     const prazo = prazoViabilidadeProjeto(p);
     return { p, prazo, viabilizado: !!p.dataViabilizacao, dias: diasEntre(hoje, prazo) };
   }).sort((a,b)=> a.prazo.localeCompare(b.prazo));
   const viabVencidos = viabilidade.filter(x=>!x.viabilizado && x.dias<0);
 
+  const proj100 = ps.filter(p=> !['Encerrado','Cancelado'].includes(p.status)).map(p=>({ p, av: projetoAvanco(p) }))
+    .filter(x=> x.av.fisicoPct>=100 || x.av.financeiroPct>=100);
+
   el.innerHTML = `
     <div class="grid-stats">
+      <div class="stat-card" style="--accent-c:var(--red)"><div class="lbl">Projetos em 100%</div><div class="val">${proj100.length}</div></div>
       <div class="stat-card" style="--accent-c:var(--red)"><div class="lbl">Projetos vencidos</div><div class="val">${vencidos.length}</div></div>
       <div class="stat-card" style="--accent-c:var(--accent)"><div class="lbl">Vencimento hoje</div><div class="val">${venceHoje.length}</div></div>
       <div class="stat-card" style="--accent-c:var(--purple)"><div class="lbl">Reprogramações pendentes</div><div class="val">${reprog.length}</div></div>
       <div class="stat-card" style="--accent-c:var(--red)"><div class="lbl">Viabilização em atraso</div><div class="val">${viabVencidos.length}</div></div>
     </div>
+    ${renderAlertasCemPanel(proj100)}
     ${renderAlertasProjetosPanel(projetosVencendo)}
     ${renderAlertasReprogsPanel(reprog)}
     ${renderAlertasViabilidadePanel(viabilidade)}
   `;
   el.querySelectorAll('[data-avanco-alerta]').forEach(b=>b.addEventListener('click', ()=>openAvancoDetalhe(b.dataset.avancoAlerta)));
   el.querySelectorAll('[data-edit-alerta]').forEach(b=>b.addEventListener('click', ()=>openProjetoModal(b.dataset.editAlerta)));
+  el.querySelectorAll('[data-encerrar-alerta]').forEach(b=>b.addEventListener('click', ()=>encerrarProjeto(b.dataset.encerrarAlerta)));
+}
+function renderAlertasCemPanel(list){
+  return `<div class="panel section-gap" style="border-color:var(--red);">
+    <div class="panel-head"><h3>Projetos com 100% de avanço — aguardando encerramento</h3><span style="font-size:12px;color:var(--muted);">${list.length} projeto(s)</span></div>
+    <div class="table-scroll"><table>
+      <thead><tr><th>Código</th><th>Projeto</th><th>Avanço físico</th><th>Avanço financeiro</th><th>Status</th><th></th></tr></thead>
+      <tbody>${list.length? list.map(({p,av})=>`<tr>
+        <td class="mono">${esc(p.codigo)}</td>
+        <td><strong>${esc(p.nome)}</strong><div style="color:var(--muted-2);font-size:11px;">${esc(p.cidade||'')} · ${esc(p.setor||'')}</div></td>
+        <td>${av.fisicoPct.toFixed(1)}%</td>
+        <td>${av.financeiroPct.toFixed(1)}%</td>
+        <td>${projStatusBadge(p.status)}</td>
+        <td><div class="row-actions">
+          <button class="icon-btn" title="Ver avanço" data-avanco-alerta="${p.id}">${icon('trend',14)}</button>
+          <button class="btn btn-sm btn-danger-solid" data-encerrar-alerta="${p.id}">${icon('check',13)} Encerrar projeto</button>
+        </div></td>
+      </tr>`).join('') : `<tr class="empty-row"><td colspan="6">Nenhum projeto em 100% de avanço.</td></tr>`}</tbody>
+    </table></div>
+  </div>`;
 }
 function renderAlertasProjetosPanel(list){
   return `<div class="panel section-gap">
@@ -989,11 +1026,12 @@ function renderAtividades(){
 ========================================================= */
 function renderProjetos(){
   const el = document.getElementById('content');
-  if(!DB.projetos.length){ el.innerHTML = emptyState('Nenhum projeto cadastrado', 'Cadastre projetos de construção ou manutenção para agrupar as programações.'); bindEmptyCta(el, ()=>openProjetoModal()); return; }
+  const visiveis = projetosVisiveis();
+  if(!visiveis.length){ el.innerHTML = emptyState('Nenhum projeto cadastrado', 'Cadastre projetos de construção ou manutenção para agrupar as programações.'); bindEmptyCta(el, ()=>openProjetoModal()); return; }
   const customFields = DB.customFields.projetos||[];
-  const list = DB.projetos.filter(p=>{
+  const list = visiveis.filter(p=>{
     if(projFilters.status && p.status!==projFilters.status) return false;
-    if(projFilters.q){ const t=(p.codigo+' '+(p.nome||'')+' '+(p.descricao||'')+' '+(p.ciclo||'')+' '+(p.setor||'')+' '+(p.coordenacao||'')).toLowerCase(); if(!t.includes(projFilters.q.toLowerCase())) return false; }
+    if(projFilters.q){ const t=(p.codigo+' '+(p.nome||'')+' '+(p.descricao||'')+' '+(p.ciclo||'')+' '+(p.setor||'')+' '+(p.coordenacao||'')+' '+(p.cidade||'')).toLowerCase(); if(!t.includes(projFilters.q.toLowerCase())) return false; }
     return true;
   });
   el.innerHTML = `
@@ -1002,13 +1040,16 @@ function renderProjetos(){
         <input id="f-pj-q" placeholder="Buscar projeto…" value="${esc(projFilters.q)}">
         <select id="f-pj-status"><option value="">Todos os status</option>${STATUS_PROJETO.map(s=>`<option ${projFilters.status===s?'selected':''}>${s}</option>`).join('')}</select>
       </div>
-      <span style="font-size:12px;color:var(--muted);">${list.length} de ${DB.projetos.length} projetos</span>
+      <span style="font-size:12px;color:var(--muted);">${list.length} de ${visiveis.length} projetos</span>
     </div>
     <div class="panel"><div class="table-scroll"><table>
-      <thead><tr><th>Código</th><th>Projeto</th><th>Período</th><th>Receb. carteira</th><th>Vencimento</th><th>Setor · Coordenação</th><th>Ciclo</th><th>Orçado</th><th>Avanço</th><th>Status</th><th>Programações</th>${customFields.map(f=>`<th>${esc(f.label)}</th>`).join('')}<th></th></tr></thead>
+      <thead><tr><th>Código</th><th>Projeto</th><th>Período</th><th>Receb. carteira</th><th>Vencimento</th><th>Setor · Coordenação</th><th>Cidade</th><th>Ciclo</th><th>Orçado</th><th>Avanço</th><th>Status</th><th>Programações</th>${customFields.map(f=>`<th>${esc(f.label)}</th>`).join('')}<th></th></tr></thead>
       <tbody>${list.map(p=>{
       const count = DB.programacoes.filter(x=>x.projetoId===p.id).reduce((s,pg)=>s+(pg.atribuicoes?.length||0),0);
       const av = projetoAvanco(p);
+      const aberto = !['Encerrado','Cancelado'].includes(p.status);
+      const atingiu100 = aberto && (av.fisicoPct>=100 || av.financeiroPct>=100);
+      const alerta = atingiu100? `<tr class="proj-100-alert-row"><td colspan="${13+customFields.length}"><div class="proj-100-alert">${icon('alert',14)}<span><strong>Projeto em 100% de avanço</strong> · ${av.fisicoPct.toFixed(1)}% físico · ${av.financeiroPct.toFixed(1)}% financeiro — <span class="blink-red">encerre o projeto</span> para ele deixar de aparecer nas opções de programação.</span><button class="btn btn-sm btn-danger-solid" data-encerrar-pj="${p.id}">${icon('check',13)} Encerrar projeto</button></div></td></tr>`:'';
       return `<tr>
         <td class="mono">${esc(p.codigo)}</td>
         <td><strong>${esc(p.nome)}</strong><div style="color:var(--muted-2);font-size:11.5px;margin-top:2px;">${esc(p.descricao||'')}</div></td>
@@ -1016,22 +1057,24 @@ function renderProjetos(){
         <td class="mono" style="font-size:12px;">${fmtDate(p.dataRecebimentoCarteira)}${viabilidadeAlertBadge(p)}</td>
         <td class="mono" style="font-size:12px;">${fmtDate(p.dataVencimento)}${vencimentoAlertBadge(p)}</td>
         <td style="font-size:12px;">${esc(p.setor||'—')}<div style="color:var(--muted-2);font-size:11px;">${esc(p.coordenacao||'—')}</div></td>
+        <td style="font-size:12px;">${esc(p.cidade||'—')}</td>
         <td><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${esc(p.ciclo||'—')}</span></td>
         <td class="mono">${fmtMoney(p.valorOrcado||0)}</td>
         <td style="min-width:130px;">${progBarHtml(av.fisicoPct,{thin:true})}<div style="font-size:10.5px;color:var(--muted);margin-top:3px;">${av.fisicoPct.toFixed(1)}% · ${av.concluidoLinhas}/${av.totalLinhas}</div></td>
         <td>${projStatusBadge(p.status)}</td><td>${count}</td>
         ${customFields.map(f=>`<td>${esc(p.custom?.[f.id]||'—')}</td>`).join('')}
         <td><div class="row-actions"><button class="icon-btn" title="Ver avanço" data-avanco-detalhe="${p.id}">${icon('trend',14)}</button><button class="icon-btn" data-edit-pj="${p.id}">${icon('edit',14)}</button><button class="icon-btn" data-del-pj="${p.id}">${icon('trash',14)}</button></div></td>
-      </tr>`;
-    }).join('') || `<tr class="empty-row"><td colspan="${12+customFields.length}">Nenhum projeto encontrado com os filtros.</td></tr>`}</tbody></table></div></div>`;
+      </tr>${alerta}`;
+    }).join('') || `<tr class="empty-row"><td colspan="${13+customFields.length}">Nenhum projeto encontrado com os filtros.</td></tr>`}</tbody></table></div></div>`;
   document.getElementById('f-pj-q').addEventListener('input', e=>{ projFilters.q=e.target.value; renderContent(); });
   document.getElementById('f-pj-status').addEventListener('change', e=>{ projFilters.status=e.target.value; renderContent(); });
   el.querySelectorAll('[data-avanco-detalhe]').forEach(b=>b.addEventListener('click', ()=>openAvancoDetalhe(b.dataset.avancoDetalhe)));
   el.querySelectorAll('[data-edit-pj]').forEach(b=>b.addEventListener('click', ()=>openProjetoModal(b.dataset.editPj)));
   el.querySelectorAll('[data-del-pj]').forEach(b=>b.addEventListener('click', ()=>deleteProjeto(b.dataset.delPj)));
+  el.querySelectorAll('[data-encerrar-pj]').forEach(b=>b.addEventListener('click', ()=>encerrarProjeto(b.dataset.encerrarPj)));
 }
 function projStatusBadge(status){
-  const colors = {'Planejado':'var(--blue)','Em Andamento':'var(--accent)','Concluído':'var(--green)','Cancelado':'var(--red)'};
+  const colors = {'Planejado':'var(--blue)','Em Andamento':'var(--accent)','Concluído':'var(--green)','Encerrado':'var(--muted)','Cancelado':'var(--red)'};
   const c = colors[status]||'var(--muted)';
   return `<span class="badge" style="color:${c};background:${bgFromVar(c)}"><span class="badge-dot"></span>${status}</span>`;
 }
@@ -1071,10 +1114,13 @@ function viabilidadeAlertBadge(p){
     </div>
     <div class="field"><label>Data de viabilização</label><input type="date" name="dataViabilizacao" value="${pj?.dataViabilizacao||''}"><div class="field-hint">Informe a data quando o projeto for viabilizado. Enquanto vazio, o alerta de viabilidade permanece até o prazo de 20 dias corridos após o recebimento da carteira.</div></div>
     <div class="field-row">
-      <div class="field"><label>Setor <span class="req">*</span></label><select name="setor" required><option value="">Selecione…</option><option ${pj?.setor==='MANUTENÇÃO'?'selected':''}>MANUTENÇÃO</option><option ${pj?.setor==='OBRAS'?'selected':''}>OBRAS</option></select></div>
-      <div class="field"><label>Coordenação <span class="req">*</span></label><select name="coordenacao" required><option value="">Selecione…</option><option ${pj?.coordenacao==='RIO VERDE'?'selected':''}>RIO VERDE</option><option ${pj?.coordenacao==='QUIRINOPOLIS'?'selected':''}>QUIRINOPOLIS</option></select></div>
+      <div class="field"><label>Setor <span class="req">*</span></label><select name="setor" required><option value="">Selecione…</option><option ${pj?.setor==='MANUTENÇÃO'||(usuarioRestrito()&&CURRENT_USER.setor==='MANUTENÇÃO')?'selected':''}>MANUTENÇÃO</option><option ${pj?.setor==='OBRAS'||(usuarioRestrito()&&CURRENT_USER.setor==='OBRAS')?'selected':''}>OBRAS</option></select></div>
+      <div class="field"><label>Coordenação <span class="req">*</span></label><select name="coordenacao" required><option value="">Selecione…</option><option ${pj?.coordenacao==='RIO VERDE'||(usuarioRestrito()&&CURRENT_USER.coordenacao==='RIO VERDE')?'selected':''}>RIO VERDE</option><option ${pj?.coordenacao==='QUIRINOPOLIS'||(usuarioRestrito()&&CURRENT_USER.coordenacao==='QUIRINOPOLIS')?'selected':''}>QUIRINOPOLIS</option></select></div>
     </div>
-    <div class="field"><label>Valor orçado (R$)</label><input type="number" step="0.01" min="0" name="valorOrcado" value="${pj?.valorOrcado??''}" placeholder="0,00"><div class="field-hint">O avanço financeiro é calculado conforme as atividades concluídas pelas equipes.</div></div>
+    <div class="field-row">
+      <div class="field"><label>Cidade</label><input type="text" name="cidade" value="${esc(pj?.cidade||'')}" placeholder="Ex: Rio Verde"><div class="field-hint">Município de referência do projeto (usado na localização dos relatórios).</div></div>
+      <div class="field"><label>Valor orçado (R$)</label><input type="number" step="0.01" min="0" name="valorOrcado" value="${pj?.valorOrcado??''}" placeholder="0,00"><div class="field-hint">O avanço financeiro é calculado conforme as atividades concluídas pelas equipes.</div></div>
+    </div>
     <div class="field"><label>Ciclo recebido carteira <span class="req">*</span></label><input type="text" name="ciclo" class="ciclo-input" required maxlength="13" value="${esc(pj?.ciclo||'')}" placeholder="CICLO-XX/XXXX"><div class="field-hint">Digite apenas o mês e o ano (ex.: 01/2026). O prefixo "CICLO-" é automático.</div></div>
     <div class="field">
       <label>Plano físico — atividades e quantidades</label>
@@ -1095,7 +1141,9 @@ function viabilidadeAlertBadge(p){
       const ciclo = cicloMask(fd.get('ciclo'));
       if(!isCicloValido(ciclo)){ toast('Informe o ciclo recebido no formato CICLO-XX/XXXX (ex.: CICLO-01/2026).', 'error'); return false; }
       if(!fd.get('setor') || !fd.get('coordenacao')){ toast('Selecione o setor e a coordenação do projeto.', 'error'); return false; }
-      const data = { codigo: fd.get('codigo').trim(), nome: fd.get('nome').trim(), descricao: fd.get('descricao').trim(), dataInicio: fd.get('dataInicio'), dataFim: fd.get('dataFim'), dataRecebimentoCarteira: fd.get('dataRecebimentoCarteira'), dataVencimento: fd.get('dataVencimento'), dataViabilizacao: fd.get('dataViabilizacao')||'', setor: fd.get('setor'), coordenacao: fd.get('coordenacao'), status: fd.get('status'), valorOrcado: parseFloat(fd.get('valorOrcado'))||0, ciclo, planoFisico: (planoEditor? planoEditor.getData() : []).map(x=>({atividadeId:x.atividadeId, quantidade:x.quantidadePrevista})), custom: parseCustomFieldsFromForm('projetos', fd) };
+      const setor = usuarioRestrito()? CURRENT_USER.setor : fd.get('setor');
+      const coordenacao = usuarioRestrito()? CURRENT_USER.coordenacao : fd.get('coordenacao');
+      const data = { codigo: fd.get('codigo').trim(), nome: fd.get('nome').trim(), descricao: fd.get('descricao').trim(), dataInicio: fd.get('dataInicio'), dataFim: fd.get('dataFim'), dataRecebimentoCarteira: fd.get('dataRecebimentoCarteira'), dataVencimento: fd.get('dataVencimento'), dataViabilizacao: fd.get('dataViabilizacao')||'', setor, coordenacao, cidade: fd.get('cidade').trim(), status: fd.get('status'), valorOrcado: parseFloat(fd.get('valorOrcado'))||0, ciclo, planoFisico: (planoEditor? planoEditor.getData() : []).map(x=>({atividadeId:x.atividadeId, quantidade:x.quantidadePrevista})), custom: parseCustomFieldsFromForm('projetos', fd) };
       if(pj){ Object.assign(pj, data); toast('Projeto atualizado.'); } else { data.id = nextId(); DB.projetos.push(data); toast('Projeto cadastrado.'); }
       saveData(); renderContent();
     }
@@ -1130,6 +1178,15 @@ function openPlanoFisicoModal(pjId){
   if(inUse){ toast('Projeto possui programações vinculadas. Não é possível excluir.', 'error'); return; }
   if(!confirm('Excluir este projeto?')) return;
   DB.projetos = DB.projetos.filter(p=>p.id!==id); saveData(); renderContent(); toast('Projeto excluído.');
+}
+function encerrarProjeto(id){
+  if(!requerEscrita()) return;
+  id = Number(id);
+  const pj = findProjeto(id); if(!pj) return;
+  if(!confirm('Encerrar o projeto '+pj.codigo+' — '+pj.nome+'?\n\nApós encerrado, o projeto não aparecerá mais nas opções de novas programações.')) return;
+  pj.status = 'Encerrado';
+  pj.dataEncerrado = todayISO();
+  saveData(); renderContent(); toast('Projeto encerrado.');
 }
 
 /* =========================================================
@@ -1183,12 +1240,13 @@ function progBarHtml(pct, opts={}){
   return `<div class="progbar ${opts.thin?'thin':''}"><div style="width:${p}%;background:${color};"></div></div>`;
 }
 function renderProjetosProgressPanel(){
-  if(!DB.projetos.length) return '';
+  const visiveis = projetosVisiveis();
+  if(!visiveis.length) return '';
   return `<div class="panel section-gap">
     <div class="panel-head"><h3>Avanço dos projetos</h3><button class="btn btn-sm btn-ghost" id="go-avanco">Ver módulo →</button></div>
     <div class="table-scroll"><table>
       <thead><tr><th>Projeto</th><th>Orçado</th><th>Executado</th><th>Avanço físico</th><th>%</th></tr></thead>
-      <tbody>${DB.projetos.map(p=>{
+      <tbody>${visiveis.map(p=>{
         const av = projetoAvanco(p);
         return `<tr>
           <td><strong>${esc(p.nome)}</strong><div style="color:var(--muted-2);font-size:11.5px;">${esc(p.codigo)}</div></td>
@@ -1204,8 +1262,9 @@ function renderProjetosProgressPanel(){
 
 function renderAvanco(){
   const el = document.getElementById('content');
-  if(!DB.projetos.length){ el.innerHTML = emptyState('Nenhum projeto cadastrado', 'Cadastre projetos para acompanhar o avanço físico e financeiro conforme as atividades concluídas pelas equipes.'); bindEmptyCta(el, ()=>setView('projetos')); return; }
-  const list = DB.projetos.filter(p=>{
+  const visiveis = projetosVisiveis();
+  if(!visiveis.length){ el.innerHTML = emptyState('Nenhum projeto cadastrado', 'Cadastre projetos para acompanhar o avanço físico e financeiro conforme as atividades concluídas pelas equipes.'); bindEmptyCta(el, ()=>setView('projetos')); return; }
+  const list = visiveis.filter(p=>{
     if(avancoFilters.status && p.status!==avancoFilters.status) return false;
     if(avancoFilters.q){ const t=(p.codigo+' '+(p.nome||'')).toLowerCase(); if(!t.includes(avancoFilters.q.toLowerCase())) return false; }
     return true;
@@ -1216,7 +1275,7 @@ function renderAvanco(){
         <input id="f-av-q" placeholder="Buscar projeto…" value="${esc(avancoFilters.q)}">
         <select id="f-av-status"><option value="">Todos os status</option>${STATUS_PROJETO.map(s=>`<option ${avancoFilters.status===s?'selected':''}>${s}</option>`).join('')}</select>
       </div>
-      <span style="font-size:12px;color:var(--muted);">${list.length} de ${DB.projetos.length} projetos</span>
+      <span style="font-size:12px;color:var(--muted);">${list.length} de ${visiveis.length} projetos</span>
     </div>
     <div style="display:flex;flex-direction:column;gap:18px;">${list.length? list.map(avancoCard).join('') : `<div class="panel"><div class="empty-state">${icon('empty',34)}<p>Nenhum projeto encontrado com os filtros.</p></div></div>`}</div>`;
   document.getElementById('f-av-q').addEventListener('input', e=>{ avancoFilters.q=e.target.value; renderContent(); });
@@ -1346,7 +1405,7 @@ function flatPorCicloPadrao(){
 }
 function renderProgramacoes(){
   const el = document.getElementById('content');
-  if(!DB.projetos.length || !DB.atividades.length || !DB.equipes.length){
+  if(!projetosVisiveis().length || !DB.atividades.length || !DB.equipes.length){
     el.innerHTML = emptyState('Cadastre projetos, atividades e equipes primeiro', 'Uma programação vincula um projeto, uma ou mais equipes (cada uma com suas atividades e quantidades) a uma data.');
     return;
   }
@@ -1354,7 +1413,7 @@ function renderProgramacoes(){
   el.innerHTML = `
     <div class="panel-head" style="padding:0;margin-bottom:16px;border:none;">
       <div class="filters">
-        <select id="f-projeto"><option value="">Todos os projetos</option>${DB.projetos.map(p=>`<option value="${p.id}" ${progFilters.projeto==String(p.id)?'selected':''}>${esc(p.codigo)} · ${esc(p.nome)}</option>`).join('')}</select>
+        <select id="f-projeto"><option value="">Todos os projetos</option>${projetosVisiveis().map(p=>`<option value="${p.id}" ${progFilters.projeto==String(p.id)?'selected':''}>${esc(p.codigo)} · ${esc(p.nome)}</option>`).join('')}</select>
         <select id="f-equipe"><option value="">Todas as equipes</option>${DB.equipes.map(e=>`<option value="${e.id}" ${progFilters.equipe==String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' — '+esc(e.encarregado):''}</option>`).join('')}</select>
         <select id="f-status"><option value="">Todos os status</option>${STATUS_PROG.map(s=>`<option ${progFilters.status===s?'selected':''}>${s}</option>`).join('')}</select>
         <select id="f-ciclo"><option value="">Todos os ciclos</option>${ciclosUnicos().map(c=>`<option ${progFilters.ciclo===c?'selected':''}>${c}</option>`).join('')}</select>
@@ -1385,7 +1444,7 @@ function renderProgramacoes(){
   if(progFilters.modo==='calendario'){ renderProgCalendarioInto(area, list); return; }
   if(!list.length){
     if(progFilters.ciclo){ progFilters.ciclo=''; renderProgramacoes(); return; }
-    area.innerHTML = DB.programacoes.length
+    area.innerHTML = programacoesVisiveis().length
       ? emptyState('Nenhuma programação encontrada', 'Ajuste os filtros para ver as programações.')
       : emptyState('Nenhuma programação cadastrada', 'Clique em "Nova programação" para criar a primeira.');
     return;
@@ -1395,12 +1454,13 @@ function renderProgramacoes(){
 
 function renderProgListaInto(area, list){
   area.innerHTML = `<div class="panel"><div class="table-scroll"><table>
-    <thead><tr><th>Data</th><th>Projeto</th><th>Ciclo</th><th>Equipe</th><th>Equipe comp.</th><th>Atividades</th><th>Valor prev.</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>ID</th><th>Data</th><th>Projeto</th><th>Ciclo</th><th>Equipe</th><th>Equipe comp.</th><th>Atividades</th><th>Valor prev.</th><th>Status</th><th></th></tr></thead>
     <tbody>${list.map(x=>{
       const p=x.atribuicao, pr=findProjeto(x.programacao.projetoId), eq=findEquipe(p.equipeId), late=isLate(p);
       const valPrev = p.atividades.reduce((s,a)=> s + (a.quantidadePrevista||0)*(findAtividade(a.atividadeId)?.valorUnitario||0), 0);
       const metaWarn = metaWarningHtml(p);
       return `<tr>
+        <td class="mono" style="white-space:nowrap;">${progGid(x.programacao)}</td>
         <td class="mono">${fmtDate(p.dataProgramada)} ${late?`<div class="blink-red" style="font-size:10.5px;">VENCIDA</div>`:''}</td>
         <td>${esc(pr?.nome||'—')}<div style="color:var(--muted-2);font-size:11px;">${esc(pr?.setor||'')} · ${esc(pr?.coordenacao||'')}</div></td>
         <td><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);font-size:10.5px;">${esc(x.programacao.ciclo||'—')}</span></td>
@@ -1451,7 +1511,7 @@ function renderProgFluxoInto(area, list){
           <div class="kc-code ${late?'blink-red':''}">${late?'VENCIDA · ':''}${equipeLabel(eq)}</div>
           <div class="kc-title">${esc(atividadesResumo(p.atividades))}</div>
           <div class="kc-meta"><span>${esc(pr?.nome||'—')}<span style="color:var(--muted-2);"> · ${esc(pr?.setor||'')} · ${esc(pr?.coordenacao||'')}</span></span><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);font-size:10px;">${esc(x.programacao.ciclo||'')}</span></div>
-          <div class="kc-meta"><span>${fmtDate(p.dataProgramada)}</span><span class="mono" style="color:var(--muted);">${p.atividades.length} ativ. · ${fmtMoney(valPrev)}</span></div>
+          <div class="kc-meta"><span>${fmtDate(p.dataProgramada)}</span><span class="mono" style="color:var(--accent);">${progGid(x.programacao)}</span><span class="mono" style="color:var(--muted);">${p.atividades.length} ativ. · ${fmtMoney(valPrev)}</span></div>
           ${metaWarn? `<div class="kc-meta" style="justify-content:flex-start;">${metaWarn}</div>`:''}
           ${teamBadgeHtml(p)? `<div class="kc-meta" style="justify-content:flex-start;">${teamBadgeHtml(p)}</div>`:''}
         </div>`;
@@ -1596,7 +1656,7 @@ function renderDayList(dayList){
     const valPrev = p.atividades.reduce((s,a)=> s + (a.quantidadePrevista||0)*(findAtividade(a.atividadeId)?.valorUnitario||0), 0);
     return `<div class="panel">
       <div class="panel-head">
-        <div><h3>${esc(pr?.nome||'—')}</h3><div class="admin-field-meta">${esc(pr?.codigo||'')} · ${esc(x.programacao.ciclo||'')} · ${equipeLabel(eq)} · ${fmtDate(p.dataProgramada)}</div></div>
+        <div><h3>${esc(pr?.nome||'—')}</h3><div class="admin-field-meta">${progGid(x.programacao)} · ${esc(x.programacao.ciclo||'')} · ${equipeLabel(eq)} · ${fmtDate(p.dataProgramada)}</div></div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${metaWarningHtml(p)}${teamBadgeHtml(p)}${statusBadge(p.status, late)}</div>
       </div>
       <div style="padding:12px 16px;">
@@ -1645,7 +1705,7 @@ function openAtribDetalhe(atribId){
         <div style="min-width:0;">
           <div class="dtl-code">${esc(pr?.codigo||'—')} · ${esc(pr?.setor||'')} · ${esc(pr?.coordenacao||'')}</div>
           <div class="dtl-title">${esc(pr?.nome||'—')}</div>
-          <div class="dtl-meta"><span>${icon('calendar',12)} Ciclo ${esc(programacao.ciclo||'—')}</span><span>${icon('trend',12)} Orçado ${fmtMoney(pr?.valorOrcado||0)}</span><span>${icon('star',12)} Avanço físico ${av.fisicoPct.toFixed(1)}%</span></div>
+          <div class="dtl-meta"><span>${icon('hash',12)} ${progGid(programacao)}</span><span>${icon('calendar',12)} Ciclo ${esc(programacao.ciclo||'—')}</span><span>${icon('trend',12)} Orçado ${fmtMoney(pr?.valorOrcado||0)}</span><span>${icon('star',12)} Avanço físico ${av.fisicoPct.toFixed(1)}%</span></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">${projStatusBadge(pr?.status)}${teamBadgeHtml(atrib)}</div>
       </div>
@@ -1738,7 +1798,7 @@ function openAtribDetalhe(atribId){
   function renderAtribsHtml(){ return atribs.map((a,i)=> atribBlockHtml(a,i)).join(''); }
 
   const baseFieldsHtml = `
-    <div class="field"><label>Projeto <span class="req">*</span></label><select name="projetoId" id="pg-projeto" required>${DB.projetos.map(pr=>`<option value="${pr.id}" ${pg?.projetoId===pr.id?'selected':''}>${esc(pr.codigo)} · ${esc(pr.nome)}</option>`).join('')}</select></div>
+    <div class="field"><label>Projeto <span class="req">*</span></label><select name="projetoId" id="pg-projeto" required>${projetosVisiveis().filter(p=>p.status!=='Encerrado').map(pr=>`<option value="${pr.id}" ${pg?.projetoId===pr.id?'selected':''}>${esc(pr.codigo)} · ${esc(pr.nome)}</option>`).join('')}</select></div>
     <div class="field-row">
       <div class="field"><label>Setor</label><input type="text" id="pg-setor" disabled value=""><div class="field-hint">Preenchido automaticamente do projeto.</div></div>
       <div class="field"><label>Coordenação</label><input type="text" id="pg-coord" disabled value=""><div class="field-hint">Preenchido automaticamente do projeto.</div></div>
@@ -1798,7 +1858,7 @@ function openAtribDetalhe(atribId){
         });
         toast('Programação atualizada.');
       } else {
-        const novaProg = { id: nextId(), projetoId, dataProgramada: dataBase, ciclo, observacoes, custom,
+        const novaProg = { id: nextId(), gid: novoGid(), projetoId, dataProgramada: dataBase, ciclo, observacoes, custom,
           atribuicoes: atribs.map(a=> ({ id: nextId(), equipeId:Number(a.equipeId), dataProgramada: dataBase, status:'Programado',
             atividades: a.atividades.map(x=>({atividadeId:Number(x.atividadeId), quantidadePrevista:x.quantidadePrevista?parseFloat(x.quantidadePrevista):null, quantidadeExecutada:null})),
             historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Programação criada'}] })) };
@@ -1864,6 +1924,7 @@ function buildWhatsMessage(prog, atrib){
   return [
     `*G26 PLANNER · Programação de Redes Elétricas*`,
     ``,
+    `*Programação:* ${progGid(prog)}`,
     `*Projeto:* ${pr?.nome||'—'} (${pr?.codigo||''})`,
     `*Setor:* ${pr?.setor||'—'}  ·  *Coordenação:* ${pr?.coordenacao||'—'}`,
     `*Data:* ${fmtDate(atrib.dataProgramada)}  ·  *Ciclo:* ${prog.ciclo||'—'}`,
@@ -1933,7 +1994,7 @@ function docAtribuicaoHtml(prog, atrib){
   return `
   <div class="ps-block">
     <div class="ps-block-head">
-      <div>${esc(pr?.nome||'Projeto')} (${esc(pr?.codigo||'')}) — ${equipeLabel(eq)} — ${fmtDate(atrib.dataProgramada)}</div>
+      <div>${progGid(prog)} — ${esc(pr?.nome||'Projeto')} (${esc(pr?.codigo||'')}) — ${equipeLabel(eq)} — ${fmtDate(atrib.dataProgramada)}</div>
       <div class="ps-qr">${qrSvgHtml(qrUrl, 3)}<div class="ps-qr-cap">Escaneie para alterar as atividades</div></div>
     </div>
     <table class="ps-info">
@@ -1957,6 +2018,7 @@ function buildDocProgramacao(prog){
       <div style="text-align:right;"><div style="font-size:14px;font-weight:700;">${fmtDate(prog.dataProgramada)}</div><div class="ps-sub">Emissão: ${fmtDateTime(Date.now())}</div></div>
     </div>
     <table class="ps-info">
+      <tr><th>Programação</th><td><strong>${progGid(prog)}</strong></td><th>Emissão</th><td>${fmtDateTime(Date.now())}</td></tr>
       <tr><th>Projeto</th><td colspan="3"><strong>${esc(pr?.nome||'—')}</strong> (${esc(pr?.codigo||'')})</td></tr>
       <tr><th>Setor</th><td>${esc(pr?.setor||'—')}</td><th>Coordenação</th><td>${esc(pr?.coordenacao||'—')}</td></tr>
       <tr><th>Ciclo</th><td>${esc(prog.ciclo||'—')}</td><th>Valor orçado</th><td>${fmtMoney(pr?.valorOrcado||0)}</td></tr>
@@ -2009,33 +2071,41 @@ function globalHistorico(){
 const HIST_TIPOS = [{v:'',l:'Todos os eventos'},{v:'criacao',l:'Criação'},{v:'status',l:'Mudança de status'},{v:'reprogramacao',l:'Reprogramação'},{v:'confirmacao',l:'Confirmação de execução'},{v:'equipe',l:'Alteração da equipe'}];
 function renderHistorico(){
   const el = document.getElementById('content');
+  const minTs = histFilters.dataDe? new Date(histFilters.dataDe+'T00:00:00').getTime() : (histFilters.ultimasHs? Date.now()-histFilters.ultimasHs*3600e3 : -Infinity);
+  const maxTs = histFilters.dataAte? new Date(histFilters.dataAte+'T23:59:59').getTime() : Infinity;
   const events = globalHistorico().filter(h=>{
     if(histFilters.tipo && h.tipo!==histFilters.tipo) return false;
     if(histFilters.projeto && String(h.projetoId)!==histFilters.projeto) return false;
-    if(histFilters.dataDe && h.ts < new Date(histFilters.dataDe+'T00:00:00').getTime()) return false;
-    if(histFilters.dataAte && h.ts > new Date(histFilters.dataAte+'T23:59:59').getTime()) return false;
+    if(h.ts < minTs || h.ts > maxTs) return false;
     return true;
   });
+  const janela = histFilters.ultimasHs? `últimas ${histFilters.ultimasHs}h` : (histFilters.dataDe||histFilters.dataAte? `de ${histFilters.dataDe||'…'} a ${histFilters.dataAte||'…'}` : 'tudo');
   el.innerHTML = `
     <div class="panel-head" style="padding:0;margin-bottom:16px;border:none;">
       <div class="filters">
         <select id="f-h-tipo">${HIST_TIPOS.map(t=>`<option value="${t.v}" ${histFilters.tipo===t.v?'selected':''}>${t.l}</option>`).join('')}</select>
-        <select id="f-h-projeto"><option value="">Todos os projetos</option>${DB.projetos.map(p=>`<option value="${p.id}" ${histFilters.projeto==String(p.id)?'selected':''}>${esc(p.nome)}</option>`).join('')}</select>
+        <select id="f-h-projeto"><option value="">Todos os projetos</option>${projetosVisiveis().map(p=>`<option value="${p.id}" ${histFilters.projeto==String(p.id)?'selected':''}>${esc(p.nome)}</option>`).join('')}</select>
         <input type="date" id="f-h-data-de" value="${histFilters.dataDe}" title="Data inicial">
         <span style="color:var(--muted);font-size:12px;">até</span>
         <input type="date" id="f-h-data-ate" value="${histFilters.dataAte}" title="Data final">
-        <button class="btn btn-sm" id="f-h-mes-atual" title="Filtrar pelo mês vigente">${icon('calendar',12)} Mês atual</button>
-        <button class="btn btn-sm btn-ghost" id="f-h-limpar-datas" title="Remover o filtro de datas">Limpar</button>
+        <button class="btn btn-sm" id="f-h-12h" title="Últimas 12 horas">12h</button>
+        <button class="btn btn-sm" id="f-h-24h" title="Últimas 24 horas">24h</button>
+        <button class="btn btn-sm" id="f-h-7d" title="Últimos 7 dias">7 dias</button>
+        <button class="btn btn-sm" id="f-h-mes-atual" title="Filtrar pelo mês vigente">Mês atual</button>
+        <button class="btn btn-sm btn-ghost" id="f-h-limpar-datas" title="Remover filtros e mostrar tudo">Tudo</button>
       </div>
-      <span style="font-size:12px;color:var(--muted);">${events.length} eventos</span>
+      <span style="font-size:12px;color:var(--muted);">${events.length} eventos · ${janela}</span>
     </div>
     ${events.length? `<div class="panel">${renderHistoricoTimeline(events, true)}</div>` : `<div class="panel"><div class="empty-state">${icon('empty',34)}<p>Nenhum evento encontrado com os filtros.</p></div></div>`}`;
   document.getElementById('f-h-tipo').addEventListener('change', e=>{ histFilters.tipo=e.target.value; renderContent(); });
   document.getElementById('f-h-projeto').addEventListener('change', e=>{ histFilters.projeto=e.target.value; renderContent(); });
-  document.getElementById('f-h-data-de').addEventListener('change', e=>{ histFilters.dataDe=e.target.value; renderContent(); });
-  document.getElementById('f-h-data-ate').addEventListener('change', e=>{ histFilters.dataAte=e.target.value; renderContent(); });
-  document.getElementById('f-h-mes-atual').addEventListener('click', ()=>{ const r=monthRangeISO(); histFilters.dataDe=r.de; histFilters.dataAte=r.ate; renderContent(); });
-  document.getElementById('f-h-limpar-datas').addEventListener('click', ()=>{ histFilters.dataDe=''; histFilters.dataAte=''; renderContent(); });
+  document.getElementById('f-h-data-de').addEventListener('change', e=>{ histFilters.dataDe=e.target.value; histFilters.ultimasHs=0; renderContent(); });
+  document.getElementById('f-h-data-ate').addEventListener('change', e=>{ histFilters.dataAte=e.target.value; histFilters.ultimasHs=0; renderContent(); });
+  document.getElementById('f-h-12h').addEventListener('click', ()=>{ histFilters.ultimasHs=12; histFilters.dataDe=''; histFilters.dataAte=''; renderContent(); });
+  document.getElementById('f-h-24h').addEventListener('click', ()=>{ histFilters.ultimasHs=24; histFilters.dataDe=''; histFilters.dataAte=''; renderContent(); });
+  document.getElementById('f-h-7d').addEventListener('click', ()=>{ histFilters.ultimasHs=168; histFilters.dataDe=''; histFilters.dataAte=''; renderContent(); });
+  document.getElementById('f-h-mes-atual').addEventListener('click', ()=>{ const r=monthRangeISO(); histFilters.ultimasHs=0; histFilters.dataDe=r.de; histFilters.dataAte=r.ate; renderContent(); });
+  document.getElementById('f-h-limpar-datas').addEventListener('click', ()=>{ histFilters.ultimasHs=0; histFilters.dataDe=''; histFilters.dataAte=''; renderContent(); });
   el.querySelectorAll('[data-open-atrib]').forEach(r=>r.addEventListener('click', ()=>openAtribDetalhe(r.dataset.openAtrib)));
 }
 function renderHistoricoTimeline(events, withContext){
@@ -2116,7 +2186,7 @@ function paintAdminUsersList(){
     <div class="admin-field-row">
       <div>
         <strong>${esc(u.nome)}</strong>
-        <div class="admin-field-meta">${esc(u.login)} · ${roleLabel(u.role)} · ${nivelLabel(u.nivel)}${u.ativo?'':' · Inativo'}</div>
+        <div class="admin-field-meta">${esc(u.login)} · ${roleLabel(u.role)} · ${nivelLabel(u.nivel)}${u.setor||u.coordenacao? ' · '+esc([u.setor,u.coordenacao].filter(Boolean).join(' / ')):''}${u.ativo?'':' · Inativo'}</div>
       </div>
       <div class="row-actions">
         <button class="icon-btn" data-edit-user="${u.id}">${icon('edit',14)}</button>
@@ -2135,6 +2205,10 @@ function paintAdminUsersList(){
     <div class="field"><label>Senha <span class="req">*</span></label><input type="password" name="senha" ${u? '': 'required'} value="" placeholder="${u? 'Deixe em branco para manter a atual':'Defina uma senha'}"></div>
     <div class="field"><label>Papel (role) <span class="req">*</span></label><select name="role" required><option value="">Selecione…</option>${ROLES.map(r=>`<option value="${r.v}" ${u?.role===r.v?'selected':''}>${r.l} — ${r.d}</option>`).join('')}</select></div>
     <div class="field"><label>Nível de acesso <span class="req">*</span></label><select name="nivel" required><option value="">Selecione…</option>${NIVEIS_ACESSO.map(n=>`<option value="${n.v}" ${u?.nivel===n.v?'selected':''}>${n.l} — ${n.d}</option>`).join('')}</select></div>
+    <div class="field-row">
+      <div class="field"><label>Setor</label><select name="setor"><option value="">Todos</option><option ${u?.setor==='MANUTENÇÃO'?'selected':''}>MANUTENÇÃO</option><option ${u?.setor==='OBRAS'?'selected':''}>OBRAS</option></select><div class="field-hint">Programadores só veem dados deste setor. Vazio = todos.</div></div>
+      <div class="field"><label>Coordenação</label><select name="coordenacao"><option value="">Todas</option><option ${u?.coordenacao==='RIO VERDE'?'selected':''}>RIO VERDE</option><option ${u?.coordenacao==='QUIRINOPOLIS'?'selected':''}>QUIRINOPOLIS</option></select><div class="field-hint">Programadores só veem dados desta coordenação. Vazio = todas.</div></div>
+    </div>
     <div class="field" style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="ativo" id="u-ativo" style="width:auto;" ${u? (u.ativo?'checked':'') : 'checked'}><label for="u-ativo" style="margin:0;">Usuário ativo</label></div>
   `;
   openModal({
@@ -2147,7 +2221,7 @@ function paintAdminUsersList(){
       if(!nivel){ toast('Selecione o nível de acesso.', 'error'); return false; }
       if(!u && !senha){ toast('Defina uma senha.', 'error'); return false; }
       if(DB.usuarios.some(x=>x.login.toLowerCase()===login.toLowerCase() && String(x.id)!==String(u?.id))){ toast('Já existe um usuário com este login.', 'error'); return false; }
-      const data = { nome, login, role, nivel, ativo: fd.get('ativo')==='on' };
+      const data = { nome, login, role, nivel, setor: fd.get('setor')||'', coordenacao: fd.get('coordenacao')||'', ativo: fd.get('ativo')==='on' };
       if(senha) data.senha = senha;
       if(u){ Object.assign(u, data); toast('Usuário atualizado.'); }
       else { data.id = nextId(); data.senha = senha; DB.usuarios.push(data); toast('Usuário criado.'); }
@@ -2192,7 +2266,7 @@ function paintAdminRdoList(){
   wrap.innerHTML = rdoEntries.map(entry=>`
     <div class="admin-field-row" style="border-bottom:1px solid var(--border); padding-bottom:24px; margin-bottom:24px;">
       <div style="font-weight:700;font-size:14px;color:var(--dark);margin-bottom:8px;">
-        Programação ${entry.prog.id} - ${entry.prog.atribuicoes.map(a=>String(a.equipeId)).join(', ')} ${entry.atribuicao.status||'Programado'}
+        Programação ${progGid(entry.prog)} - ${entry.prog.atribuicoes.map(a=>String(a.equipeId)).join(', ')} ${entry.atribuicao.status||'Programado'}
       </div>
       <div style="margin-bottom:16px;">
         <h4>Dados da Programação</h4>
@@ -2266,6 +2340,7 @@ document.getElementById('import-file').addEventListener('change', (e)=>{
       if(!confirm('Importar substituirá TODOS os dados atuais. Continuar?')) return;
       DB = Object.assign(structuredClone(DEFAULT_DATA), parsed);
       DB.customFields = Object.assign(structuredClone(DEFAULT_DATA.customFields), parsed.customFields||{});
+      migrarGids();
       saveData(); setView(currentView); toast('Dados importados com sucesso.');
     }catch(err){ toast('Arquivo inválido.', 'error'); }
   };
@@ -2294,7 +2369,7 @@ function seedIfEmpty(){
   const a2 = {id:nextId(), codigo:'MAN-022', descricao:'Poda de árvore próxima à rede', unidade:'un', valorUnitario:180, custom:{}};
   const a3 = {id:nextId(), codigo:'CON-005', descricao:'Instalação de rede de baixa tensão', unidade:'m', valorUnitario:42.5, custom:{}};
   DB.atividades.push(a1,a2,a3);
-  const p1 = {id:nextId(), codigo:'PRJ-2026-01', nome:'Manutenção preventiva - Setor Leste', descricao:'Ronda de manutenção preventiva na rede do setor leste.', dataInicio:todayISO(), dataFim:'', dataRecebimentoCarteira:shiftISO(todayISO(), -10), dataVencimento:shiftISO(todayISO(), 60), dataViabilizacao:'', setor:'MANUTENÇÃO', coordenacao:'RIO VERDE', status:'Em Andamento', valorOrcado:60000, ciclo:'CICLO-01/2026', planoFisico:[{atividadeId:a1.id, quantidade:6},{atividadeId:a2.id, quantidade:12},{atividadeId:a3.id, quantidade:150}], custom:{}};
+  const p1 = {id:nextId(), codigo:'PRJ-2026-01', nome:'Manutenção preventiva - Setor Leste', descricao:'Ronda de manutenção preventiva na rede do setor leste.', dataInicio:todayISO(), dataFim:'', dataRecebimentoCarteira:shiftISO(todayISO(), -10), dataVencimento:shiftISO(todayISO(), 60), dataViabilizacao:'', setor:'MANUTENÇÃO', coordenacao:'RIO VERDE', cidade:'Rio Verde', status:'Em Andamento', valorOrcado:60000, ciclo:'CICLO-01/2026', planoFisico:[{atividadeId:a1.id, quantidade:6},{atividadeId:a2.id, quantidade:12},{atividadeId:a3.id, quantidade:150}], custom:{}};
   DB.projetos.push(p1);
   const prog1 = { id:nextId(), projetoId:p1.id, dataProgramada:todayISO(), ciclo:'CICLO-01/2026', observacoes:'', custom:{},
     atribuicoes:[
@@ -2302,6 +2377,7 @@ function seedIfEmpty(){
       { id:nextId(), equipeId:eq2.id, dataProgramada:todayISO(), status:'Programado', atividades:[{atividadeId:a2.id, quantidadePrevista:8, quantidadeExecutada:null},{atividadeId:a3.id, quantidadePrevista:120, quantidadeExecutada:null}], historico:[{...currentAutor(), usuarioNome:'Sistema', usuarioLogin:'', ts:Date.now(), tipo:'criacao', de:null, para:'Programado', motivo:'Programação criada (exemplo)'}] }
     ]};
   DB.programacoes.push(prog1);
+  migrarGids();
   saveData();
 }
 
@@ -2317,6 +2393,12 @@ function garantirMaster(){
 }
 function podeEditar(){ return !CURRENT_USER || CURRENT_USER.nivel!=='leitura'; }
 function requerEscrita(){ if(podeEditar()) return true; toast('Seu usuário tem acesso somente leitura.', 'error'); return false; }
+function usuarioRestrito(){ return !!(CURRENT_USER && CURRENT_USER.role==='supervisor' && CURRENT_USER.nivel==='programacao'); }
+function projetoVisivel(p){ return !usuarioRestrito() || (p.setor===CURRENT_USER.setor && p.coordenacao===CURRENT_USER.coordenacao); }
+function projetosVisiveis(){ return DB.projetos.filter(projetoVisivel); }
+function programacoesVisiveis(){ const vis = projetosVisiveis().map(p=>p.id); return DB.programacoes.filter(pg=> vis.includes(pg.projetoId)); }
+function novoGid(){ return 'G26-' + String(Math.floor(1000000 + Math.random()*9000000)); }
+function progGid(pg){ return (pg && pg.gid) || (pg? 'G26-'+String(pg.id).padStart(7,'0') : ''); }
 function showLoginScreen(){
   document.getElementById('login-screen').classList.remove('hidden');
   const u = document.getElementById('login-user');
@@ -2609,7 +2691,7 @@ function openRDOModal(progId, attribId){
   const body = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
       <div>
-        <h4 style="margin-bottom:8px;">Programação #${x.programacao.id}</h4>
+        <h4 style="margin-bottom:8px;">Programação ${progGid(x.programacao)}</h4>
         <p class="admin-field-meta" style="margin:2px 0;">${esc(pr?.nome||'—')} <strong>(${esc(pr?.codigo||'—')})</strong></p>
         <p class="admin-field-meta" style="margin:2px 0;">Setor ${esc(pr?.setor||'—')} · Coordenação ${esc(pr?.coordenacao||'—')}</p>
         <p class="admin-field-meta" style="margin:2px 0;">Ciclo ${esc(x.programacao.ciclo||'—')} · Data ${fmtDate(x.atribuicao.dataProgramada)}</p>
@@ -2673,7 +2755,142 @@ function openRDOModal(progId, attribId){
     </div>
     <div class="admin-field-meta">Confirmado pela equipe em <strong>${rdoConfData(x)}</strong></div>`;
 
-  openModal({ title:'RDO — Detalhes da execução', bodyHtml: body, submitLabel:'Fechar', wide:true });
+  openModal({ title:'RDO — Detalhes da execução', bodyHtml: body, submitLabel:'Fechar', wide:true, footerBtns:[{ label: icon('print',14)+' Gerar PDF', cls:'btn', onClick: ()=> printRDOCompleto(x) }] });
+}
+
+function printRDOCompleto(x){
+  const pr = findProjeto(x.programacao.projetoId);
+  const eq = findEquipe(x.atribuicao.equipeId);
+  const rdo = x.atribuicao.rdoRespostas||{};
+  const res = rdoResumo(x);
+  const imped = rdoImpedimentos(x.atribuicao);
+  const av = pr? projetoAvanco(pr) : null;
+  const geradoPor = CURRENT_USER ? ((CURRENT_USER.nome||'') + (CURRENT_USER.login? ' ('+CURRENT_USER.login+')':'') || 'Sistema') : 'Sistema';
+  const horarios = RDO_HORARIOS.map(h=>`<tr><td style="border:1px solid #999;padding:4px 8px;font-weight:600;background:#f5f5f5;">${h.label}</td><td style="border:1px solid #999;padding:4px 8px;">${x.atribuicao[h.k]||'—'}</td></tr>`).join('');
+  const condicoes = RDO_QUESTIONS.map(q=>`<tr><td style="border:1px solid #999;padding:4px 8px;font-weight:600;background:#f5f5f5;">${q.label}</td><td style="border:1px solid #999;padding:4px 8px;">${String(rdo[q.id]||'')||'—'}</td></tr>`).join('');
+  const impedHtml = imped.length? imped.map(i=>`<span style="display:inline-block;border:1px solid #d95555;color:#b33;background:#fdecec;border-radius:4px;padding:2px 8px;margin:2px 3px 2px 0;">${esc(i)}</span>`).join('') : '—';
+  const ativRows = (x.atribuicao.atividades||[]).map((a,idx)=>{
+    const at = findAtividade(a.atividadeId);
+    const p = parseFloat(a.quantidadePrevista)||0;
+    const e = a.quantidadeExecutada==null? null : parseFloat(a.quantidadeExecutada);
+    const pct = p? Math.round((e||0)/p*100) : 0;
+    const vu = at?.valorUnitario||0;
+    const execVal = e!=null? e*vu : 0;
+    const fotos = String(a.fotos||'').split(';;').filter(Boolean);
+    const fotosHtml = fotos.length? `<div class="fotos">${fotos.map(u=>`<figure><img src="${esc(u)}" alt="Foto da execução da atividade ${idx+1}"><figcaption>Atividade ${at?.codigo||idx+1} — foto ${idx+1}</figcaption></figure>`).join('')}</div>` : '<div style="color:#999;">Sem fotos registradas.</div>';
+    return `<tr>
+      <td style="border:1px solid #999;padding:4px 8px;text-align:center;">${idx+1}</td>
+      <td style="border:1px solid #999;padding:4px 8px;" class="mono">${esc(at?.codigo||'?')}</td>
+      <td style="border:1px solid #999;padding:4px 8px;">${esc(at?.descricao||'')}</td>
+      <td style="border:1px solid #999;padding:4px 8px;text-align:center;">${esc(at?.unidade||'')}</td>
+      <td style="border:1px solid #999;padding:4px 8px;text-align:center;">${p? fmtNum(p):'—'}</td>
+      <td style="border:1px solid #999;padding:4px 8px;text-align:center;"><strong>${e!=null? fmtNum(e):'—'}</strong></td>
+      <td style="border:1px solid #999;padding:4px 8px;text-align:center;font-weight:700;color:${pct>=100?'#1c7d1c':pct>=50?'#b8860b':'#b33'};">${p? pct+'%':'—'}</td>
+      <td style="border:1px solid #999;padding:4px 8px;text-align:right;">${fmtMoney(execVal)}</td>
+    </tr><tr><td colspan="8" style="border:1px solid #999;padding:8px;background:#fafafa;">${fotosHtml}</td></tr>`;
+  }).join('') || '<tr><td colspan="8" style="border:1px solid #999;padding:4px 8px;">Sem atividades registradas.</td></tr>';
+  const hist = x.atribuicao.historico||[];
+  const histRows = hist.length? hist.slice().reverse().map(h=>`<tr>
+      <td style="border:1px solid #999;padding:4px 8px;">${fmtDateTime(h.ts)}</td>
+      <td style="border:1px solid #999;padding:4px 8px;">${esc(h.tipo||'—')}</td>
+      <td style="border:1px solid #999;padding:4px 8px;">${esc(h.de||'—')}</td>
+      <td style="border:1px solid #999;padding:4px 8px;">${esc(h.para||'—')}</td>
+      <td style="border:1px solid #999;padding:4px 8px;">${esc(h.motivo||'—')}</td>
+      <td style="border:1px solid #999;padding:4px 8px;">${esc(h.usuarioNome||'—')}${h.usuarioLogin? ' ('+esc(h.usuarioLogin)+')':''}</td>
+    </tr>`).join('') : '<tr><td colspan="6" style="border:1px solid #999;padding:4px 8px;color:#999;">Sem registros de histórico.</td></tr>';
+
+  const w = window.open('', '_blank', 'width=1100,height=800');
+  if(!w) return;
+  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>RDO ${progGid(x.programacao)} — ${esc(pr?.codigo||'')}</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:12px;color:#222;margin:24px 30px;}
+    h1{font-size:18px;margin:0 0 2px;}
+    h2{font-size:14px;margin:18px 0 6px;border-bottom:2px solid #444;padding-bottom:3px;}
+    h3{font-size:12.5px;margin:12px 0 4px;}
+    .meta{color:#555;font-size:11.5px;margin:2px 0;}
+    .grid{display:flex;gap:40px;flex-wrap:wrap;}
+    table{border-collapse:collapse;width:100%;}
+    th{background:#eee;text-align:left;padding:4px 8px;border:1px solid #999;}
+    td{padding:4px 8px;border:1px solid #999;}
+    .mono{font-family:Consolas,monospace;font-size:11px;}
+    .fotos{display:flex;flex-wrap:wrap;gap:12px;}
+    .fotos figure{margin:0;width:210px;border:1px solid #ccc;border-radius:4px;padding:6px;background:#fff;}
+    .fotos img{width:100%;height:auto;border-radius:3px;}
+    .fotos figcaption{font-size:10px;color:#666;margin-top:4px;}
+    .assin{display:flex;gap:60px;margin-top:46px;}
+    .assin div{flex:1;text-align:center;font-size:11px;color:#555;}
+    .assin .linha{border-top:1px solid #333;padding-top:6px;margin-top:34px;}
+    .badge-print{display:inline-block;border:1px solid #999;border-radius:4px;padding:2px 8px;font-size:11px;}
+  </style></head><body>
+    <h1>Relatório de RDO — Detalhes da Execução</h1>
+    <p class="meta">Programação ${progGid(x.programacao)} · Ciclo ${esc(x.programacao.ciclo||'—')} · Data programada ${fmtDate(x.atribuicao.dataProgramada)}</p>
+    <p class="meta">Gerado por: <strong>${esc(geradoPor)}</strong> em ${fmtDateTime(Date.now())} · Status: ${esc(x.atribuicao.status||'Programado')}</p>
+
+    <h2>Dados gerais do projeto</h2>
+    <div class="grid">
+      <div>
+        <p class="meta"><strong>${esc(pr?.nome||'—')}</strong> (${esc(pr?.codigo||'—')})</p>
+        <p class="meta">Setor: ${esc(pr?.setor||'—')} · Coordenação: ${esc(pr?.coordenacao||'—')}</p>
+        <p class="meta">Cidade: ${esc(pr?.cidade||'—')}</p>
+        <p class="meta">Período: ${fmtDate(pr?.dataInicio)} → ${fmtDate(pr?.dataFim)}</p>
+      </div>
+      <div>
+        <p class="meta">Valor orçado: <strong>${fmtMoney(pr?.valorOrcado||0)}</strong></p>
+        <p class="meta">Valor executado: <strong>${fmtMoney(av?.valorExecutado||0)}</strong></p>
+        <p class="meta">Avanço físico: <strong>${av? av.fisicoPct.toFixed(1)+'%' : '—'}</strong></p>
+        <p class="meta">Avanço financeiro: <strong>${av? av.financeiroPct.toFixed(1)+'%' : '—'}</strong></p>
+      </div>
+    </div>
+
+    <h2>Localização</h2>
+    <p class="meta">Referência: <strong>${esc(pr?.cidade||'—')}</strong> · Setor ${esc(pr?.setor||'—')} · Coordenação ${esc(pr?.coordenacao||'—')}</p>
+
+    <h2>Equipe executora</h2>
+    <div class="grid">
+      <div>
+        <p class="meta"><strong>${esc(equipeLabel(eq))}</strong></p>
+        <p class="meta">Supervisor: ${esc(eq?.supervisor||'—')}</p>
+        <p class="meta">Encarregado: ${esc(eq?.encarregado||'—')}</p>
+      </div>
+      <div>
+        <p class="meta">Motorista: ${esc(eq?.motorista||'—')}</p>
+        <p class="meta">Eletricistas: ${esc((eq?.eletricistas||[]).filter(Boolean).join(', ')||'—')}</p>
+        <p class="meta">WhatsApp: ${esc(eq?.whatsapp||'—')}</p>
+      </div>
+    </div>
+
+    <h2>Horários do RDO</h2>
+    <table>${horarios}</table>
+
+    <h2>Condições do RDO</h2>
+    <table>${condicoes}</table>
+    <p class="meta" style="margin-top:8px;">Impedimentos: ${impedHtml}</p>
+
+    <h2>Atividades executadas</h2>
+    <p class="meta">Previsto: ${fmtNum(res.prev)} · Executado: <strong>${fmtNum(res.exec)}</strong> · Percentual: <strong>${res.pct}%</strong></p>
+    <table>
+      <thead><tr><th style="text-align:center;">#</th><th>Código</th><th>Descrição</th><th style="text-align:center;">Un.</th><th style="text-align:center;">Prev.</th><th style="text-align:center;">Exec.</th><th style="text-align:center;">%</th><th style="text-align:right;">Valor exec.</th></tr></thead>
+      <tbody>${ativRows}</tbody>
+    </table>
+
+    <h2>Observação da execução</h2>
+    <p>${esc(x.atribuicao.observacao)||'—'}</p>
+    <p class="meta">Confirmado pela equipe em <strong>${rdoConfData(x)}</strong></p>
+
+    <h2>Histórico do registro</h2>
+    <table>
+      <thead><tr><th>Data/Hora</th><th>Tipo</th><th>De</th><th>Para</th><th>Motivo</th><th>Autor</th></tr></thead>
+      <tbody>${histRows}</tbody>
+    </table>
+
+    <div class="assin">
+      <div>Supervisor<br><div class="linha">Assinatura e carimbo</div></div>
+      <div>Encarregado<br><div class="linha">Assinatura e carimbo</div></div>
+      <div>Responsável pelo projeto<br><div class="linha">Assinatura e carimbo</div></div>
+    </div>
+    <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},800);});<\/script>
+  </body></html>`);
+  w.document.close();
 }
 
 function exportRDOExcel(registros){
@@ -2685,7 +2902,7 @@ function exportRDOExcel(registros){
     const res = rdoResumo(x);
     const imped = rdoImpedimentos(x.atribuicao).join(', ');
     const base = {
-      'Programação': x.programacao.id,
+        'Programação': progGid(x.programacao),
       'Projeto': pr?.nome||'—',
       'Código Projeto': pr?.codigo||'',
       'Ciclo': x.programacao.ciclo||'—',
@@ -2707,7 +2924,7 @@ function exportRDOExcel(registros){
       const p = parseFloat(a.quantidadePrevista)||0;
       const e = a.quantidadeExecutada==null? null : parseFloat(a.quantidadeExecutada);
       return {
-        'Programação': x.programacao.id,
+      'Programação': progGid(x.programacao),
         'Projeto': pr?.nome||'—',
         'Código Projeto': pr?.codigo||'',
         'Ciclo': x.programacao.ciclo||'—',

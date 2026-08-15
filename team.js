@@ -117,16 +117,13 @@ const RDO_PERGUNTAS = [
 function renderRDOForm(){
   const horarioCampos = [
     ['rdo_horario_chegada','Horário Chegada'],
-    ['rdo_horario_inicio','Horário Início das atividades'],
-    ['rdo_horario_finalizacao','Horário Finalização das atividades'],
-    ['rdo_horario_saida_obra','Horário Saída da obra'],
-    ['rdo_horario_chegada_base','Horário Chegada na base']
+    ['rdo_horario_inicio','Horário Início das atividades']
   ];
   return `
     <div class="panel section-gap" style="max-width:600px;margin:0 auto;">
-      <div class="panel-head"><h3>Questionário RDO - Saída da Base</h3></div>
+      <div class="panel-head"><h3>Questionário RDO - Saída da Base</h3><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${prog.gid||'G26-'+String(prog.id).padStart(7,'0')}</span></div>
       <div style="padding:24px;">
-        <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">Responda às questões abaixo e informe os horários. Os dados ficam salvos neste aparelho e são enviados quando você concluir as atividades.</p>
+        <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">Responda às questões abaixo e informe os horários de saída da base. Os dados ficam salvos neste aparelho e são enviados quando você concluir as atividades.</p>
         ${RDO_PERGUNTAS.map((p,i)=>`
           <div style="margin-bottom:14px;">
             <label style="display:block;font-weight:600;margin-bottom:4px;">${p.label}</label>
@@ -135,13 +132,14 @@ function renderRDOForm(){
             </select>
           </div>`).join('')}
         <div style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);">
-          <h4 style="margin:0 0 12px 0;font-size:13px;color:var(--dark);">Horários</h4>
+          <h4 style="margin:0 0 12px 0;font-size:13px;color:var(--dark);">Horários de saída da base</h4>
           <p style="font-size:12px;color:var(--muted-2);margin:0 0 14px 0;">Digite os números — o ":" entra automaticamente. Ex.: 07 30 → 07:30.</p>
           ${horarioCampos.map(([id,label])=>`
             <div style="margin-bottom:12px;">
               <label style="display:block;margin-bottom:4px;">${label}</label>
               <input type="text" class="rdo-input rdo-hora" data-rdo="${id}" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="HH:MM" style="width:100%;padding:8px;font-size:16px;font-family:'JetBrains Mono',monospace;letter-spacing:.06em;">
             </div>`).join('')}
+          <p style="font-size:12px;color:var(--muted-2);margin:0 0 14px 0;">Os horários de <strong>finalização, saída da obra e chegada na base</strong> serão solicitados quando você concluir e enviar as atividades.</p>
           <div style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);">
             <button class="btn btn-primary" id="rdo-concluir" style="width:100%;padding:12px;font-size:16px;">Concluir RDO</button>
           </div>
@@ -193,7 +191,7 @@ function atualizaRDOCompletado(){
 function respostasRDOPreenchidas(){
   const res = getRDORespostas();
   const perguntasOk = RDO_PERGUNTAS.every(p=> res[p.id] && res[p.id] !== '');
-  const horarios = ['rdo_horario_chegada','rdo_horario_inicio','rdo_horario_finalizacao','rdo_horario_saida_obra','rdo_horario_chegada_base'];
+  const horarios = ['rdo_horario_chegada','rdo_horario_inicio'];
   const horariosOk = horarios.every(id=> horaValida(res[id]));
   return perguntasOk && horariosOk;
 }
@@ -211,7 +209,7 @@ function render(){
         <div class="brand-mark team-ok-logo">G2</div>
         <h3>Dados enviados e sincronizados</h3>
         <p>Obrigado, equipe! Suas atividades, quantidades executadas, fotos e o RDO foram enviados ao escritório.</p>
-        <p class="team-ok-meta">Programação #${prog.id} · ${esc(prog.ciclo||'')} · ${fmtDate(prog.dataProgramada)}</p>
+        <p class="team-ok-meta">Programação ${prog.gid||'G26-'+String(prog.id).padStart(7,'0')} · ${esc(prog.ciclo||'')} · ${fmtDate(prog.dataProgramada)}</p>
       </div>`;
     setStatus('Sincronizado', 'ok');
     return;
@@ -261,7 +259,7 @@ function render(){
   root.innerHTML = `
     <div class="panel section-gap">
       <div class="panel-head">
-        <div><h3>${esc(pr?.nome||'Projeto')}</h3><div class="admin-field-meta">${esc(pr?.codigo||'')} · Ciclo ${esc(prog.ciclo||'—')}</div></div>
+        <div><h3>${esc(pr?.nome||'Projeto')}</h3><div class="admin-field-meta">${prog.gid||'G26-'+String(prog.id).padStart(7,'0')} · ${esc(pr?.codigo||'')} · Ciclo ${esc(prog.ciclo||'—')}</div></div>
         <span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${fmtDate(prog.dataProgramada)}</span>
       </div>
       <div style="padding:16px;display:flex;flex-direction:column;gap:16px;">
@@ -388,56 +386,99 @@ async function submitEdit(){
   }
   if(_fotosEnviando) return;
   if(navigator.onLine === false){ toast('Conecte-se à internet para enviar as fotos das atividades.', 'error'); return; }
-  _fotosEnviando = true;
-  const btn = document.getElementById('team-submit');
-  if(btn){ btn.disabled = true; btn.textContent = 'Enviando fotos…'; }
-  try{
-    const fotosUrls = {};
-    for(const eqId of Object.keys(editors)){
-      const arr = _fotos[eqId]||[];
-      fotosUrls[eqId] = [];
-      for(let i=0;i<editors[eqId].length;i++){
-        const urls = [];
-        for(const f of (arr[i]||[])){
-          const u = await uploadToImGbb(f);
-          if(u) urls.push(u);
+  coletarHorariosFinais(async (horariosFinais)=>{
+    _fotosEnviando = true;
+    const btn = document.getElementById('team-submit');
+    if(btn){ btn.disabled = true; btn.textContent = 'Enviando fotos…'; }
+    try{
+      const fotosUrls = {};
+      for(const eqId of Object.keys(editors)){
+        const arr = _fotos[eqId]||[];
+        fotosUrls[eqId] = [];
+        for(let i=0;i<editors[eqId].length;i++){
+          const urls = [];
+          for(const f of (arr[i]||[])){
+            const u = await uploadToImGbb(f);
+            if(u) urls.push(u);
+          }
+          fotosUrls[eqId].push(urls.join(FOTOS_SEP));
         }
-        fotosUrls[eqId].push(urls.join(FOTOS_SEP));
       }
-    }
-    const patch = {
-      id: 'e'+Date.now()+Math.random().toString(36).slice(2,6),
-      programacaoId: progId,
-      ts: Date.now(),
-      observacao: obs,
-      atribuicoes: Object.keys(editors).map(eqId=>({
-        equipeId: Number(eqId),
-        atividades: editors[eqId].map((r,i)=>({
-          atividadeId: Number(r.atividadeId),
-          quantidadePrevista: r.quantidadePrevista? parseFloat(r.quantidadePrevista): null,
-          quantidadeExecutada: (r.quantidadeExecutada===''||r.quantidadeExecutada==null)? null : parseFloat(r.quantidadeExecutada),
-          fotos: fotosUrls[eqId][i]||''
+      const patch = {
+        id: 'e'+Date.now()+Math.random().toString(36).slice(2,6),
+        programacaoId: progId,
+        ts: Date.now(),
+        observacao: obs,
+        atribuicoes: Object.keys(editors).map(eqId=>({
+          equipeId: Number(eqId),
+          atividades: editors[eqId].map((r,i)=>({
+            atividadeId: Number(r.atividadeId),
+            quantidadePrevista: r.quantidadePrevista? parseFloat(r.quantidadePrevista): null,
+            quantidadeExecutada: (r.quantidadeExecutada===''||r.quantidadeExecutada==null)? null : parseFloat(r.quantidadeExecutada),
+            fotos: fotosUrls[eqId][i]||''
+          }))
         }))
-      }))
-    };
-    // Envia as respostas do RDO junto com a conclusão das atividades
-    const pendRDO = loadPendingRDO(progId);
-    if(pendRDO && pendRDO.respostas){
-      patch.respostas = pendRDO.respostas;
-      clearPendingRDO(progId);
+      };
+      // Envia as respostas do RDO (perguntas + horários de saída) junto com a conclusão
+      const pendRDO = loadPendingRDO(progId);
+      const respostas = Object.assign({}, (pendRDO&&pendRDO.respostas)||{}, horariosFinais||{});
+      if(Object.keys(respostas).length){ patch.respostas = respostas; }
+      if(pendRDO) clearPendingRDO(progId);
+      const q = loadQueue(); q.push(patch); saveQueue(q);
+      observacao = '';
+      enviado = true;
+      render();
+      syncNow();
+    }catch(err){
+      console.error(err);
+      toast('Erro ao enviar as fotos. Tente novamente.', 'error');
+    }finally{
+      _fotosEnviando = false;
+      if(btn){ btn.disabled = false; btn.textContent = 'Enviar alterações'; }
     }
-    const q = loadQueue(); q.push(patch); saveQueue(q);
-    observacao = '';
-    enviado = true;
-    render();
-    syncNow();
-  }catch(err){
-    console.error(err);
-    toast('Erro ao enviar as fotos. Tente novamente.', 'error');
-  }finally{
-    _fotosEnviando = false;
-    if(btn){ btn.disabled = false; btn.textContent = 'Enviar alterações'; }
-  }
+  });
+}
+function coletarHorariosFinais(cb){
+  const campos = [
+    ['rdo_horario_finalizacao','Horário Finalização das atividades'],
+    ['rdo_horario_saida_obra','Horário Saída da obra'],
+    ['rdo_horario_chegada_base','Horário Chegada na base']
+  ];
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,13,18,.72);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;';
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:12px;padding:24px;max-width:420px;width:100%;box-shadow:0 18px 50px rgba(0,0,0,.4);box-sizing:border-box;">
+      <h3 style="margin:0 0 4px;font-size:16px;color:#0f1319;">Finalizar atividades</h3>
+      <p style="margin:0 0 18px;font-size:13px;color:#555;">Informe os horários de encerramento do serviço para concluir e enviar.</p>
+      ${campos.map(([id,label])=>`
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-weight:600;font-size:13px;margin-bottom:4px;color:#222;">${label}</label>
+          <input type="text" class="fin-hora" data-h="${id}" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="HH:MM" style="width:100%;padding:10px;font-size:16px;border:1px solid #ccc;border-radius:8px;font-family:'JetBrains Mono',monospace;letter-spacing:.06em;box-sizing:border-box;">
+        </div>`).join('')}
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;">
+        <button type="button" class="fin-cancel" style="padding:10px 16px;border:1px solid #ccc;background:#f5f5f5;border-radius:8px;font-size:13px;font-weight:600;color:#333;cursor:pointer;">Voltar</button>
+        <button type="button" class="fin-ok" style="padding:10px 16px;border:1px solid #e0a050;background:#e0a050;border-radius:8px;font-size:13px;font-weight:700;color:#1a1206;cursor:pointer;">Concluir e enviar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.querySelectorAll('.fin-hora').forEach(inp=>{
+    inp.addEventListener('input', ()=>{ maskHora(inp); });
+    inp.addEventListener('blur', ()=>{ padHora(inp); });
+  });
+  const close = ()=> ov.remove();
+  ov.querySelector('.fin-cancel').addEventListener('click', close);
+  ov.addEventListener('click', e=>{ if(e.target===ov) close(); });
+  ov.querySelector('.fin-ok').addEventListener('click', ()=>{
+    const horarios = {};
+    let ok = true;
+    ov.querySelectorAll('.fin-hora').forEach(inp=>{
+      const v = inp.value;
+      if(!horaValida(v)){ ok=false; inp.style.borderColor='#d33'; } else { inp.style.borderColor='#ccc'; horarios[inp.dataset.h]=v; }
+    });
+    if(!ok){ toast('Preencha os horários de finalização (HH:MM) para concluir.', 'error'); return; }
+    close();
+    cb(horarios);
+  });
 }
 async function syncNow(){
   if(syncing) return;
@@ -473,7 +514,7 @@ async function syncNow(){
         at.historico.push({ usuarioNome:'Equipe', usuarioLogin:'', ts:patch.ts, tipo:'equipe', de:null, para:'atividades', motivo:patch.observacao });
         // Propagar dados do RDO
         if(patch.respostas){
-          at.rdoRespostas = patch.respostas;
+          at.rdoRespostas = Object.assign({}, at.rdoRespostas||{}, patch.respostas||{});
           at.rdoHorarioChegada = patch.respostas.rdo_horario_chegada || at.rdoHorarioChegada;
           at.rdoHorarioInicio = patch.respostas.rdo_horario_inicio || at.rdoHorarioInicio;
           at.rdoHorarioFinalizacao = patch.respostas.rdo_horario_finalizacao || at.rdoHorarioFinalizacao;
@@ -546,7 +587,7 @@ function buildDocEquipeHtml(pg, eqId){
     </div>
     <div class="ps-block">
       <div class="ps-block-head">
-        <div>${esc(pr?.nome||'Projeto')} (${esc(pr?.codigo||'')}) — ${esc(equipeLabel(eq))} — ${fmtDate(atrib?.dataProgramada||pg.dataProgramada)}</div>
+        <div>${pg.gid||'G26-'+String(pg.id).padStart(7,'0')} — ${esc(pr?.nome||'Projeto')} (${esc(pr?.codigo||'')}) — ${esc(equipeLabel(eq))} — ${fmtDate(atrib?.dataProgramada||pg.dataProgramada)}</div>
         <div class="ps-qr">${qrSvgHtml(teamPageUrl(pg.id), 3)}<div class="ps-qr-cap">Escaneie para alterar as atividades</div></div>
       </div>
       <table class="ps-info">
