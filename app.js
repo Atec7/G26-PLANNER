@@ -1920,7 +1920,7 @@ function openAtribDetalhe(atribId){
 
       ${(programacao.localLat!=null && programacao.localLng!=null)? `<div class="dtl-section">
         <div class="dtl-section-head"><h4>Localização no mapa</h4></div>
-        <div style="padding:12px;"><a href="${esc(staticMapUrl(programacao.localLat,programacao.localLng,15,800,450))}" target="_blank" rel="noopener">${localThumbHtml(programacao.local,programacao.localLat,programacao.localLng)}</a></div>
+        <div style="padding:12px;"><a href="${esc(staticMapUrl(programacao.localLat,programacao.localLng,16,800,450))}" target="_blank" rel="noopener">${localThumbHtml(programacao.local,programacao.localLat,programacao.localLng)}</a></div>
       </div>`:''}
 
       ${String(programacao.orientacoesPlanejamento||'').trim()? `<div class="dtl-section">
@@ -2010,7 +2010,7 @@ function openAtribDetalhe(atribId){
       <div class="field-hint">Enquanto você digita, geramos automaticamente o link do Google Maps com a localização. Também dá para abrir o mapa e marcar o ponto exato. O local e o mapa vão para o documento (PDF), para os registros e para a mensagem do WhatsApp.</div>
       <div id="pg-local-tools"></div>
       <div id="pg-map-wrap" style="display:none;margin-top:8px;">
-        <div id="pg-local-map" style="height:320px;border-radius:10px;overflow:hidden;border:1px solid var(--border-soft);"></div>
+        <div id="pg-local-map" style="height:460px;width:100%;border-radius:10px;overflow:hidden;border:1px solid var(--border-soft);"></div>
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
           <button type="button" class="btn btn-sm btn-primary" id="pg-map-confirm">Confirmar local no mapa</button>
           <button type="button" class="btn btn-sm btn-ghost" id="pg-map-cancel">Fechar mapa</button>
@@ -2176,15 +2176,24 @@ function openAtribDetalhe(atribId){
       function initLocalMap(){
         if(localMap) return;
         loadLeaflet().then(L=>{
-          const center = (localLat!=null&&localLng!=null)? [localLat, localLng] : [-17.79, -50.92];
-          localMap = L.map(mapEl).setView(center, (localLat!=null&&localLng!=null)? 15 : 12);
-          L.tileLayer(`https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}.png?apiKey=${MAPS_KEY}`, { attribution:'Powered by <a href="https://www.geoapify.com/">Geoapify</a> | © OpenStreetMap' }).addTo(localMap);
+          const hasFix = (localLat!=null&&localLng!=null);
+          const center = hasFix? [localLat, localLng] : [-17.79, -50.92];
+          localMap = L.map(mapEl, { maxZoom:22, minZoom:2, zoomSnap:1, zoomControl:true, touchZoom:true, scrollWheelZoom:true }).setView(center, hasFix? 16 : 12);
+          const baseUrl = 'https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}{r}.png?apiKey={apiKey}';
+          L.tileLayer(baseUrl, {
+            apiKey: MAPS_KEY,
+            maxZoom: 20,
+            maxNativeZoom: 20,
+            tileSize: 256,
+            attribution:'Powered by <a href="https://www.geoapify.com/">Geoapify</a> | <a href="https://openmaptiles.org/">© OpenMapTiles</a> <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap</a>'
+          }).addTo(localMap);
           function placeMarker(pos){
             if(localMarker){ localMarker.setLatLng(pos); }
-            else { localMarker = L.marker(pos, {draggable:true}).addTo(localMap); localMarker.on('dragend', ()=>{ localPicked = localMarker.getLatLng(); }); }
-            localMap.setView(pos, 15);
+            else { localMarker = L.marker(pos, {draggable:true, riseOnHover:true}).addTo(localMap); localMarker.on('dragend', ()=>{ localPicked = localMarker.getLatLng(); }); }
+            const z = localMap.getZoom();
+            if(z < 16) localMap.setView(pos, 16); else localMap.panTo(pos);
           }
-          if(localLat!=null && localLng!=null) placeMarker([localLat, localLng]);
+          if(hasFix) placeMarker([localLat, localLng]);
           localMap.on('click', e=>{ localPicked = e.latlng; placeMarker(e.latlng); });
           setTimeout(()=>{ localMap.invalidateSize(); }, 60);
         }).catch(()=>{ toast('Não foi possível carregar o mapa.', 'error'); mapWrap.style.display='none'; });
@@ -2331,7 +2340,7 @@ function localMapsHref(local, lat, lng){
 }
 function localThumbHtml(local, lat, lng){
   if(lat==null || lng==null) return '';
-  return `<img src="${staticMapUrl(lat,lng,15,640,320)}" alt="Mapa: ${esc(local)}" style="width:100%;max-width:520px;border-radius:8px;border:1px solid var(--border-soft);display:block;">`;
+  return `<img src="${staticMapUrl(lat,lng,17,640,320)}" alt="Mapa: ${esc(local)}" style="width:100%;max-width:520px;border-radius:8px;border:1px solid var(--border-soft);display:block;">`;
 }
 let _leafletLoaded = null;
 function loadLeaflet(){
@@ -2489,7 +2498,7 @@ function buildDocProgramacao(prog){
     ${prog.atribuicoes.map(at=> docAtribuicaoHtml(prog, at)).join('')}
     ${(prog.localLat!=null&&prog.localLng!=null)? `<div class="ps-block" style="page-break-before:auto;break-before:auto;margin-top:8px;">
       <div class="ps-block-head">Localização no mapa — ${progGid(prog)}</div>
-      <img src="${esc(staticMapUrl(prog.localLat,prog.localLng,15,720,420))}" alt="Mapa: ${esc(prog.local)}" style="width:100%;max-width:620px;border:1px solid #999;border-radius:4px;">
+      <img src="${esc(staticMapUrl(prog.localLat,prog.localLng,16,720,420))}" alt="Mapa: ${esc(prog.local)}" style="width:100%;max-width:620px;border:1px solid #999;border-radius:4px;">
     </div>`:''}
     <div style="margin-top:8px;font-size:10.5px;color:#000;border-top:1px solid #444;padding-top:6px;">Assinatura do fiscal / responsável: <span class="ps-line"></span> &nbsp;&nbsp; Data: ____/____/____</div>
     ${docAnexosHtml(prog)}
@@ -2759,7 +2768,7 @@ function paintAdminRdoList(){
         <p><strong>Ciclo:</strong> ${entry.prog.ciclo||'—'}</p>
         <p><strong>Projeto:</strong> ${entry.prog.projetoId ? (DB.projetos||[]).find(p=>p.id===entry.prog.projetoId)?.nome||'—' : '—'}</p>
         <p><strong>Local de execução:</strong> ${entry.prog.local? esc(entry.prog.local) : '—'}${entry.prog.local||entry.prog.localLat!=null? ` <a href="${esc(localMapsHref(entry.prog.local,entry.prog.localLat,entry.prog.localLng))}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600;font-size:12px;">${icon('pin',11)} Ver no Google Maps</a>`:''}</p>
-        ${(entry.prog.localLat!=null && entry.prog.localLng!=null)? `<a href="${esc(staticMapUrl(entry.prog.localLat,entry.prog.localLng,15,800,360))}" target="_blank" rel="noopener" style="display:inline-block;max-width:480px;">${localThumbHtml(entry.prog.local,entry.prog.localLat,entry.prog.localLng)}</a>`:''}
+        ${(entry.prog.localLat!=null && entry.prog.localLng!=null)? `<a href="${esc(staticMapUrl(entry.prog.localLat,entry.prog.localLng,17,800,360))}" target="_blank" rel="noopener" style="display:inline-block;max-width:480px;">${localThumbHtml(entry.prog.local,entry.prog.localLat,entry.prog.localLng)}</a>`:''}
       </div>
       <div style="margin-bottom:16px;">
         <h4>Respostas RDO</h4>
