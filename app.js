@@ -1850,6 +1850,35 @@ function docAtribuicaoHtml(prog, atrib){
     </tr>`;
   }).join('');
   const qrUrl = equipePageUrl(prog.id);
+  // Dados do RDO
+  const rdo = atrib.rdoRespostas||{};
+  const rdoHorarios = `
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+      <h4 style="margin:0 0 8px 0; font-size:13px; color:var(--dark;">Horários do RDO</h4>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <tr><td style="font-weight:600;padding-right:16px;">Horário Chegada</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_horario_chegada||'--'}</td></tr>
+        <tr><td style="font-weight:600;padding-right:16px;">Horário Início</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_horario_inicio||'--'}</td></tr>
+        <tr><td style="font-weight:600;padding-right:16px;">Horário Finalização</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_horario_finalizacao||'--'}</td></tr>
+        <tr><td style="font-weight:600;padding-right:16px;">Horário Saída da obra</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_horario_saida_obra||'--'}</td></tr>
+        <tr><td style="font-weight:600;padding-right:16px;">Horário Chegada na base</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_horario_chegada_base||'--'}</td></tr>
+      </table>
+    </div>`;
+  const rdoCondicoes = `
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+      <h4 style="margin:0 0 8px 0; font-size:13px; color:var(--dark;">Condições do RDO</h4>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <tr><td style="font-weight:600;padding-right:16px;">Condições climáticas</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_condicoes||'--'}</td></tr>
+        <tr><td style="font-weight:600;padding-right:16px;">Impedimento execução (somente se sim)</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_impedimento||'--'}</td></tr>
+        <tr><td style="font-weight:600;padding-right:16px;">Falta de material</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_falta_material||'--'}</td></tr>
+        <tr><td style="font-weight:600;padding-right:16px;">Projeto Incoerente</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_projeto_incoerente||'--'}</td></tr>
+        <tr><td style="font-weight:600;padding-right:16px;">Equipe incompleta</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_equipe_incompleta||'--'}</td></tr>
+        <tr><td style="font-weight:600;padding-right:16px;">Falta de veículo</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_falta_veiculo||'--'}</td></tr>
+        <tr><td style="font-weight:600;padding-right:16px;">Impedimento de acesso</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_impedimento_acesso||'--'}</td></tr>
+        <tr><td style="font-weight:600;padding-right:16px;">Licença ambiental</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_licenca_ambiental||'--'}</td></tr>
+        <tr><td style="font-weight:600;padding-right:16px;">Autorização/embargo</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_autorizacao_embargo||'--'}</td></tr>
+        <tr><td style="font-weight:600;padding-right:16px;">Desligamento conforme programado</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${rdo.rdo_desligamento||'--'}</td></tr>
+      </table>
+    </div>`;
   return `
   <div class="ps-block">
     <div class="ps-block-head">
@@ -1859,12 +1888,13 @@ function docAtribuicaoHtml(prog, atrib){
     <table class="ps-info">
       <tr><th>Supervisor</th><td>${esc(eq?.supervisor||'—')}</td><th>Encarregado</th><td>${esc(eq?.encarregado||'—')}</td></tr>
       <tr><th>Motorista</th><td>${esc(eq?.motorista||'—')}</td><th>Eletricistas</th><td>${esc((eq?.eletricistas||[]).filter(Boolean).join(', ')||'—')}</td></tr>
-      <tr><th>Status</th><td colspan="3">${atrib.status}</td></tr>
     </table>
     <table>
       <thead><tr><th style="width:26px;">#</th><th>Código</th><th>Descrição</th><th style="width:40px;">Un.</th><th style="width:52px;">Qtd prev.</th><th style="width:64px;">Qtd exec.</th><th>Obs.</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
+    ${rdoHorarios}
+    ${rdoCondicoes}
     <div class="ps-check"><div><strong>Executou?</strong> &nbsp;☐ SIM &nbsp;☐ NÃO &nbsp;☐ PARCIAL</div><div><strong>Data da execução:</strong> ____/____/____</div></div>
     <div class="ps-sign"><strong>Observações do campo:</strong><div class="ps-obs"></div></div>
     <div class="ps-sign"><strong>Assinatura do encarregado:</strong> <span class="ps-line"></span></div>
@@ -2010,6 +2040,10 @@ function renderAdmin(){
         <div class="field" id="new-field-opts-wrap" style="display:none;"><label>Opções (separadas por vírgula)</label><input type="text" id="new-field-opts" placeholder="Opção 1, Opção 2, Opção 3"></div>
         <button class="btn btn-primary btn-sm" id="add-field-btn" style="align-self:flex-start;">${icon('plus',13)} Adicionar campo</button>
       </div>
+    </div>
+    <div class="panel" style="margin-top:24px;">
+      <div class="panel-head"><h3>Respostas RDO - Saída da Base</h3></div>
+      <div id="admin-rdo-list"></div>
     </div>`;
   el.querySelectorAll('[data-mod]').forEach(b=>b.addEventListener('click', ()=>{ adminModulo=b.dataset.mod; renderAdmin(); }));
   paintAdminUsersList();
@@ -2024,6 +2058,7 @@ function renderAdmin(){
     DB.customFields[adminModulo].push({ id: nextId(), label, tipo, opcoes: tipo==='select'? opts: [] });
     saveData(); toast('Campo adicionado.'); renderAdmin();
   });
+  paintAdminRdoList();
 }
 function paintAdminUsersList(){
   const wrap = document.getElementById('admin-users-list');
@@ -2091,6 +2126,69 @@ function paintAdminFieldsList(){
     DB.customFields[adminModulo] = DB.customFields[adminModulo].filter(f=>f.id!==Number(b.dataset.delField));
     saveData(); renderAdmin();
   }));
+}
+function paintAdminRdoList(){
+  const wrap = document.getElementById('admin-rdo-list');
+  const rdoEntries = [];
+  (DB.programacoes||[]).forEach(pg=>{
+    (pg.atribuicoes||[]).forEach(at=>{
+      const rdo = at.rdoRespostas||{};
+      rdoEntries.push({ programacao: pg, atribuicao: at, respostas: rdo });
+    });
+  });
+  if(!rdoEntries.length){
+    wrap.innerHTML = `<div style="padding:20px;color:var(--muted-2);font-size:12.5px;">Nenhuma resposta RDO registrada ainda. As equipes devem completar o RDO na página da equipe.</div>`;
+    return;
+  }
+  wrap.innerHTML = rdoEntries.map(entry=>`
+    <div class="admin-field-row" style="border-bottom:1px solid var(--border); padding-bottom:24px; margin-bottom:24px;">
+      <div style="font-weight:700;font-size:14px;color:var(--dark);margin-bottom:8px;">
+        Programação ${entry.prog.id} - ${entry.prog.atribuicoes.map(a=>String(a.equipeId)).join(', ')} ${entry.atribuicao.status||'Programado'}
+      </div>
+      <div style="margin-bottom:16px;">
+        <h4>Dados da Programação</h4>
+        <p><strong>Data programada:</strong> ${fmtDate(entry.prog.dataProgramada)}</p>
+        <p><strong>Ciclo:</strong> ${entry.prog.ciclo||'—'}</p>
+        <p><strong>Projeto:</strong> ${entry.prog.projetoId ? (DB.projetos||[]).find(p=>p.id===entry.prog.projetoId)?.nome||'—' : '—'}</p>
+      </div>
+      <div style="margin-bottom:16px;">
+        <h4>Respostas RDO</h4>
+        <table style="width:100%;border-collapse:collapse;">
+          ${RDO_PERGUNTAS.map(p=>`
+            <tr style="margin-bottom:8px;">
+              <td style="width:40%;font-weight:600;padding-right:16px;">${p.label}</td>
+              <td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;min-width:200px;background:rgba(87,199,199,.08);">
+                ${String(entry.respostas[p.id])||'-- não respondido --'}
+              </td>
+            </tr>`).join('')}
+        </table>
+      </div>
+      <div style="margin-bottom:16px;">
+        <h4>Horários</h4>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="font-weight:600;padding-right:16px;">Horário Chegada</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoHorarioChegada||'--'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:16px;">Horário Início das atividades</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoHorarioInicio||'--'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:16px;">Horário Finalização das atividades</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoHorarioFinalizacao||'--'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:16px;">Horário Saída da obra</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoHorarioSaidaObra||'--'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:16px;">Horário Chegada na base</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoHorarioChegadaBase||'--'}</td></tr>
+        </table>
+      </div>
+      <div style="margin-bottom:16px;">
+        <h4>Condições Climáticas e Impedimentos</h4>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="font-weight:600;padding-right:16px;">Condições climáticas</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoCondicoes||'--'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:16px;">Impedimento execução (somente se sim)</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoImpedimento||'--'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:16px;">Falta de material</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoFaltaMaterial||'--'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:16px;">Projeto Incoerente</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoProjetoIncoerente||'--'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:16px;">Equipe incompleta</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoEquipeIncompleta||'--'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:16px;">Falta de veículo</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoFaltaVeiculo||'--'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:16px;">Impedimento de acesso</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoImpedimentoAcesso||'--'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:16px;">Licença ambiental</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoLicencaAmbiental||'--'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:16px;">Autorização/embargo</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoAutorizacaoEmbargo||'--'}</td></tr>
+          <tr><td style="font-weight:600;padding-right:16px;">Desligamento conforme programado</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoDesligamento||'--'}</td></tr>
+        </table>
+      </div>
+    </div>`).join('');
 }
 
 /* =========================================================
