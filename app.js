@@ -602,11 +602,11 @@ function parseCustomFieldsFromForm(moduleKey, fd){
 /* =========================================================
    MODAL GENÉRICO
 ========================================================= */
-function openModal({title, bodyHtml, onMount, onSubmit, submitLabel='Salvar', wide=false, footerBtns=[]}){
+function openModal({title, bodyHtml, onMount, onSubmit, submitLabel='Salvar', wide=false, extraWide=false, footerBtns=[]}){
   const root = document.getElementById('modal-root');
   root.innerHTML = `
     <div class="modal-overlay" id="modal-overlay">
-      <div class="modal" style="${wide?'max-width:660px':''}">
+      <div class="modal" style="${extraWide?'max-width:900px':wide?'max-width:660px':''}">
         <div class="modal-head"><h3>${title}</h3><button class="icon-btn" id="modal-close">${icon('close')}</button></div>
         <form id="modal-form">
           <div class="modal-body">${bodyHtml}</div>
@@ -2036,7 +2036,7 @@ function openAtribDetalhe(atribId){
     </div>`;
 
   openModal({
-    title: pg? 'Editar programação' : 'Nova programação', bodyHtml: baseFieldsHtml, wide:true, submitLabel: pg? 'Salvar alterações':'Programar',
+    title: pg? 'Editar programação' : 'Nova programação', bodyHtml: baseFieldsHtml, extraWide: true, submitLabel: pg? 'Salvar alterações':'Programar',
     onMount:(root)=>{
       bindCicloMasks(root);
       const projSel = root.querySelector('#pg-projeto');
@@ -2179,6 +2179,13 @@ function openAtribDetalhe(atribId){
           const hasFix = (localLat!=null&&localLng!=null);
           const center = hasFix? [localLat, localLng] : [-17.79, -50.92];
           localMap = L.map(mapEl, { maxZoom:22, minZoom:2, zoomSnap:1, zoomControl:true, touchZoom:true, scrollWheelZoom:true }).setView(center, hasFix? 16 : 12);
+          // Base OSM layer (sempre funciona até z19 no mundo todo)
+          L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            maxNativeZoom: 19,
+            attribution:'© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          }).addTo(localMap);
+          // Geoapify por cima (melhor visual, z0-20) — se falhar, OSM aparece
           const baseUrl = 'https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}{r}.png?apiKey={apiKey}';
           L.tileLayer(baseUrl, {
             apiKey: MAPS_KEY,
