@@ -2592,13 +2592,14 @@ function openRDOModal(progId, attribId){
         <span class="badge-prefix" style="color:${res.pct>=100?'var(--green)':res.pct>=50?'var(--accent)':'var(--red)'};">${res.pct}%</span>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <thead><tr><th style="text-align:left;padding:4px 6px;">#</th><th style="text-align:left;">Código</th><th style="text-align:left;">Descrição</th><th style="text-align:center;">Un.</th><th style="text-align:center;">Prev.</th><th style="text-align:center;">Exec.</th><th style="text-align:center;">%</th></tr></thead>
+        <thead><tr><th style="text-align:left;padding:4px 6px;">#</th><th style="text-align:left;">Código</th><th style="text-align:left;">Descrição</th><th style="text-align:center;">Un.</th><th style="text-align:center;">Prev.</th><th style="text-align:center;">Exec.</th><th style="text-align:center;">%</th><th style="text-align:center;">Fotos</th></tr></thead>
         <tbody>
           ${(x.atribuicao.atividades||[]).map((a,idx)=>{
             const at = findAtividade(a.atividadeId);
             const p = parseFloat(a.quantidadePrevista)||0;
             const e = a.quantidadeExecutada==null? null : parseFloat(a.quantidadeExecutada);
             const pct = p? Math.round((e||0)/p*100) : 0;
+            const fotos = String(a.fotos||'').split(';;').filter(Boolean);
             return `<tr style="border-top:1px solid var(--border-soft);">
               <td style="padding:4px 6px;color:var(--muted-2);">${idx+1}</td>
               <td class="mono" style="padding:4px 6px;">${esc(at?.codigo||'?')}</td>
@@ -2607,6 +2608,7 @@ function openRDOModal(progId, attribId){
               <td style="text-align:center;" class="mono">${p? fmtNum(p):'—'}</td>
               <td style="text-align:center;" class="mono"><strong>${e!=null? fmtNum(e):'—'}</strong></td>
               <td style="text-align:center;color:${pct>=100?'var(--green)':pct>=50?'var(--accent)':'var(--red)'};font-weight:700;">${p? pct+'%':'—'}</td>
+              <td style="text-align:center;">${fotos.length? `<div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">${fotos.map(u=>`<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="foto" style="width:36px;height:36px;object-fit:cover;border-radius:6px;border:1px solid var(--border);" loading="lazy"></a>`).join('')}</div>`:'<span style="color:var(--muted-2);">—</span>'}</td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -2666,7 +2668,8 @@ function exportRDOExcel(registros){
         'Unidade': at?.unidade||'',
         'Qtd Prevista Atividade': a.quantidadePrevista||'',
         'Qtd Executada Atividade': e!=null? e:'',
-        'Percentual Atividade': p? Math.round((e||0)/p*100)+'%':''
+        'Percentual Atividade': p? Math.round((e||0)/p*100)+'%':'',
+        'Fotos Atividade': a.fotos||''
       };
     });
     if(detalhe.length){

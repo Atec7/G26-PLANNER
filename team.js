@@ -51,8 +51,16 @@ const ICONS = {
   close:'<path d="M18 6 6 18M6 6l12 12"/>',
   alert:'<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4M12 17h.01"/>',
   calendar:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
-  check:'<path d="M20 6 9 17l-5-5"/>'
+  check:'<path d="M20 6 9 17l-5-5"/>',
+  camera:'<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+  image:'<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>'
 };
+
+/* ── FOTOS DOS REGISTROS (IMGGB) ── */
+var IMGGB_KEY = '95bb16ee776d7e20f26857cec98bd372';
+var FOTOS_SEP = ';;';
+var _fotos = {};        // _fotos[eqId] = [ [File,...], [File,...], ... ] (uma lista por linha de atividade)
+var _fotosEnviando = false;
 function icon(name,size){ return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`; }
 
 /* --- estado --- */
@@ -235,6 +243,7 @@ function render(){
   }
   
   const pr = findProjeto(DB, prog.projetoId);
+  resetFotos();
   root.innerHTML = `
     <div class="panel section-gap">
       <div class="panel-head">
@@ -242,7 +251,7 @@ function render(){
         <span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${fmtDate(prog.dataProgramada)}</span>
       </div>
       <div style="padding:16px;display:flex;flex-direction:column;gap:16px;">
-        <div class="team-hint">${icon('alert',14)} <div>Edite apenas as <strong>atividades e quantidades</strong> da programação. A <strong>observação é obrigatória</strong>. As alterações ficam salvas neste aparelho e são enviadas automaticamente quando houver internet.</div></div>
+        <div class="team-hint">${icon('alert',14)} <div>Edite apenas as <strong>atividades e quantidades</strong> da programação. A <strong>observação é obrigatória</strong> e cada atividade exige <strong>pelo menos 1 foto</strong> (câmera ou galeria). As alterações ficam salvas neste aparelho e são enviadas automaticamente quando houver internet.</div></div>
         ${Object.keys(editors).map(eqId=>renderTeamBlock(eqId)).join('')}
         <div class="field"><label>Observação <span class="req">*</span></label><textarea id="team-obs" rows="3" placeholder="Descreva o que mudou e o motivo">${esc(observacao)}</textarea></div>
         <button class="btn btn-primary" id="team-submit" style="align-self:flex-end;">${icon('check',15)} Enviar alterações</button>
@@ -251,8 +260,16 @@ function render(){
   document.getElementById('team-obs').addEventListener('input', e=>{ observacao = e.target.value; });
   root.querySelectorAll('.te-select').forEach(s=>s.addEventListener('change', e=>{ const [eid,idx]=e.currentTarget.dataset.tes.split('|'); editors[eid][Number(idx)].atividadeId = e.target.value; }));
   root.querySelectorAll('.te-qty').forEach(s=>s.addEventListener('input', e=>{ const [eid,idx]=e.currentTarget.dataset.teq.split('|'); editors[eid][Number(idx)].quantidadePrevista = e.target.value; }));
-  root.querySelectorAll('.te-remove').forEach(b=>b.addEventListener('click', e=>{ const [eid,idx]=e.currentTarget.dataset.eqRm.split('|'); editors[eid].splice(Number(idx),1); render(); }));
-  root.querySelectorAll('.te-add').forEach(b=>b.addEventListener('click', e=>{ editors[e.currentTarget.dataset.eqAdd].push({atividadeId:'',quantidadePrevista:''}); render(); }));
+  root.querySelectorAll('.te-remove').forEach(b=>b.addEventListener('click', e=>{ const [eid,idx]=e.currentTarget.dataset.eqRm.split('|'); editors[eid].splice(Number(idx),1); resetFotos(); render(); }));
+  root.querySelectorAll('.te-add').forEach(b=>b.addEventListener('click', e=>{ editors[e.currentTarget.dataset.eqAdd].push({atividadeId:'',quantidadePrevista:''}); resetFotos(); render(); }));
+  root.querySelectorAll('.te-camera').forEach(b=>b.addEventListener('click', ()=>{ const [eid,idx]=b.dataset.tec.split('|'); openPhotoPicker(eid, Number(idx), 'camera'); }));
+  root.querySelectorAll('.te-gallery').forEach(b=>b.addEventListener('click', ()=>{ const [eid,idx]=b.dataset.teg.split('|'); openPhotoPicker(eid, Number(idx), 'gallery'); }));
+  root.querySelectorAll('.te-photo-hint').forEach(h=>{
+    const [eid,idx] = h.dataset.ph.split('|');
+    const n = fotosCount(eid, Number(idx));
+    h.textContent = n? `${n} foto${n>1?'s':''} adicionada${n>1?'s':''}` : 'Obrigatório: adicione ao menos 1 foto';
+    h.className = 'te-photo-hint ' + (n? 'ok':'missing');
+  });
   document.getElementById('team-submit').addEventListener('click', submitEdit);
 }
 function renderTeamBlock(eqId){
@@ -262,10 +279,20 @@ function renderTeamBlock(eqId){
     <div class="panel-head"><h4>${equipeLabel(eq)}</h4><span class="badge-prefix">${eqtlLabel(eq)}</span></div>
     <div style="padding:12px 14px;">
       ${rows.map((r,i)=>`
-        <div class="activity-row">
-          <select class="te-select" data-tes="${eqId}|${i}"><option value="">Atividade…</option>${DB.atividades.map(a=>`<option value="${a.id}" ${String(r.atividadeId)===String(a.id)?'selected':''}>${esc(a.codigo)} · ${esc(a.descricao)}</option>`).join('')}</select>
-          <input type="number" step="0.01" min="0" class="te-qty" data-teq="${eqId}|${i}" placeholder="Qtd." value="${r.quantidadePrevista??''}">
-          <button type="button" class="icon-btn te-remove" data-eq-rm="${eqId}|${i}" title="Remover atividade">${icon('close',13)}</button>
+        <div class="team-atividade">
+          <div class="activity-row">
+            <select class="te-select" data-tes="${eqId}|${i}"><option value="">Atividade…</option>${DB.atividades.map(a=>`<option value="${a.id}" ${String(r.atividadeId)===String(a.id)?'selected':''}>${esc(a.codigo)} · ${esc(a.descricao)}</option>`).join('')}</select>
+            <input type="number" step="0.01" min="0" class="te-qty" data-teq="${eqId}|${i}" placeholder="Qtd." value="${r.quantidadePrevista??''}">
+            <button type="button" class="icon-btn te-remove" data-eq-rm="${eqId}|${i}" title="Remover atividade">${icon('close',13)}</button>
+          </div>
+          <div class="activity-fotos">
+            <div class="te-thumbs" data-tef="${eqId}|${i}"></div>
+            <div class="te-actions">
+              <span class="te-photo-hint" data-ph="${eqId}|${i}"></span>
+              <button type="button" class="btn btn-sm te-camera" data-tec="${eqId}|${i}">${icon('camera',13)} Câmera</button>
+              <button type="button" class="btn btn-sm btn-ghost te-gallery" data-teg="${eqId}|${i}">${icon('image',13)} Galeria</button>
+            </div>
+          </div>
         </div>`).join('')}
       <button type="button" class="btn btn-sm te-add" data-eq-add="${eqId}">${icon('plus',13)} Adicionar atividade</button>
     </div>
@@ -273,35 +300,127 @@ function renderTeamBlock(eqId){
 }
 
 /* --- envio / fila offline --- */
-function submitEdit(){
+/* ── FOTOS DOS REGISTROS (IMGGB) ── */
+function openPhotoPicker(eqId, idx, modo){
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'image/*';
+  if(modo==='camera') inp.setAttribute('capture','environment');
+  inp.style.display = 'none';
+  inp.onchange = ()=>{
+    if(inp.files && inp.files[0]) addFoto(eqId, idx, inp.files[0]);
+    inp.remove();
+  };
+  document.body.appendChild(inp);
+  inp.click();
+}
+function addFoto(eqId, idx, file){
+  if(!_fotos[eqId]) _fotos[eqId] = [];
+  if(!_fotos[eqId][idx]) _fotos[eqId][idx] = [];
+  _fotos[eqId][idx].push(file);
+  atualizarFotosUI(eqId, idx);
+}
+function removerFoto(eqId, idx, fIdx){
+  const arr = (_fotos[eqId]||[])[idx];
+  if(!arr) return;
+  arr.splice(fIdx,1);
+  atualizarFotosUI(eqId, idx);
+}
+function fotoUrl(file){ return URL.createObjectURL(file); }
+function atualizarFotosUI(eqId, idx){
+  const thumbs = document.querySelector('.te-thumbs[data-tef="'+eqId+'|'+idx+'"]');
+  if(!thumbs) return;
+  const arr = (_fotos[eqId]||[])[idx]||[];
+  thumbs.innerHTML = arr.map((f,i)=>`
+    <div class="te-thumb">
+      <img src="${fotoUrl(f)}" alt="foto">
+      <button type="button" class="icon-btn te-del-foto" data-te-df="${eqId}|${idx}|${i}" title="Remover foto">${icon('close',13)}</button>
+    </div>`).join('');
+  thumbs.querySelectorAll('.te-del-foto').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const p = b.dataset.teDf.split('|');
+      removerFoto(p[0], Number(p[1]), Number(p[2]));
+    });
+  });
+}
+function resetFotos(){
+  _fotos = {};
+  Object.keys(editors).forEach(eqId=>{ _fotos[eqId] = editors[eqId].map(()=>[]); });
+}
+function fotosCount(eqId, idx){
+  return ((_fotos[eqId]||[])[idx]||[]).length;
+}
+async function uploadToImGbb(file){
+  const fd = new FormData();
+  fd.append('image', file);
+  const res = await fetch('https://api.imgbb.com/1/upload?key='+IMGGB_KEY, { method:'POST', body: fd });
+  const j = await res.json();
+  if(!j.success) throw new Error((j.error&&j.error.message)||'Falha no upload');
+  return (j.data && (j.data.url || j.data.display_url)) || '';
+}
+
+async function submitEdit(){
   const obs = observacao.trim();
   if(!obs){ toast('A observação é obrigatória.', 'error'); return; }
   for(const eqId of Object.keys(editors)){
     const rows = editors[eqId];
     if(!rows.length){ toast('Cada equipe precisa de ao menos uma atividade.', 'error'); return; }
     if(rows.some(r=>!r.atividadeId)){ toast('Selecione a atividade em todas as linhas.', 'error'); return; }
+    for(let i=0;i<rows.length;i++){
+      if(!fotosCount(eqId, i)){ toast('Cada atividade precisa de pelo menos 1 foto.', 'error'); return; }
+    }
   }
-  const patch = {
-    id: 'e'+Date.now()+Math.random().toString(36).slice(2,6),
-    programacaoId: progId,
-    ts: Date.now(),
-    observacao: obs,
-    atribuicoes: Object.keys(editors).map(eqId=>({
-      equipeId: Number(eqId),
-      atividades: editors[eqId].map(r=>({ atividadeId: Number(r.atividadeId), quantidadePrevista: r.quantidadePrevista? parseFloat(r.quantidadePrevista): null }))
-    }))
-  };
-  // Envia as respostas do RDO junto com a conclusão das atividades
-  const pendRDO = loadPendingRDO(progId);
-  if(pendRDO && pendRDO.respostas){
-    patch.respostas = pendRDO.respostas;
-    clearPendingRDO(progId);
+  if(_fotosEnviando) return;
+  if(navigator.onLine === false){ toast('Conecte-se à internet para enviar as fotos das atividades.', 'error'); return; }
+  _fotosEnviando = true;
+  const btn = document.getElementById('team-submit');
+  if(btn){ btn.disabled = true; btn.textContent = 'Enviando fotos…'; }
+  try{
+    const fotosUrls = {};
+    for(const eqId of Object.keys(editors)){
+      const arr = _fotos[eqId]||[];
+      fotosUrls[eqId] = [];
+      for(let i=0;i<editors[eqId].length;i++){
+        const urls = [];
+        for(const f of (arr[i]||[])){
+          const u = await uploadToImGbb(f);
+          if(u) urls.push(u);
+        }
+        fotosUrls[eqId].push(urls.join(FOTOS_SEP));
+      }
+    }
+    const patch = {
+      id: 'e'+Date.now()+Math.random().toString(36).slice(2,6),
+      programacaoId: progId,
+      ts: Date.now(),
+      observacao: obs,
+      atribuicoes: Object.keys(editors).map(eqId=>({
+        equipeId: Number(eqId),
+        atividades: editors[eqId].map((r,i)=>({
+          atividadeId: Number(r.atividadeId),
+          quantidadePrevista: r.quantidadePrevista? parseFloat(r.quantidadePrevista): null,
+          fotos: fotosUrls[eqId][i]||''
+        }))
+      }))
+    };
+    // Envia as respostas do RDO junto com a conclusão das atividades
+    const pendRDO = loadPendingRDO(progId);
+    if(pendRDO && pendRDO.respostas){
+      patch.respostas = pendRDO.respostas;
+      clearPendingRDO(progId);
+    }
+    const q = loadQueue(); q.push(patch); saveQueue(q);
+    observacao = '';
+    toast('Alterações registradas neste aparelho. Envio automático quando houver internet.');
+    render();
+    syncNow();
+  }catch(err){
+    console.error(err);
+    toast('Erro ao enviar as fotos. Tente novamente.', 'error');
+  }finally{
+    _fotosEnviando = false;
+    if(btn){ btn.disabled = false; btn.textContent = 'Enviar alterações'; }
   }
-  const q = loadQueue(); q.push(patch); saveQueue(q);
-  observacao = '';
-  toast('Alterações registradas neste aparelho. Envio automático quando houver internet.');
-  render();
-  syncNow();
 }
 async function syncNow(){
   if(syncing) return;
@@ -330,7 +449,8 @@ async function syncNow(){
         at.atividades = pa.atividades.map(x=>({
           atividadeId: Number(x.atividadeId),
           quantidadePrevista: x.quantidadePrevista,
-          quantidadeExecutada: existing.find(y=>String(y.atividadeId)===String(x.atividadeId))?.quantidadeExecutada ?? null
+          quantidadeExecutada: existing.find(y=>String(y.atividadeId)===String(x.atividadeId))?.quantidadeExecutada ?? null,
+          fotos: x.fotos || existing.find(y=>String(y.atividadeId)===String(x.atividadeId))?.fotos || ''
         }));
         at.historico = at.historico||[];
         at.historico.push({ usuarioNome:'Equipe', usuarioLogin:'', ts:patch.ts, tipo:'equipe', de:null, para:'atividades', motivo:patch.observacao });
