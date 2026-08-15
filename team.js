@@ -97,7 +97,7 @@ function toast(msg, kind){
   setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.25s'; setTimeout(()=>t.remove(),250); }, 3400);
 }
 function openModal({title, bodyHtml, onSubmit, submitLabel='Salvar'}){
-  const root = document.getElementById('team-body');
+  const root = document.body;
   const modalHtml = `
     <div class="modal-overlay" id="team-modal-overlay">
       <div class="modal" style="max-width:560px;">
