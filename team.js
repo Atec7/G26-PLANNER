@@ -125,7 +125,30 @@ function renderRDOForm(){
             </select>
           </div>`).join('')}
         <div style="margin-top:24px; padding-top:24px; border-top:1px solid var(--border);">
-          <button class="btn btn-primary" id="rdo-concluir" style="width:100%;padding:12px;font-size:16px;">Concluir RDO</button>
+          <h4 style="margin:8px 0 12px 0; font-size:13px; color:var(--dark;">Horários</h4>
+          <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:4px;">Horário Chegada</label>
+            <input type="time" class="rdo-input" data-rdo="rdo_horario_chegada" style="width:100%;padding:8px;font-size:14px;">
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:4px;">Horário Início das atividades</label>
+            <input type="time" class="rdo-input" data-rdo="rdo_horario_inicio" style="width:100%;padding:8px;font-size:14px;">
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:4px;">Horário Finalização das atividades</label>
+            <input type="time" class="rdo-input" data-rdo="rdo_horario_finalizacao" style="width:100%;padding:8px;font-size:14px;">
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:4px;">Horário Saída da obra</label>
+            <input type="time" class="rdo-input" data-rdo="rdo_horario_saida_obra" style="width:100%;padding:8px;font-size:14px;">
+          </div>
+          <div>
+            <label style="display:block;margin-bottom:4px;">Horário Chegada na base</label>
+            <input type="time" class="rdo-input" data-rdo="rdo_horario_chegada_base" style="width:100%;padding:8px;font-size:14px;">
+          </div>
+          <div style="margin-top:24px; padding-top:24px; border-top:1px solid var(--border);">
+            <button class="btn btn-primary" id="rdo-concluir" style="width:100%;padding:12px;font-size:16px;">Concluir RDO</button>
+          </div>
         </div>
       </div>
     </div>`;
@@ -134,6 +157,7 @@ function renderRDOForm(){
 function getRDORespostas(){
   const respostas = {};
   document.querySelectorAll('.rdo-select').forEach(s=>{ respostas[s.dataset.rdo] = s.value; });
+  document.querySelectorAll('.rdo-input').forEach(s=>{ respostas[s.dataset.rdo] = s.value; });
   return respostas;
 }
 
@@ -293,6 +317,25 @@ async function syncNow(){
         }));
         at.historico = at.historico||[];
         at.historico.push({ usuarioNome:'Equipe', usuarioLogin:'', ts:patch.ts, tipo:'equipe', de:null, para:'atividades', motivo:patch.observacao });
+        // Propagar dados do RDO
+        if(patch.respostas){
+          at.rdoRespostas = patch.respostas;
+          at.rdoHorarioChegada = patch.respostas.rdo_horario_chegada || at.rdoHorarioChegada;
+          at.rdoHorarioInicio = patch.respostas.rdo_horario_inicio || at.rdoHorarioInicio;
+          at.rdoHorarioFinalizacao = patch.respostas.rdo_horario_finalizacao || at.rdoHorarioFinalizacao;
+          at.rdoHorarioSaidaObra = patch.respostas.rdo_horario_saida_obra || at.rdoHorarioSaidaObra;
+          at.rdoHorarioChegadaBase = patch.respostas.rdo_horario_chegada_base || at.rdoHorarioChegadaBase;
+          at.rdoCondicoes = patch.respostas.rdo_condicoes || at.rdoCondicoes;
+          at.rdoImpedimento = patch.respostas.rdo_impedimento || at.rdoImpedimento;
+          at.rdoFaltaMaterial = patch.respostas.rdo_falta_material || at.rdoFaltaMaterial;
+          at.rdoProjetoIncoerente = patch.respostas.rdo_projeto_incoerente || at.rdoProjetoIncoerente;
+          at.rdoEquipeIncompleta = patch.respostas.rdo_equipe_incompleta || at.rdoEquipeIncompleta;
+          at.rdoFaltaVeiculo = patch.respostas.rdo_falta_veiculo || at.rdoFaltaVeiculo;
+          at.rdoImpedimentoAcesso = patch.respostas.rdo_impedimento_acesso || at.rdoImpedimentoAcesso;
+          at.rdoLicencaAmbiental = patch.respostas.rdo_licenca_ambiental || at.rdoLicencaAmbiental;
+          at.rdoAutorizacaoEmbargo = patch.respostas.rdo_autorizacao_embargo || at.rdoAutorizacaoEmbargo;
+          at.rdoDesligamento = patch.respostas.rdo_desligamento || at.rdoDesligamento;
+        }
         changed = true;
       });
     });
