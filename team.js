@@ -96,6 +96,25 @@ function toast(msg, kind){
   t.textContent=msg; wrap.appendChild(t);
   setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.25s'; setTimeout(()=>t.remove(),250); }, 3400);
 }
+function openModal({title, bodyHtml, onSubmit, submitLabel='Salvar'}){
+  const root = document.getElementById('team-body');
+  const modalHtml = `
+    <div class="modal-overlay" id="team-modal-overlay">
+      <div class="modal" style="max-width:560px;">
+        <div class="modal-head"><h3>${title}</h3><button class="icon-btn" id="team-modal-close">${icon('close')}</button></div>
+        <form id="team-modal-form">
+          <div class="modal-body">${bodyHtml}</div>
+          <div class="modal-foot"><button type="button" class="btn btn-ghost" id="team-modal-cancel">Cancelar</button><button type="submit" class="btn btn-primary">${submitLabel}</button></div>
+        </form>
+      </div>
+    </div>`;
+  root.insertAdjacentHTML('beforeend', modalHtml);
+  const close = ()=>{ document.getElementById('team-modal-overlay').remove(); };
+  document.getElementById('team-modal-close').addEventListener('click', close);
+  document.getElementById('team-modal-cancel').addEventListener('click', close);
+  document.getElementById('team-modal-overlay').addEventListener('click', (e)=>{ if(e.target.id==='team-modal-overlay') close(); });
+  document.getElementById('team-modal-form').addEventListener('submit', (e)=>{ e.preventDefault(); const ok = onSubmit(new FormData(e.target)); if(ok!==false) close(); });
+}
 const ICONS = {
   plus:'<path d="M12 5v14M5 12h14"/>',
   close:'<path d="M18 6 6 18M6 6l12 12"/>',
