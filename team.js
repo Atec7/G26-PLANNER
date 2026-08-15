@@ -93,54 +93,47 @@ function dbToEditors(db){
 
 /* --- RDO QUESTIONNAIRE --- */
 const RDO_PERGUNTAS = [
-  { id: 'rdo_condicoes', label: 'Condições climáticas', tipo: 'select', options: ['','Bom','Nublado','Chuvoso','Impraticável'] },
-  { id: 'rdo_impedimento', label: 'Impedimento de execução (Marque somente se a resposta for sim)', tipo: 'select', options: ['','Sim'] },
-  { id: 'rdo_falta_material', label: 'Falta de material', tipo: 'select', options: ['','Sim'] },
-  { id: 'rdo_projeto_incoerente', label: 'Projeto Incoerente', tipo: 'select', options: ['','Sim'] },
-  { id: 'rdo_equipe_incompleta', label: 'Equipe incompleta', tipo: 'select', options: ['','Sim'] },
-  { id: 'rdo_falta_veiculo', label: 'Falta de veículo', tipo: 'select', options: ['','Sim'] },
-  { id: 'rdo_impedimento_acesso', label: 'Impedimento de acesso', tipo: 'select', options: ['','Sim'] },
-  { id: 'rdo_licenca_ambiental', label: 'Licença ambiental', tipo: 'select', options: ['','Sim'] },
-  { id: 'rdo_autorizacao_embargo', label: 'Autorização/embargo', tipo: 'select', options: ['','Sim'] },
-  { id: 'rdo_desligamento', label: 'Desligamento conforme programado', tipo: 'select', options: ['','Sim'] },
+  { id: 'rdo_condicoes', label: 'Condições climáticas', tipo: 'select', options: ['Bom','Nublado','Chuvoso','Impraticável'] },
+  { id: 'rdo_impedimento', label: 'Impedimento de execução (Marque somente se a resposta for sim)', tipo: 'select', options: ['Não','Sim'] },
+  { id: 'rdo_falta_material', label: 'Falta de material', tipo: 'select', options: ['Não','Sim'] },
+  { id: 'rdo_projeto_incoerente', label: 'Projeto Incoerente', tipo: 'select', options: ['Não','Sim'] },
+  { id: 'rdo_equipe_incompleta', label: 'Equipe incompleta', tipo: 'select', options: ['Não','Sim'] },
+  { id: 'rdo_falta_veiculo', label: 'Falta de veículo', tipo: 'select', options: ['Não','Sim'] },
+  { id: 'rdo_impedimento_acesso', label: 'Impedimento de acesso', tipo: 'select', options: ['Não','Sim'] },
+  { id: 'rdo_licenca_ambiental', label: 'Licença ambiental', tipo: 'select', options: ['Não','Sim'] },
+  { id: 'rdo_autorizacao_embargo', label: 'Autorização/embargo', tipo: 'select', options: ['Não','Sim'] },
+  { id: 'rdo_desligamento', label: 'Desligamento conforme programado', tipo: 'select', options: ['Não','Sim'] },
 ];
 
 function renderRDOForm(){
+  const horarioCampos = [
+    ['rdo_horario_chegada','Horário Chegada'],
+    ['rdo_horario_inicio','Horário Início das atividades'],
+    ['rdo_horario_finalizacao','Horário Finalização das atividades'],
+    ['rdo_horario_saida_obra','Horário Saída da obra'],
+    ['rdo_horario_chegada_base','Horário Chegada na base']
+  ];
   return `
-    <div class="panel section-gap" style=" max-width:600px; margin:0 auto;">
+    <div class="panel section-gap" style="max-width:600px;margin:0 auto;">
       <div class="panel-head"><h3>Questionário RDO - Saída da Base</h3></div>
       <div style="padding:24px;">
-        <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">Responda todas as questões abaixo antes de acessar os dados da equipe.</p>
+        <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">Responda às questões abaixo e informe os horários. Os dados ficam salvos neste aparelho e são enviados quando você concluir as atividades.</p>
         ${RDO_PERGUNTAS.map((p,i)=>`
-          <div style="margin-bottom:16px;">
+          <div style="margin-bottom:14px;">
             <label style="display:block;font-weight:600;margin-bottom:4px;">${p.label}</label>
             <select class="rdo-select" data-rdo="${p.id}" style="width:100%;padding:8px;font-size:14px;">
-              ${p.options.map(v=>`<option value="${v}" ${v===''?'selected':''}>${v||'-- seletor--'}</option>`).join('')}
+              ${p.options.map((v,j)=>`<option value="${v}" ${j===0?'selected':''}>${v}</option>`).join('')}
             </select>
           </div>`).join('')}
-        <div style="margin-top:24px; padding-top:24px; border-top:1px solid var(--border);">
-          <h4 style="margin:8px 0 12px 0; font-size:13px; color:var(--dark;">Horários</h4>
-          <div style="margin-bottom:12px;">
-            <label style="display:block;margin-bottom:4px;">Horário Chegada</label>
-            <input type="time" class="rdo-input" data-rdo="rdo_horario_chegada" style="width:100%;padding:8px;font-size:14px;">
-          </div>
-          <div style="margin-bottom:12px;">
-            <label style="display:block;margin-bottom:4px;">Horário Início das atividades</label>
-            <input type="time" class="rdo-input" data-rdo="rdo_horario_inicio" style="width:100%;padding:8px;font-size:14px;">
-          </div>
-          <div style="margin-bottom:12px;">
-            <label style="display:block;margin-bottom:4px;">Horário Finalização das atividades</label>
-            <input type="time" class="rdo-input" data-rdo="rdo_horario_finalizacao" style="width:100%;padding:8px;font-size:14px;">
-          </div>
-          <div style="margin-bottom:12px;">
-            <label style="display:block;margin-bottom:4px;">Horário Saída da obra</label>
-            <input type="time" class="rdo-input" data-rdo="rdo_horario_saida_obra" style="width:100%;padding:8px;font-size:14px;">
-          </div>
-          <div>
-            <label style="display:block;margin-bottom:4px;">Horário Chegada na base</label>
-            <input type="time" class="rdo-input" data-rdo="rdo_horario_chegada_base" style="width:100%;padding:8px;font-size:14px;">
-          </div>
-          <div style="margin-top:24px; padding-top:24px; border-top:1px solid var(--border);">
+        <div style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);">
+          <h4 style="margin:0 0 12px 0;font-size:13px;color:var(--dark);">Horários</h4>
+          <p style="font-size:12px;color:var(--muted-2);margin:0 0 14px 0;">Digite os números — o ":" entra automaticamente. Ex.: 07 30 → 07:30.</p>
+          ${horarioCampos.map(([id,label])=>`
+            <div style="margin-bottom:12px;">
+              <label style="display:block;margin-bottom:4px;">${label}</label>
+              <input type="text" class="rdo-input rdo-hora" data-rdo="${id}" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="HH:MM" style="width:100%;padding:8px;font-size:16px;font-family:'JetBrains Mono',monospace;letter-spacing:.06em;">
+            </div>`).join('')}
+          <div style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);">
             <button class="btn btn-primary" id="rdo-concluir" style="width:100%;padding:12px;font-size:16px;">Concluir RDO</button>
           </div>
         </div>
@@ -155,11 +148,44 @@ function getRDORespostas(){
   return respostas;
 }
 
+/* RDO pendente: respostas ficam no aparelho e só são enviadas junto com a conclusão das atividades */
+function rdoKey(id){ return 'g26_equipe_rdo_'+id; }
+function loadPendingRDO(id){ try{ return JSON.parse(localStorage.getItem(rdoKey(id))||'null'); }catch(e){ return null; } }
+function savePendingRDO(obj){ try{ localStorage.setItem(rdoKey(obj.programacaoId), JSON.stringify(obj)); }catch(e){} }
+function clearPendingRDO(id){ try{ localStorage.removeItem(rdoKey(id)); }catch(e){} }
+
+/* Máscara numérica de horário: digita a hora, o ":" entra sozinho e depois os minutos */
+function maskHora(el){
+  const d = el.value.replace(/\D/g,'').slice(0,4);
+  el.value = d.length>2? d.slice(0,2)+':'+d.slice(2) : d;
+}
+function padHora(el){
+  if(!el.value) return;
+  const d = el.value.replace(/\D/g,'');
+  if(d.length<=2) el.value = d.padStart(2,'0')+':00';
+  else if(d.length===3) el.value = d.slice(0,2)+':0'+d.slice(2);
+  else el.value = d.slice(0,2)+':'+d.slice(2,4);
+}
+function horaValida(v){
+  if(!/^\d{2}:\d{2}$/.test(v||'')) return false;
+  const [h,m] = String(v).split(':').map(Number);
+  return h>=0 && h<=23 && m>=0 && m<=59;
+}
+
+/* RDO já foi respondido se houver respostas salvas (no aparelho ou no servidor) */
+function atualizaRDOCompletado(){
+  if(!DB || !progId) return;
+  const pg = (DB.programacoes||[]).find(p=>p.id===progId);
+  if(!pg) return;
+  const rdoSalvo = (pg.atribuicoes||[]).some(at=> at.rdoRespostas && Object.keys(at.rdoRespostas||{}).length>0);
+  if(rdoSalvo || loadPendingRDO(progId)) rdoCompletado = true;
+}
+
 function respostasRDOPreenchidas(){
   const res = getRDORespostas();
   const perguntasOk = RDO_PERGUNTAS.every(p=> res[p.id] && res[p.id] !== '');
   const horarios = ['rdo_horario_chegada','rdo_horario_inicio','rdo_horario_finalizacao','rdo_horario_saida_obra','rdo_horario_chegada_base'];
-  const horariosOk = horarios.every(id=> res[id] && res[id] !== '');
+  const horariosOk = horarios.every(id=> horaValida(res[id]));
   return perguntasOk && horariosOk;
 }
 
@@ -187,34 +213,22 @@ function render(){
   /* Se RDO nao completado, mostrar questionario */
   if(!rdoCompletado){
     root.innerHTML = renderRDOForm();
+    root.querySelectorAll('.rdo-hora').forEach(inp=>{
+      inp.addEventListener('input', ()=>{ maskHora(inp); });
+      inp.addEventListener('blur', ()=>{ padHora(inp); });
+    });
     document.getElementById('rdo-concluir').addEventListener('click', ()=>{
       const respostas = getRDORespostas();
       if(!respostasRDOPreenchidas()){
-        toast('Responda todas as questões do RDO antes de continuar.', 'error');
+        toast('Responda todas as questões do RDO e preencha os horários (HH:MM) antes de continuar.', 'error');
         return;
       }
-      // Armazenar respostas no localStorage e marcar como completado
+      // Guarda localmente — só será enviado junto com a conclusão das atividades
       try{
-        const queue = loadQueue();
-        const rdoPatch = {
-          id: 'rdo_'+Date.now(),
-          programacaoId: progId,
-          ts: Date.now(),
-          respostas: respostas
-        };
-        queue.push(rdoPatch);
-        saveQueue(queue);
+        savePendingRDO({ programacaoId: progId, ts: Date.now(), respostas: respostas });
       }catch(e){}
       rdoCompletado = true;
-      // Salvar no cache/db se disponivel
-      const cached = loadCache();
-      if(cached && DB){
-        const pg = (DB.programacoes||[]).find(p=>p.id===progId);
-        if(pg){
-          pg.rdoRespostas = respostas;
-          DB = db; saveCache(DB);
-        }
-      }
+      toast('RDO concluído. As respostas serão enviadas quando você concluir as atividades.');
       render();
     });
     return;
@@ -277,6 +291,12 @@ function submitEdit(){
       atividades: editors[eqId].map(r=>({ atividadeId: Number(r.atividadeId), quantidadePrevista: r.quantidadePrevista? parseFloat(r.quantidadePrevista): null }))
     }))
   };
+  // Envia as respostas do RDO junto com a conclusão das atividades
+  const pendRDO = loadPendingRDO(progId);
+  if(pendRDO && pendRDO.respostas){
+    patch.respostas = pendRDO.respostas;
+    clearPendingRDO(progId);
+  }
   const q = loadQueue(); q.push(patch); saveQueue(q);
   observacao = '';
   toast('Alterações registradas neste aparelho. Envio automático quando houver internet.');
@@ -361,7 +381,7 @@ function init(){
   }
   if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
   const cached = loadCache();
-  if(cached){ DB = cached; dbToEditors(DB); render(); }
+  if(cached){ DB = cached; dbToEditors(DB); atualizaRDOCompletado(); render(); }
   /* Persistência offline já vem habilitada por padrão no Firebase Web SDK
      (v9+/10.x compat) — não usar database.setPersistenceEnabled aqui. */
   window.addEventListener('online', ()=>{ online=true; setStatus('Conectado — sincronizando…','ok'); syncNow(); });
@@ -380,12 +400,8 @@ function init(){
         setStatus('Programação vencida — acesso negado', 'warn');
         // A render() será chamada dentro do fluxo depois
       }
-      // Verificar RDO
-      const rdoSalvo = pg.rdoRespostas;
-      if(rdoSalvo){
-        rdoCompletado = true;
-      }
     }
+    atualizaRDOCompletado();
     render();
   }).catch(()=>{ render(); }).finally(()=>{ syncNow(); });
 }
