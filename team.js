@@ -68,13 +68,22 @@ function findAtividade(db,id){ return db.atividades.find(a=>a.id===Number(id)); 
 function equipeLabel(eq){ if(!eq) return '—'; const parts=[]; if(eq.eqtl) parts.push(eq.eqtl); if(eq.prtn) parts.push(eq.prtn); return parts.length? parts.join(' / ') : ('Equipe #'+eq.id); }
 function eqtlLabel(eq){ return (eq && eq.eqtl)? eq.eqtl : '—'; }
 function prtnLabel(eq){ return (eq && eq.prtn)? eq.prtn : '—'; }
-/* --- Local / mapa (Geoapify) --- */
+/* --- Local / mapa (Geoapify + fallback OSM) --- */
 const MAPS_KEY = 'cb9a3186df512370a0b85db130ca34d1';
 function mapsLinkByAddress(addr){ return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(String(addr||'').trim()); }
 function mapsLinkByCoords(lat,lng){ return 'https://www.google.com/maps/search/?api=1&query='+Number(lat)+','+Number(lng); }
 function staticMapUrl(lat,lng,zoom,w,h){
   const z = zoom||16, width = w||640, height = h||360;
   return `https://maps.geoapify.com/v1/staticmap?style=osm-bright-smooth&width=${width}&height=${height}&center=lonlat:${Number(lng)},${Number(lat)}&zoom=${z}&scaleFactor=2&marker=lonlat:${Number(lng)},${Number(lat)};type:material;color:%23e02020;size:normal&apiKey=${MAPS_KEY}`;
+}
+function staticMapFallbackUrl(lat,lng,zoom,w,h){
+  const z = zoom||16, width = w||640, height = h||360;
+  return `https://staticmap.openstreetmap.de/staticmap.php?center=${Number(lat)},${Number(lng)}&zoom=${z}&size=${width}x${height}&markers=${Number(lat)},${Number(lng)},red-pushpin`;
+}
+function staticMapImgTag(lat,lng,zoom,w,h,alt,style){
+  const geo = staticMapUrl(lat,lng,zoom,w,h);
+  const fb = staticMapFallbackUrl(lat,lng,zoom,w,h);
+  return `<img src="${esc(geo)}" alt="${esc(alt||'Mapa')}" style="${esc(style||'width:100%;max-width:520px;border-radius:8px;border:1px solid var(--border-soft);display:block;')}" onerror="this.onerror=null; this.src='${esc(fb)}';">`;
 }
 function toast(msg, kind){
   const wrap = document.getElementById('toast-wrap');
@@ -694,7 +703,7 @@ function buildDocEquipeHtml(pg, eqId){
         <tr><th>Ciclo</th><td>${esc(pg.ciclo||'—')}</td><th>Setor</th><td>${esc(pr?.setor||'—')}</td></tr>
         ${pg.local? `<tr><th>Local de execução</th><td colspan="3"><strong>${esc(pg.local)}</strong>${(pg.localLat!=null&&pg.localLng!=null)? ` — ${esc(mapsLinkByCoords(pg.localLat,pg.localLng))}`:''}</td></tr>`:''}
       </table>
-      ${(pg.localLat!=null&&pg.localLng!=null)? `<div style="margin:10px 0;"><strong>Localização:</strong><br><img src="${esc(staticMapUrl(pg.localLat,pg.localLng,15,640,360))}" alt="Mapa: ${esc(pg.local)}" style="width:100%;max-width:520px;border:1px solid #999;border-radius:4px;"></div>`:''}
+      ${(pg.localLat!=null&&pg.localLng!=null)? `<div style="margin:10px 0;"><strong>Localização:</strong><br>${staticMapImgTag(pg.localLat,pg.localLng,16,640,360, 'Mapa: '+(pg.local||''), 'width:100%;max-width:520px;border:1px solid #999;border-radius:4px;')}</div>`:''}
       <table>
         <thead><tr><th style="width:26px;">#</th><th>Código</th><th>Descrição</th><th style="width:40px;">Un.</th><th style="width:52px;">Qtd prev.</th><th style="width:64px;">Qtd exec.</th><th>Obs.</th></tr></thead>
         <tbody>${rows}</tbody>

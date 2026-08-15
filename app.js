@@ -2178,22 +2178,35 @@ function openAtribDetalhe(atribId){
         loadLeaflet().then(L=>{
           const hasFix = (localLat!=null&&localLng!=null);
           const center = hasFix? [localLat, localLng] : [-17.79, -50.92];
-          localMap = L.map(mapEl, { maxZoom:22, minZoom:2, zoomSnap:1, zoomControl:true, touchZoom:true, scrollWheelZoom:true }).setView(center, hasFix? 16 : 12);
-          // Base OSM layer (sempre funciona até z19 no mundo todo)
-          L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          localMap = L.map(mapEl, { maxZoom:22, minZoom:2, zoomSnap:1, zoomControl:true, touchZoom:true, scrollWheelZoom:true, layers:[] }).setView(center, hasFix? 16 : 12);
+          // 1) Satélite (Esri World Imagery) — gratuito, mundial, alta resolução, sem chave
+          const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 20,
+            maxNativeZoom: 20,
+            attribution:'Tiles © <a href="https://www.esri.com/">Esri</a> — Source: Esri, Maxar, Earthstar Geographics'
+          });
+          // 2) Cartográfico (OSM) — fallback global
+          const osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             maxNativeZoom: 19,
             attribution:'© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          }).addTo(localMap);
-          // Geoapify por cima (melhor visual, z0-20) — se falhar, OSM aparece
-          const baseUrl = 'https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}{r}.png?apiKey={apiKey}';
-          L.tileLayer(baseUrl, {
+          });
+          // 3) Geoapify (cartográfico melhorado) — se a chave funcionar
+          const geoLayer = L.tileLayer('https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}{r}.png?apiKey={apiKey}', {
             apiKey: MAPS_KEY,
             maxZoom: 20,
             maxNativeZoom: 20,
             tileSize: 256,
             attribution:'Powered by <a href="https://www.geoapify.com/">Geoapify</a> | <a href="https://openmaptiles.org/">© OpenMapTiles</a> <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap</a>'
-          }).addTo(localMap);
+          });
+          // Adiciona satélite como base padrão
+          satLayer.addTo(localMap);
+          // Controle de camadas para o usuário escolher
+          L.control.layers({
+            'Satélite (Esri)': satLayer,
+            'Cartográfico (OSM)': osmLayer,
+            'Cartográfico (Geoapify)': geoLayer
+          }, null, {collapsed:false, position:'topright'}).addTo(localMap);
           function placeMarker(pos){
             if(localMarker){ localMarker.setLatLng(pos); }
             else { localMarker = L.marker(pos, {draggable:true, riseOnHover:true}).addTo(localMap); localMarker.on('dragend', ()=>{ localPicked = localMarker.getLatLng(); }); }
@@ -2320,6 +2333,15 @@ function staticMapUrl(lat,lng,zoom,w,h){
   const z = zoom||16, width = w||640, height = h||360;
   return `https://maps.geoapify.com/v1/staticmap?style=osm-bright-smooth&width=${width}&height=${height}&center=lonlat:${Number(lng)},${Number(lat)}&zoom=${z}&scaleFactor=2&marker=lonlat:${Number(lng)},${Number(lat)};type:material;color:%23e02020;size:normal&apiKey=${MAPS_KEY}`;
 }
+function staticMapFallbackUrl(lat,lng,zoom,w,h){
+  const z = zoom||16, width = w||640, height = h||360;
+  return `https://staticmap.openstreetmap.de/staticmap.php?center=${Number(lat)},${Number(lng)}&zoom=${z}&size=${width}x${height}&markers=${Number(lat)},${Number(lng)},red-pushpin`;
+}
+function staticMapImgTag(lat,lng,zoom,w,h,alt,style){
+  const geo = staticMapUrl(lat,lng,zoom,w,h);
+  const fb = staticMapFallbackUrl(lat,lng,zoom,w,h);
+  return `<img src="${esc(geo)}" alt="${esc(alt||'Mapa')}" style="${esc(style||'width:100%;max-width:520px;border-radius:8px;border:1px solid var(--border-soft);display:block;')}" onerror="this.onerror=null; this.src='${esc(fb)}';">`;
+}
 async function geoapifyGeocode(addr){
   if(!String(addr||'').trim()) return null;
   try{
@@ -2347,7 +2369,7 @@ function localMapsHref(local, lat, lng){
 }
 function localThumbHtml(local, lat, lng){
   if(lat==null || lng==null) return '';
-  return `<img src="${staticMapUrl(lat,lng,17,640,320)}" alt="Mapa: ${esc(local)}" style="width:100%;max-width:520px;border-radius:8px;border:1px solid var(--border-soft);display:block;">`;
+  return staticMapImgTag(lat,lng,17,640,320, 'Mapa: '+(local||''), 'width:100%;max-width:520px;border-radius:8px;border:1px solid var(--border-soft);display:block;');
 }
 let _leafletLoaded = null;
 function loadLeaflet(){
@@ -2505,7 +2527,7 @@ function buildDocProgramacao(prog){
     ${prog.atribuicoes.map(at=> docAtribuicaoHtml(prog, at)).join('')}
     ${(prog.localLat!=null&&prog.localLng!=null)? `<div class="ps-block" style="page-break-before:auto;break-before:auto;margin-top:8px;">
       <div class="ps-block-head">Localização no mapa — ${progGid(prog)}</div>
-      <img src="${esc(staticMapUrl(prog.localLat,prog.localLng,16,720,420))}" alt="Mapa: ${esc(prog.local)}" style="width:100%;max-width:620px;border:1px solid #999;border-radius:4px;">
+      ${staticMapImgTag(prog.localLat,prog.localLng,16,720,420, 'Mapa: '+(prog.local||''), 'width:100%;max-width:620px;border:1px solid #999;border-radius:4px;')}
     </div>`:''}
     <div style="margin-top:8px;font-size:10.5px;color:#000;border-top:1px solid #444;padding-top:6px;">Assinatura do fiscal / responsável: <span class="ps-line"></span> &nbsp;&nbsp; Data: ____/____/____</div>
     ${docAnexosHtml(prog)}
