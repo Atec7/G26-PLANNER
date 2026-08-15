@@ -20,6 +20,35 @@ const firebaseConfig = {
 const rtdb = firebase.initializeApp(firebaseConfig);
 const database = firebase.database(rtdb);
 const DB_REF = database.ref('g26_planner/data');
+const PRES_REF = database.ref('g26_planner/presenca');
+let presTeamHeartbeat = null;
+function registrarPresencaTeam(){
+  if(!progId) return;
+  try{
+    let nome = 'Equipe #'+progId;
+    let progLabel = '';
+    if(DB){
+      const pg = DB.programacoes.find(p=>p.id===progId);
+      if(pg){
+        progLabel = pg.gid || ('G26-'+String(pg.id).padStart(7,'0'));
+        const eq = findEquipe(DB, (pg.atribuicoes||[])[0]?.equipeId);
+        if(eq) nome = equipeLabel(eq);
+      }
+    }
+    const info = { login:'equipe-'+progId, nome, role:'equipe', view:'pagina-equipe', prog:progLabel, ts:Date.now() };
+    PRES_REF.child(info.login).set(info);
+    PRES_REF.child(info.login).onDisconnect().remove();
+  }catch(e){}
+}
+function iniciarPresencaTeam(){
+  registrarPresencaTeam();
+  clearInterval(presTeamHeartbeat);
+  presTeamHeartbeat = setInterval(registrarPresencaTeam, 15000);
+}
+function pararPresencaTeam(){
+  clearInterval(presTeamHeartbeat); presTeamHeartbeat=null;
+  try{ PRES_REF.child('equipe-'+progId).remove(); }catch(e){}
+}
 
 const QUEUE_KEY = 'g26_equipe_queue';
 const CACHE_KEY = 'g26_equipe_cache';
@@ -728,5 +757,8 @@ function init(){
     atualizaRDOCompletado();
     render();
   }).catch(()=>{ render(); }).finally(()=>{ syncNow(); });
+  window.addEventListener('pagehide', ()=>pararPresencaTeam());
+  window.addEventListener('beforeunload', ()=>pararPresencaTeam());
+  iniciarPresencaTeam();
 }
 init();

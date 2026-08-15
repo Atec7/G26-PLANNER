@@ -16,6 +16,7 @@ const app = firebase.initializeApp(firebaseConfig);
 const analytics = firebase.analytics(app);
 const rtdb = firebase.database(app);
 const DB_REF = rtdb.ref('g26_planner/data');
+const PRES_REF = rtdb.ref('g26_planner/presenca');
 
 const DEFAULT_DATA = {
   equipes: [], atividades: [], projetos: [], programacoes: [], usuarios: [],
@@ -151,6 +152,9 @@ const ICONS = {
   whatsapp:'<path d="M21.11 4.88A11.47 11.47 0 0 0 12 2a11.5 11.5 0 0 0-8.14 19.5L2 22l2.6-1.82A11.47 11.47 0 0 0 12 23.5a11.5 11.5 0 0 0 8.14-19.62Z"/><path d="M8.6 8.9c.3-.1.6-.1.8.2l.9 1.4c.1.3.1.6-.1.8l-.5.6c.2.6.7 1.4 1.5 2.1.9.8 1.7 1.1 2.3 1.3l.6-.5c.2-.2.5-.3.8-.1l1.4.9c.3.2.4.5.2.8-.3.6-1 1.1-1.6 1.1-1.4 0-3.6-.8-5.8-3-2.3-2.3-3-4.5-3-5.9.1-.7.6-1.4 1.4-1.7Z"/>',
   hash:'<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
   clipboard:'<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M9 12h6M9 16h6"/>',
+  pulse:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  database:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
+  search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>',
 };
 function icon(name,size=16){ return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`; }
 
@@ -171,6 +175,7 @@ function setView(view){
   document.getElementById('page-title').textContent = meta.label;
   document.getElementById('page-sub').textContent = meta.sub;
   renderNav(); renderTopbarActions(); renderContent(); renderBanner();
+  atualizarPresencaView();
 }
 document.getElementById('mobile-toggle').addEventListener('click', ()=> document.getElementById('sidebar').classList.toggle('open'));
 
@@ -1049,7 +1054,8 @@ function crewCard(eq){
       const coordenacao = usuarioRestrito()? CURRENT_USER.coordenacao : fd.get('coordenacao');
       const data = { eqtl, prtn, setor, coordenacao, supervisor: fd.get('supervisor').trim(), encarregado: fd.get('encarregado').trim(), motorista: fd.get('motorista').trim(), whatsapp: fd.get('whatsapp').trim(), metaDiaria: parseFloat(fd.get('metaDiaria'))||0,
         eletricistas: fd.get('eletricistas').split(',').map(s=>s.trim()).filter(Boolean), ativo: fd.get('ativo')==='on', custom: parseCustomFieldsFromForm('equipes', fd) };
-      if(eq){ Object.assign(eq, data); toast('Equipe atualizada.'); } else { data.id = nextId(); DB.equipes.push(data); toast('Equipe cadastrada.'); }
+      if(eq){ Object.assign(eq, data); toast('Equipe atualizada.'); registrarEvento('edicao','equipe',eq.id,eq.eqtl||eq.prtn,'Equipe atualizada'); }
+      else { data.id = nextId(); DB.equipes.push(data); toast('Equipe cadastrada.'); registrarEvento('criacao','equipe',data.id,data.eqtl||data.prtn,'Equipe criada · '+data.setor); }
       saveData(); renderContent();
     }
   });
@@ -1067,6 +1073,7 @@ function crewCard(eq){
   DB.equipes = DB.equipes.filter(e=>e.id!==id);
   DB.programacoes.forEach(pg=>{ pg.atribuicoes = (pg.atribuicoes||[]).filter(a=>a.equipeId!==id); });
   DB.programacoes = DB.programacoes.filter(pg=>(pg.atribuicoes||[]).length);
+  registrarEvento('exclusao','equipe',id,equipeLabel(findEquipe(id)),'Equipe excluída'+(inUse? ' e removida das programações':''));
   saveData(); renderContent(); toast('Equipe excluída.');
 }
 
@@ -1127,7 +1134,8 @@ function renderAtividades(){
       const dup = DB.atividades.find(a=>a.codigo.toLowerCase()===codigo.toLowerCase() && a.id!==at?.id);
       if(dup){ toast('Já existe uma atividade com esse código.', 'error'); return false; }
       const data = { codigo, descricao: fd.get('descricao').trim(), unidade: fd.get('unidade').trim(), valorUnitario: parseFloat(fd.get('valorUnitario'))||0, fav: fd.get('fav')==='on', custom: parseCustomFieldsFromForm('atividades', fd) };
-      if(at){ Object.assign(at, data); toast('Atividade atualizada.'); } else { data.id = nextId(); DB.atividades.push(data); toast('Atividade cadastrada.'); }
+      if(at){ Object.assign(at, data); toast('Atividade atualizada.'); registrarEvento('edicao','atividade',at.id,at.codigo+' · '+at.descricao,'Atividade atualizada'); }
+      else { data.id = nextId(); DB.atividades.push(data); toast('Atividade cadastrada.'); registrarEvento('criacao','atividade',data.id,data.codigo+' · '+data.descricao,'Atividade criada'); }
       saveData(); renderContent();
     }
   });
@@ -1146,6 +1154,7 @@ function renderAtividades(){
   DB.programacoes.forEach(pg=>{ pg.atribuicoes = (pg.atribuicoes||[]).filter(at=>{ at.atividades = (at.atividades||[]).filter(x=>x.atividadeId!==id); return (at.atividades||[]).length; }); });
   DB.programacoes = DB.programacoes.filter(pg=>(pg.atribuicoes||[]).length);
   DB.projetos.forEach(p=>{ p.planoFisico = (p.planoFisico||[]).filter(x=>x.atividadeId!==id); });
+  registrarEvento('exclusao','atividade',id,findAtividade(id)? findAtividade(id).codigo+' · '+findAtividade(id).descricao : String(id),'Atividade excluída'+(inUse? ' e removida das programações':''));
   saveData(); renderContent(); toast('Atividade excluída.');
 }
 
@@ -1272,7 +1281,8 @@ function viabilidadeAlertBadge(p){
       const setor = usuarioRestrito()? CURRENT_USER.setor : fd.get('setor');
       const coordenacao = usuarioRestrito()? CURRENT_USER.coordenacao : fd.get('coordenacao');
       const data = { codigo: fd.get('codigo').trim(), nome: fd.get('nome').trim(), descricao: fd.get('descricao').trim(), dataInicio: fd.get('dataInicio'), dataFim: fd.get('dataFim'), dataRecebimentoCarteira: fd.get('dataRecebimentoCarteira'), dataVencimento: fd.get('dataVencimento'), dataViabilizacao: fd.get('dataViabilizacao')||'', setor, coordenacao, cidade: fd.get('cidade').trim(), status: fd.get('status'), valorOrcado: parseFloat(fd.get('valorOrcado'))||0, ciclo, planoFisico: (planoEditor? planoEditor.getData() : []).map(x=>({atividadeId:x.atividadeId, quantidade:x.quantidadePrevista})), custom: parseCustomFieldsFromForm('projetos', fd) };
-      if(pj){ Object.assign(pj, data); toast('Projeto atualizado.'); } else { data.id = nextId(); DB.projetos.push(data); toast('Projeto cadastrado.'); }
+      if(pj){ Object.assign(pj, data); toast('Projeto atualizado.'); registrarEvento('edicao','projeto',pj.id,pj.codigo+' · '+pj.nome,'Projeto atualizado'); }
+      else { data.id = nextId(); DB.projetos.push(data); toast('Projeto cadastrado.'); registrarEvento('criacao','projeto',data.id,data.codigo+' · '+data.nome,'Projeto criado · '+data.ciclo); }
       saveData(); renderContent();
     }
   });
@@ -1313,7 +1323,9 @@ function openPlanoFisicoModal(pjId){
   } else {
     if(!confirm('Excluir este projeto?')) return;
   }
-  DB.projetos = DB.projetos.filter(p=>p.id!==id); saveData(); renderContent(); toast('Projeto excluído.');
+  DB.projetos = DB.projetos.filter(p=>p.id!==id);
+  registrarEvento('exclusao','projeto',id,findProjeto(id)? findProjeto(id).codigo+' · '+findProjeto(id).nome : String(id),'Projeto excluído'+(vinculadas.length? ' com '+vinculadas.length+' programação(ões) vinculada(s)':''));
+  saveData(); renderContent(); toast('Projeto excluído.');
 }
 function encerrarProjeto(id){
   if(!requerEscrita()) return;
@@ -1322,6 +1334,7 @@ function encerrarProjeto(id){
   if(!confirm('Encerrar o projeto '+pj.codigo+' — '+pj.nome+'?\n\nApós encerrado, o projeto não aparecerá mais nas opções de novas programações.')) return;
   pj.status = 'Encerrado';
   pj.dataEncerrado = todayISO();
+  registrarEvento('config','projeto',pj.id,pj.codigo+' · '+pj.nome,'Projeto encerrado');
   saveData(); renderContent(); toast('Projeto encerrado.');
 }
 
@@ -1674,6 +1687,9 @@ function findAtribuicaoGlobal(atribId){
   for(const p of DB.programacoes){ const f=(p.atribuicoes||[]).find(a=>a.id===Number(atribId)); if(f) return f; }
   return null;
 }
+function progDaAtribuicao(atribId){
+  return DB.programacoes.find(p=> (p.atribuicoes||[]).some(a=>a.id===Number(atribId)));
+}
 function pedirMotivoStatus(atribId, novoStatus, onOk){
   if(!requerEscrita()) return;
   const atrib = findAtribuicaoGlobal(atribId);
@@ -1695,6 +1711,8 @@ function pedirMotivoStatus(atribId, novoStatus, onOk){
       atrib.status = novoStatus;
       atrib.historico = atrib.historico||[];
       atrib.historico.push({...currentAutor(), ts:Date.now(), tipo:'status', de, para:novoStatus, motivo, obs: obs||null});
+      const pgX = progDaAtribuicao(atrib.id);
+      registrarEvento('status','atribuicao',atrib.id, (pgX? progGid(pgX)+' · ': '')+equipeLabel(findEquipe(atrib.equipeId)), de+' → '+novoStatus+' · '+motivo+(obs? ' · '+obs:''));
       saveData(); renderContent(); renderBanner(); toast('Status alterado para '+novoStatus+'.');
       onOk && onOk();
     }
@@ -2119,12 +2137,14 @@ function openAtribDetalhe(atribId){
           return { id: nextId(), equipeId:Number(a.equipeId), dataProgramada: dataBase, status:'Programado', atividades: novasAtividades, historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Atribuição adicionada à programação'}] };
         });
         toast('Programação atualizada.');
+        registrarEvento('edicao','programacao',pg.id,progGid(pg), (pg.atribuicoes||[]).length+' equipe(s), '+pg.atribuicoes.reduce((s,a)=>s+(a.atividades?.length||0),0)+' atividade(s), '+anexos.length+' anexo(s)');
       } else {
         const novaProg = { id: nextId(), gid: novoGid(), projetoId, dataProgramada: dataBase, ciclo, observacoes, orientacoesPlanejamento, custom, anexos,
           atribuicoes: atribs.map(a=> ({ id: nextId(), equipeId:Number(a.equipeId), dataProgramada: dataBase, status:'Programado',
             atividades: a.atividades.map(x=>({atividadeId:Number(x.atividadeId), quantidadePrevista:x.quantidadePrevista?parseFloat(x.quantidadePrevista):null, quantidadeExecutada:null})),
             historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Programação criada'}] })) };
         DB.programacoes.push(novaProg); toast('Programação criada.');
+        registrarEvento('criacao','programacao',novaProg.id,progGid(novaProg), novaProg.atribuicoes.length+' equipe(s), '+novaProg.atribuicoes.reduce((s,a)=>s+(a.atividades?.length||0),0)+' atividade(s), '+anexos.length+' anexo(s)');
       }
       saveData(); renderContent(); renderBanner();
     }
@@ -2157,6 +2177,8 @@ function openReprogramarManual(pgId, atId){
       atrib.dataProgramada = novaData; atrib.status = 'Reprogramado';
       atrib.historico = atrib.historico||[];
         atrib.historico.push({...currentAutor(), ts:Date.now(), tipo:'reprogramacao', de:dataAntiga, para:novaData, motivo, obs});
+        const pgY = progDaAtribuicao(atrib.id);
+        registrarEvento('reprogramacao','atribuicao',atrib.id, (pgY? progGid(pgY)+' · ': '')+equipeLabel(findEquipe(atrib.equipeId)), fmtDate(dataAntiga)+' → '+fmtDate(novaData)+' · '+motivo+(obs? ' · '+obs:''));
         saveData(); renderContent(); renderBanner(); toast('Programação reprogramada.');
     }
   });
@@ -2223,6 +2245,7 @@ function encaminharWhats(progId){
   }else{
     toast(enviadas>1? `Mensagem encaminhada para ${enviadas} equipes.` : 'Mensagem encaminhada para a equipe.');
   }
+  registrarEvento('compartilhamento','programacao',prog.id,progGid(prog), 'Encaminhado via WhatsApp para '+(enviadas>0? enviadas+' equipe(s)':'nenhuma equipe')+(semWhats.length? ' · sem WhatsApp: '+semWhats.join(', '):''));
 }
 function qrSvgHtml(url, cellSize){
   if(typeof qrcode==='undefined' || !url) return '';
@@ -2430,6 +2453,7 @@ let adminModulo = 'equipes';
 function renderAdmin(){
   const el = document.getElementById('content');
   el.innerHTML = `
+    ${monPanelHtml()}
     <div class="tabs" style="margin-bottom:16px;">${MODULOS_ADMIN.map(m=>`<button class="tab ${adminModulo===m.k?'active':''}" data-mod="${m.k}">${m.l}</button>`).join('')}</div>
     <div class="panel" style="margin-bottom:16px;">
       <div class="panel-head">
@@ -2455,6 +2479,7 @@ function renderAdmin(){
       <div id="admin-rdo-list"></div>
     </div>`;
   el.querySelectorAll('[data-mod]').forEach(b=>b.addEventListener('click', ()=>{ adminModulo=b.dataset.mod; renderAdmin(); }));
+  bindMonPanel();
   paintAdminUsersList();
   document.getElementById('btn-novo-usuario').addEventListener('click', ()=>openUsuarioModal());
   paintAdminFieldsList();
@@ -2465,6 +2490,7 @@ function renderAdmin(){
     const opts = document.getElementById('new-field-opts').value.split(',').map(s=>s.trim()).filter(Boolean);
     if(!label){ toast('Informe o nome do campo.', 'error'); return; }
     DB.customFields[adminModulo].push({ id: nextId(), label, tipo, opcoes: tipo==='select'? opts: [] });
+    registrarEvento('config','sistema',null,'Campo personalizado', 'Campo "'+label+'" adicionado no módulo '+adminModulo);
     saveData(); toast('Campo adicionado.'); renderAdmin();
   });
   paintAdminRdoList();
@@ -2513,8 +2539,8 @@ function paintAdminUsersList(){
       if(DB.usuarios.some(x=>x.login.toLowerCase()===login.toLowerCase() && String(x.id)!==String(u?.id))){ toast('Já existe um usuário com este login.', 'error'); return false; }
       const data = { nome, login, role, nivel, setor: fd.get('setor')||'', coordenacao: fd.get('coordenacao')||'', ativo: fd.get('ativo')==='on' };
       if(senha) data.senha = senha;
-      if(u){ Object.assign(u, data); toast('Usuário atualizado.'); }
-      else { data.id = nextId(); data.senha = senha; DB.usuarios.push(data); toast('Usuário criado.'); }
+      if(u){ Object.assign(u, data); toast('Usuário atualizado.'); registrarEvento('edicao','usuario',u.id,u.login,'Usuário atualizado · papel '+roleLabel(u.role)); }
+      else { data.id = nextId(); data.senha = senha; DB.usuarios.push(data); toast('Usuário criado.'); registrarEvento('criacao','usuario',data.id,data.login,'Usuário criado · '+roleLabel(data.role)); }
       saveData(); renderContent();
     }
   });
@@ -2524,6 +2550,7 @@ function deleteUsuario(id){
   if(!u) return;
   if(u.role==='administrador' && (DB.usuarios||[]).filter(x=>x.role==='administrador' && x.ativo).length<=1){ toast('Deve existir ao menos um administrador ativo.', 'error'); return; }
   if(!confirm('Excluir o usuário "'+u.nome+'"?')) return;
+  registrarEvento('exclusao','usuario',u.id,u.login,'Usuário excluído · '+roleLabel(u.role));
   DB.usuarios = DB.usuarios.filter(x=>x.id!==Number(id)); saveData(); renderContent(); toast('Usuário excluído.');
 }
 function paintAdminFieldsList(){
@@ -2536,7 +2563,9 @@ function paintAdminFieldsList(){
     </div>`).join('') : `<div style="padding:20px;color:var(--muted-2);font-size:12.5px;">Nenhum campo personalizado neste módulo ainda.</div>`;
   wrap.querySelectorAll('[data-del-field]').forEach(b=>b.addEventListener('click', ()=>{
     if(!confirm('Remover este campo? Os valores já preenchidos serão mantidos ocultos.')) return;
+    const f = DB.customFields[adminModulo].find(f=>f.id===Number(b.dataset.delField));
     DB.customFields[adminModulo] = DB.customFields[adminModulo].filter(f=>f.id!==Number(b.dataset.delField));
+    registrarEvento('config','sistema',null,'Campo personalizado', 'Campo "'+(f?.label||'')+'" removido do módulo '+adminModulo);
     saveData(); renderAdmin();
   }));
 }
@@ -2695,6 +2724,301 @@ function equipesDoProjeto(pr){
 }
 function novoGid(){ return 'G26-' + String(Math.floor(1000000 + Math.random()*9000000)); }
 function progGid(pg){ return (pg && pg.gid) || (pg? 'G26-'+String(pg.id).padStart(7,'0') : ''); }
+
+/* =========================================================
+   MONITORAMENTO — auditoria (passado) + presença (presente)
+========================================================= */
+const MON_TIPOS = {
+  login:{l:'Login',c:'var(--blue)'},
+  logout:{l:'Logout',c:'var(--muted)'},
+  criacao:{l:'Criação',c:'var(--green)'},
+  edicao:{l:'Edição',c:'var(--accent)'},
+  exclusao:{l:'Exclusão',c:'var(--red)'},
+  status:{l:'Status',c:'var(--purple)'},
+  reprogramacao:{l:'Reprogramação',c:'var(--red)'},
+  rdo:{l:'RDO',c:'var(--teal)'},
+  compartilhamento:{l:'Compartilhamento',c:'var(--green)'},
+  config:{l:'Configuração',c:'var(--muted)'}
+};
+const MON_ITEMTIPOS = {
+  programacao:'Programação', atribuicao:'Equipe/atividade', equipe:'Equipe', projeto:'Projeto', atividade:'Atividade', usuario:'Usuário', sistema:'Sistema'
+};
+let monPresenca = {};
+let monPresList = [];
+let monHeartbeat = null;
+function registrarEvento(tipo, itemTipo, itemId, itemRotulo, detalhe){
+  if(!CURRENT_USER || !tipo) return;
+  DB.auditoria = DB.auditoria||[];
+  DB.auditoria.push({
+    id: nextId(), ts: Date.now(), user: CURRENT_USER.login, nome: CURRENT_USER.nome,
+    tipo, itemTipo, itemId: itemId!=null? itemId : null,
+    itemRotulo: String(itemRotulo||'').slice(0,120),
+    detalhe: String(detalhe||'').slice(0,400),
+    bytes: Math.round(JSON.stringify(DB).length/1024)
+  });
+  if(DB.auditoria.length > 4000) DB.auditoria = DB.auditoria.slice(-4000);
+}
+function fmtRelTempo(ts){
+  if(!ts) return '—';
+  const s = Math.max(0, Math.round((Date.now()-ts)/1000));
+  if(s<60) return s+'s';
+  if(s<3600) return Math.floor(s/60)+'min';
+  if(s<86400) return Math.floor(s/3600)+'h';
+  return Math.floor(s/86400)+'d';
+}
+function monViewLabel(v){ return (NAV_ITEMS.find(i=>i.id===v)?.label)||v||'—'; }
+function monKey(login){ return String(login||'anon').replace(/[.#$\[\]]/g,'_'); }
+function fmtTs(ts){ const d=new Date(ts); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
+function fmtBytes(b){ if(b==null) return '—'; if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(2)+' MB'; }
+function monOnline(p){ return p && p.ts && (Date.now()-p.ts) < 45000; }
+function monEventBadge(tipo){ const t=MON_TIPOS[tipo]||{l:tipo,c:'var(--muted)'}; return `<span class="mon-badge" style="color:${t.c};border-color:${t.c};">${t.l}</span>`; }
+function monItemLabel(tipo,id){
+  id = Number(id);
+  if(tipo==='programacao'){ const p=DB.programacoes.find(x=>x.id===id); return p? progGid(p):'Programação #'+id; }
+  if(tipo==='equipe'){ const e=findEquipe(id); return e? (e.eqtl||e.prtn||'Equipe'):'Equipe #'+id; }
+  if(tipo==='atividade'){ const a=findAtividade(id); return a? a.codigo+' · '+a.descricao:'Atividade #'+id; }
+  if(tipo==='projeto'){ const p=findProjeto(id); return p? p.codigo+' · '+p.nome:'Projeto #'+id; }
+  if(tipo==='usuario'){ const u=(DB.usuarios||[]).find(x=>x.id===id); return u? u.nome+' ('+u.login+')':'Usuário #'+id; }
+  if(tipo==='atribuicao'){
+    const pg=progDaAtribuicao(id); const at=findAtribuicaoGlobal(id);
+    return (pg? progGid(pg)+' · ':'')+(at? equipeLabel(findEquipe(at.equipeId)):'Atribuição #'+id);
+  }
+  return String(id);
+}
+let adminMonTab = 'aovivo';
+function monCards(){
+  const onlineUsers = monPresList.filter(p=> !String(p.login||'').startsWith('equipe-') && monOnline(p));
+  const onlineTeams = monPresList.filter(p=> String(p.login||'').startsWith('equipe-') && monOnline(p));
+  const hoje = todayISO();
+  const acoesHoje = (DB.auditoria||[]).filter(e=> e.ts && new Date(e.ts).toISOString().slice(0,10)===hoje).length;
+  const bytes = JSON.stringify(DB).length;
+  return `
+    <div class="mon-cards">
+      <div class="mon-card"><div class="mon-card-v">${onlineUsers.length}</div><div class="mon-card-l">usuários online</div></div>
+      <div class="mon-card"><div class="mon-card-v">${onlineTeams.length}</div><div class="mon-card-l">equipes online (página da equipe)</div></div>
+      <div class="mon-card"><div class="mon-card-v">${acoesHoje}</div><div class="mon-card-l">ações registradas hoje</div></div>
+      <div class="mon-card"><div class="mon-card-v">${(DB.auditoria||[]).length}</div><div class="mon-card-l">total de registros de auditoria</div></div>
+      <div class="mon-card"><div class="mon-card-v">${fmtBytes(bytes)}</div><div class="mon-card-l">tamanho atual do banco</div></div>
+    </div>`;
+}
+function monPanelHtml(){
+  return `
+  <div class="panel mon-panel">
+    <div class="panel-head">
+      <div><h3>${icon('pulse',15)} Central de Monitoramento</h3><div class="admin-field-meta">Comunicação em tempo real: ações, tráfego, consumo e quem está online agora. O feed atualiza automaticamente a cada alteração no banco.</div></div>
+      <span class="mon-live"><span class="mon-live-dot"></span> AO VIVO</span>
+    </div>
+    ${monCards()}
+    <div class="mon-tabs">
+      <button class="mon-tab ${adminMonTab==='aovivo'?'active':''}" data-montab="aovivo">${icon('clock',13)} Ao vivo</button>
+      <button class="mon-tab ${adminMonTab==='usuarios'?'active':''}" data-montab="usuarios">${icon('users',13)} Usuários online</button>
+      <button class="mon-tab ${adminMonTab==='consumo'?'active':''}" data-montab="consumo">${icon('database',13)} Consumo e tráfego</button>
+      <button class="mon-tab ${adminMonTab==='rastrear'?'active':''}" data-montab="rastrear">${icon('search',13)} Rastrear item</button>
+    </div>
+    <div id="mon-body"></div>
+  </div>`;
+}
+function monBodyHtml(){
+  if(adminMonTab==='aovivo') return monAoVivoHtml();
+  if(adminMonTab==='usuarios') return monUsuariosHtml();
+  if(adminMonTab==='consumo') return monConsumoHtml();
+  return monRastrearHtml();
+}
+function monAoVivoHtml(){
+  const evs = [...(DB.auditoria||[])].sort((a,b)=>b.ts-a.ts).slice(0,40);
+  if(!evs.length) return `<div class="mon-empty">Nenhum evento registrado ainda. As ações passam a aparecer aqui em tempo real.</div>`;
+  return `<div class="mon-feed">${evs.map(e=>`
+    <div class="mon-ev" data-rastrear-tipo="${e.itemTipo||''}" data-rastrear-id="${e.itemId??''}" ${e.itemId!=null?'style="cursor:pointer;"':''}>
+      <span class="mon-ev-time">${fmtTs(e.ts)}</span>
+      ${monEventBadge(e.tipo)}
+      <span class="mon-ev-who">${esc(e.nome||e.user||'?')}</span>
+      <span class="mon-ev-item">${esc(monItemLabel(e.itemTipo,e.itemId))}</span>
+      <span class="mon-ev-det">${esc(e.detalhe||'')}</span>
+    </div>`).join('')}</div>`;
+}
+function monUsuariosHtml(){
+  const rows = monPresList.slice(0,30);
+  if(!rows.length) return `<div class="mon-empty">Ninguém está conectado no momento.</div>`;
+  return `<table class="mon-table"><thead><tr><th>Usuário</th><th>Papel</th><th>Onde está</th><th>Situação</th></tr></thead><tbody>${rows.map(p=>{
+    const online = monOnline(p);
+    const isTeam = String(p.login||'').startsWith('equipe-');
+    const view = isTeam? 'Página da equipe' : monViewLabel(p.view);
+    return `<tr>
+      <td><span class="mon-online-dot ${online?'on':''}"></span> ${esc(p.nome||p.login||p.key)}${isTeam? ' <span class="mon-badge" style="color:var(--teal);border-color:var(--teal);">equipe</span>':''}</td>
+      <td>${esc(p.role||'—')}</td>
+      <td>${esc(isTeam? 'Página da equipe' : view)}</td>
+      <td>${online? '<span class="mon-online-txt">Online agora</span>':'visto há '+fmtRelTempo(p.ts)}</td>
+    </tr>`;
+  }).join('')}</tbody></table>`;
+}
+function monConsumoHtml(){
+  const evs = DB.auditoria||[];
+  const porUsuario = {};
+  evs.forEach(e=>{
+    porUsuario[e.login||'?'] = porUsuario[e.login||'?']||{nome:e.nome||e.login||'?', n:0, bytes:0, ts:0};
+    porUsuario[e.login||'?'].n++;
+    porUsuario[e.login||'?'].bytes += e.bytes||0;
+    if((e.ts||0)>porUsuario[e.login||'?'].ts) porUsuario[e.login||'?'].ts=e.ts;
+  });
+  const porTipo = {};
+  evs.forEach(e=>{ porTipo[e.tipo]= (porTipo[e.tipo]||0)+1; });
+  const usersSorted = Object.keys(porUsuario).sort((a,b)=>porUsuario[b].bytes-porUsuario[a].bytes);
+  return `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div>
+        <h4 style="margin:0 0 10px;font-size:13px;">Tráfego estimado por usuário (últimas ações)</h4>
+        <table class="mon-table"><thead><tr><th>Usuário</th><th>Ações</th><th>Dados gravados</th><th>Última ação</th></tr></thead><tbody>${usersSorted.slice(0,15).map(u=>`<tr><td>${esc(porUsuario[u].nome)}</td><td>${porUsuario[u].n}</td><td>${fmtBytes(porUsuario[u].bytes)}</td><td>${fmtRelTempo(porUsuario[u].ts)}</td></tr>`).join('')||'<tr><td colspan="4">Sem registros.</td></tr>'}</tbody></table>
+      </div>
+      <div>
+        <h4 style="margin:0 0 10px;font-size:13px;">Atividades por tipo de ação</h4>
+        <div class="mon-feed">${Object.keys(porTipo).map(t=>`<div class="mon-ev">${monEventBadge(t)}<span class="mon-ev-item">${porTipo[t]} evento(s)</span><span class="mon-ev-det">${esc(MON_TIPOS[t]?.l||t)}</span></div>`).join('')||'<div class="mon-empty">Sem registros.</div>'}</div>
+      </div>
+    </div>`;
+}
+function monRastrearHtml(){
+  const opt = t=>`<option value="${t}">${MON_ITEMTIPOS[t]}</option>`;
+  return `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+      <div class="field" style="flex:1;min-width:220px;"><label>Buscar item</label><input type="text" id="mon-rastrear-q" placeholder="Código, nome, GID, equipe, projeto, usuário…"></div>
+      <div class="field" style="min-width:170px;"><label>Tipo</label><select id="mon-rastrear-tipo"><option value="">Todos os tipos</option>${opt('programacao')}${opt('atribuicao')}${opt('equipe')}${opt('projeto')}${opt('atividade')}${opt('usuario')}</select></div>
+    </div>
+    <div id="mon-rastrear-res" style="margin-top:14px;"></div>`;
+}
+function monRastrearBusca(q, tipo){
+  q = (q||'').toLowerCase().trim();
+  const res = [];
+  if((!tipo||tipo==='programacao')) (DB.programacoes||[]).forEach(p=>{ const pr=findProjeto(p.projetoId); const hay=(progGid(p)+' '+(pr?.nome||'')+' '+(pr?.codigo||'')).toLowerCase(); if(!q||hay.includes(q)) res.push({tipo:'programacao',id:p.id,lbl:progGid(p)+' · '+(pr?.codigo||'')+' '+(pr?.nome||'')}); });
+  if(!tipo||tipo==='atribuicao') flatAtribuicoes().forEach(x=>{ const at=x.atribuicao; const pg=progDaAtribuicao(at.id); const eq=findEquipe(at.equipeId); const hay=(progGid(pg)+' '+equipeLabel(eq)+' '+at.status).toLowerCase(); if(!q||hay.includes(q)) res.push({tipo:'atribuicao',id:at.id,lbl:progGid(pg)+' · '+equipeLabel(eq)+' · '+at.status}); });
+  if(!tipo||tipo==='equipe') (DB.equipes||[]).forEach(e=>{ const hay=(e.eqtl+' '+e.prtn+' '+e.supervisor+' '+e.encarregado).toLowerCase(); if(!q||hay.includes(q)) res.push({tipo:'equipe',id:e.id,lbl:(e.eqtl||e.prtn||'Equipe')+(e.setor? ' · '+e.setor:'')}); });
+  if(!tipo||tipo==='projeto') (DB.projetos||[]).forEach(p=>{ const hay=(p.codigo+' '+p.nome+' '+p.ciclo).toLowerCase(); if(!q||hay.includes(q)) res.push({tipo:'projeto',id:p.id,lbl:p.codigo+' · '+p.nome+' · '+p.ciclo}); });
+  if(!tipo||tipo==='atividade') (DB.atividades||[]).forEach(a=>{ const hay=(a.codigo+' '+a.descricao).toLowerCase(); if(!q||hay.includes(q)) res.push({tipo:'atividade',id:a.id,lbl:a.codigo+' · '+a.descricao}); });
+  if(!tipo||tipo==='usuario') (DB.usuarios||[]).forEach(u=>{ const hay=(u.nome+' '+u.login).toLowerCase(); if(!q||hay.includes(q)) res.push({tipo:'usuario',id:u.id,lbl:u.nome+' ('+u.login+')'}); });
+  res.sort((a,b)=>a.id-b.id);
+  return res.slice(0,50);
+}
+function monRastrearRender(){
+  const q = document.getElementById('mon-rastrear-q')?.value||'';
+  const tipo = document.getElementById('mon-rastrear-tipo')?.value||'';
+  const res = monRastrearBusca(q, tipo);
+  const wrap = document.getElementById('mon-rastrear-res');
+  if(!wrap) return;
+  wrap.innerHTML = res.length? `<div class="mon-feed">${res.map(r=>`<div class="mon-ev" data-rastrear-tipo="${r.tipo}" data-rastrear-id="${r.id}" style="cursor:pointer;"><span class="mon-badge" style="color:var(--accent);border-color:var(--accent);">${MON_ITEMTIPOS[r.tipo]||r.tipo}</span><span class="mon-ev-item">${esc(r.lbl)}</span><span class="mon-ev-det">Clique para ver passado e presente</span></div>`).join('')}</div>` : `<div class="mon-empty">${q? 'Nenhum item encontrado com "'+esc(q)+'".':'Digite algo para buscar um item.'}</div>`;
+  wrap.querySelectorAll('[data-rastrear-tipo]').forEach(el=>el.addEventListener('click', ()=>rastrearItem(el.dataset.rastrearTipo, el.dataset.rastrearId)));
+}
+function bindMonPanel(){
+  document.querySelectorAll('.mon-tab').forEach(b=>b.addEventListener('click', ()=>{ adminMonTab=b.dataset.montab; renderAdmin(); }));
+  const body = document.getElementById('mon-body');
+  if(body) body.innerHTML = monBodyHtml();
+  body && body.querySelectorAll('[data-rastrear-tipo]').forEach(el=>el.addEventListener('click', ()=>rastrearItem(el.dataset.rastrearTipo, el.dataset.rastrearId)));
+  const bq = document.getElementById('mon-rastrear-q');
+  const bt = document.getElementById('mon-rastrear-tipo');
+  if(bq) bq.addEventListener('input', monRastrearRender);
+  if(bt) bt.addEventListener('change', monRastrearRender);
+  if(bq) monRastrearRender();
+}
+function rastrearItem(itemTipo, itemId){
+  itemId = Number(itemId);
+  const rows = [];
+  const push = (tipo, ts, quem, det, tag)=>{
+    rows.push({ts:Number(ts)||Date.now(), tipo, quem, det, tag});
+  };
+  const histTipo = t=> t==='status'?'status' : t==='reprogramacao'?'reprogramacao' : t==='rdo_edicao'?'rdo' : t==='criacao'?'criacao' : 'edicao';
+  const histDet = h=>{
+    if(h.tipo==='status') return (h.de||'?')+' → '+(h.para||'?')+(h.motivo? ' · '+h.motivo:'');
+    if(h.tipo==='reprogramacao') return fmtDate(h.de)+' → '+fmtDate(h.para)+(h.motivo? ' · '+h.motivo:'');
+    if(h.tipo==='rdo_edicao') return 'Registro RDO editado'+(h.motivo? ' · '+h.motivo:'');
+    return h.para||h.motivo||'';
+  };
+  const eqLbl = e=> equipeLabel(e)||'Equipe';
+  let present = '';
+  if(itemTipo==='programacao'){
+    const p = DB.programacoes.find(x=>x.id===itemId);
+    if(p){
+      const pr = findProjeto(p.projetoId);
+      present = `GID ${progGid(p)} · ${esc(pr?.nome||'Projeto removido')} · Ciclo ${esc(p.ciclo||'—')} · ${(p.atribuicoes||[]).length} equipe(s) · ${(p.atribuicoes||[]).map(a=>esc(a.status)).join(' / ')||'—'}`;
+      (p.atribuicoes||[]).forEach(a=>{ (a.historico||[]).forEach(h=>push(histTipo(h.tipo), h.ts, h.nome||h.login||'?', eqLbl(findEquipe(a.equipeId))+' · '+histDet(h), 'atribuicao')); });
+    }
+  } else if(itemTipo==='atribuicao'){
+    const at = findAtribuicaoGlobal(itemId);
+    const pg = progDaAtribuicao(itemId);
+    if(at){
+      const qty = (at.atividades||[]).reduce((s,a)=>s+(Number(a.quantidadeExecutada)||0),0);
+      present = `Equipe ${esc(eqLbl(findEquipe(at.equipeId)))} · Status ${esc(at.status)} · Programada ${fmtDate(at.dataProgramada)} · Executado ${qty} un · ${(at.atividades||[]).length} atividade(s)`;
+      (at.historico||[]).forEach(h=>push(histTipo(h.tipo), h.ts, h.nome||h.login||'?', (pg? progGid(pg)+' · ':'')+histDet(h), ''));
+    }
+  } else if(itemTipo==='equipe'){
+    const e = findEquipe(itemId);
+    if(e){
+      present = `${esc(e.eqtl||'')} ${esc(e.prtn||'')} · ${e.ativo?'Ativa':'Inativa'} · ${esc([e.setor,e.coordenacao].filter(Boolean).join(' / ')||'—')} · Supervisor: ${esc(e.supervisor||'—')} · Encarregado: ${esc(e.encarregado||'—')} · WhatsApp: ${esc(e.whatsapp||'—')}`;
+      flatAtribuicoes().filter(x=>x.atribuicao.equipeId===itemId).forEach(x=>{ const pg=progDaAtribuicao(x.atribuicao.id); (x.atribuicao.historico||[]).forEach(h=>push(histTipo(h.tipo), h.ts, h.nome||h.login||'?', (pg? progGid(pg)+' · ':'')+histDet(h), 'atribuicao')); });
+    }
+  } else if(itemTipo==='atividade'){
+    const a = findAtividade(itemId);
+    if(a) present = `${esc(a.codigo)} · ${esc(a.descricao)} · Unidade ${esc(a.unidade||'—')} · Valor unitário ${fmtMoney(a.valorUnitario)}${a.fav? ' · Favorita':''}`;
+  } else if(itemTipo==='projeto'){
+    const p = findProjeto(itemId);
+    if(p) present = `${esc(p.codigo)} · ${esc(p.nome)} · ${esc(p.status)} · ${esc([p.setor,p.coordenacao].filter(Boolean).join(' / ')||'—')} · ${esc(p.cidade||'—')} · Ciclo ${esc(p.ciclo||'—')} · Orçado ${fmtMoney(p.valorOrcado)} · Início ${fmtDate(p.dataInicio)} · Fim ${fmtDate(p.dataFim)}`;
+  } else if(itemTipo==='usuario'){
+    const u = (DB.usuarios||[]).find(x=>x.id===itemId);
+    if(u) present = `${esc(u.nome)} · ${esc(u.login)} · ${esc(roleLabel(u.role))} · ${esc(nivelLabel(u.nivel))}${u.setor||u.coordenacao? ' · '+esc([u.setor,u.coordenacao].filter(Boolean).join(' / ')):''} · ${u.ativo?'Ativo':'Inativo'}`;
+  }
+  (DB.auditoria||[]).forEach(e=>{
+    if(String(e.itemTipo)===itemTipo && String(e.itemId)===String(itemId)){
+      push(e.tipo, e.ts, e.nome||e.user||'?', monItemLabel(e.itemTipo,e.itemId)+(e.detalhe? ' · '+e.detalhe:''), '');
+    }
+  });
+  rows.sort((a,b)=>a.ts-b.ts);
+  const body = `
+    <div style="margin-bottom:14px;padding:12px;border-radius:10px;background:var(--bg-soft);font-size:13px;line-height:1.55;">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;"><span class="mon-badge" style="color:var(--accent);border-color:var(--accent);">${MON_ITEMTIPOS[itemTipo]||itemTipo}</span><strong style="font-size:14px;color:var(--dark);">${esc(monItemLabel(itemTipo,itemId))}</strong></div>
+      <div class="admin-field-meta">${present||'Item não encontrado ou removido do banco.'}</div>
+    </div>
+    <h4 style="margin:0 0 10px;font-size:13px;">Linha do tempo — passado e presente (${rows.length} registro(s))</h4>
+    <div class="mon-feed">${rows.length? rows.map(r=>`<div class="mon-ev">
+      <span class="mon-ev-time">${fmtTs(r.ts)}</span>
+      ${monEventBadge(r.tipo)}
+      <span class="mon-ev-who">${esc(r.quem)}</span>
+      ${r.tag? `<span class="mon-badge" style="color:var(--muted);border-color:var(--border);">${esc(r.tag)}</span>`:''}
+      <span class="mon-ev-det">${esc(r.det)}</span>
+    </div>`).join('') : '<div class="mon-empty">Nenhum registro de auditoria ou histórico encontrado para este item.</div>'}</div>`;
+  openModal({ title:'Rastrear item — '+MON_ITEMTIPOS[itemTipo], bodyHtml:body, submitLabel:'Fechar', onSubmit:()=>true, wide:true });
+}
+function registrarPresenca(){
+  if(!CURRENT_USER) return;
+  try{
+    const key = monKey(CURRENT_USER.login);
+    const info = { login: String(CURRENT_USER.login), nome: CURRENT_USER.nome, role: CURRENT_USER.role, view: currentView, ts: Date.now() };
+    PRES_REF.child(key).set(info);
+    PRES_REF.child(key).onDisconnect().remove();
+  }catch(e){}
+}
+function iniciarPresenca(){
+  registrarPresenca();
+  clearInterval(monHeartbeat);
+  monHeartbeat = setInterval(registrarPresenca, 15000);
+}
+function pararPresenca(){
+  clearInterval(monHeartbeat); monHeartbeat=null;
+  if(CURRENT_USER){
+    try{ PRES_REF.child(monKey(CURRENT_USER.login)).remove(); }catch(e){}
+  }
+}
+function atualizarPresencaView(){
+  if(!CURRENT_USER) return;
+  try{ PRES_REF.child(monKey(CURRENT_USER.login)).update({ view: currentView, ts: Date.now() }); }catch(e){}
+}
+let monLastSig = '';
+(function watchPresenca(){
+  PRES_REF.on('value', snap=>{
+    const raw = snap.val()||{};
+    const arr = Object.keys(raw).map(k=>({ key:k, ...raw[k] }));
+    arr.sort((a,b)=> (b.ts||0)-(a.ts||0));
+    monPresenca = raw;
+    monPresList = arr;
+    const sig = arr.map(p=> p.login+'|'+p.view+'|'+(monOnline(p)?'on':'off')).join(',');
+    if(sig!==monLastSig){ monLastSig=sig; if(CURRENT_USER && currentView==='admin') renderContent(); }
+  });
+})();
 function showLoginScreen(){
   document.getElementById('login-screen').classList.remove('hidden');
   const u = document.getElementById('login-user');
@@ -2729,12 +3053,16 @@ function tryLogin(){
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('login-pass').value='';
   document.getElementById('nav-user').textContent = 'Conectado: '+u.nome+' · '+roleLabel(u.role);
+  registrarEvento('login','usuario',u.id,u.nome,'Entrou no sistema');
+  iniciarPresenca();
   progFilters.ciclo = cicloPadrao();
   setView('dashboard');
   checkPendingConfirmations();
   toast('Bem-vindo, '+u.nome+'!');
 }
 function logout(){
+  registrarEvento('logout','usuario',CURRENT_USER? CURRENT_USER.id:null, CURRENT_USER? CURRENT_USER.nome:'', 'Saiu do sistema');
+  pararPresenca();
   CURRENT_USER = null;
   document.getElementById('nav-user').textContent = 'Dados sincronizados na nuvem (Firebase)';
   showLoginScreen();
@@ -3150,6 +3478,7 @@ function editRdoModal(x){
       at.observacao = obs;
       at.historico = at.historico||[];
       at.historico.push({...currentAutor(), ts:Date.now(), tipo:'rdo_edicao', de:null, para:'RDO', motivo, obs});
+      registrarEvento('rdo','atribuicao',at.id, progGid(x.programacao)+' · '+equipeLabel(findEquipe(at.equipeId)), 'Registro RDO editado · '+motivo+(obs? ' · '+obs:''));
       saveData(); renderContent(); toast('Registro RDO atualizado.');
     }
   });
