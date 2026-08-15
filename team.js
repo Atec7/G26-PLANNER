@@ -72,6 +72,7 @@ let observacao = '';
 let online = navigator.onLine !== false;
 let syncing = false;
 let rdoCompletado = false;
+let enviado = false;
 const statusEl = document.getElementById('team-status');
 
 function setStatus(txt, kind){
@@ -94,7 +95,7 @@ function dbToEditors(db){
   prog = pg;
   editors = {};
   (pg.atribuicoes||[]).forEach(at=>{
-    editors[at.equipeId] = (at.atividades||[]).map(a=>({ atividadeId:String(a.atividadeId), quantidadePrevista: a.quantidadePrevista??'' }));
+    editors[at.equipeId] = (at.atividades||[]).map(a=>({ atividadeId:String(a.atividadeId), quantidadePrevista: a.quantidadePrevista??'', quantidadeExecutada: a.quantidadeExecutada??'' }));
   });
   return pg;
 }
@@ -202,6 +203,19 @@ function render(){
   const root = document.getElementById('team-body');
   if(!progId){ root.innerHTML = `<div class="panel"><div class="empty-state"><p>Link inválido — faltou identificar a programação.</p></div></div>`; return; }
   if(!prog){ root.innerHTML = `<div class="panel"><div class="empty-state"><p>Programação não encontrada.</p><p style="font-size:12px;color:var(--muted-2);">Conecte-se ao menos uma vez para carregar os dados, ou tente novamente com internet.</p></div></div>`; return; }
+
+  /* Após o envio, a página mostra apenas a confirmação com a logo */
+  if(enviado){
+    root.innerHTML = `
+      <div class="panel section-gap team-ok">
+        <div class="brand-mark team-ok-logo">G2</div>
+        <h3>Dados enviados e sincronizados</h3>
+        <p>Obrigado, equipe! Suas atividades, quantidades executadas, fotos e o RDO foram enviados ao escritório.</p>
+        <p class="team-ok-meta">Programação #${prog.id} · ${esc(prog.ciclo||'')} · ${fmtDate(prog.dataProgramada)}</p>
+      </div>`;
+    setStatus('Sincronizado', 'ok');
+    return;
+  }
   
   /* Verificar se data da programação venceu */
   if(checkDataProgramadaExpirada()){
@@ -260,6 +274,7 @@ function render(){
   document.getElementById('team-obs').addEventListener('input', e=>{ observacao = e.target.value; });
   root.querySelectorAll('.te-select').forEach(s=>s.addEventListener('change', e=>{ const [eid,idx]=e.currentTarget.dataset.tes.split('|'); editors[eid][Number(idx)].atividadeId = e.target.value; }));
   root.querySelectorAll('.te-qty').forEach(s=>s.addEventListener('input', e=>{ const [eid,idx]=e.currentTarget.dataset.teq.split('|'); editors[eid][Number(idx)].quantidadePrevista = e.target.value; }));
+  root.querySelectorAll('.te-exec').forEach(s=>s.addEventListener('input', e=>{ const [eid,idx]=e.currentTarget.dataset.tee.split('|'); editors[eid][Number(idx)].quantidadeExecutada = e.target.value; }));
   root.querySelectorAll('.te-remove').forEach(b=>b.addEventListener('click', e=>{ const [eid,idx]=e.currentTarget.dataset.eqRm.split('|'); editors[eid].splice(Number(idx),1); resetFotos(); render(); }));
   root.querySelectorAll('.te-add').forEach(b=>b.addEventListener('click', e=>{ editors[e.currentTarget.dataset.eqAdd].push({atividadeId:'',quantidadePrevista:''}); resetFotos(); render(); }));
   root.querySelectorAll('.te-camera').forEach(b=>b.addEventListener('click', ()=>{ const [eid,idx]=b.dataset.tec.split('|'); openPhotoPicker(eid, Number(idx), 'camera'); }));
@@ -282,7 +297,8 @@ function renderTeamBlock(eqId){
         <div class="team-atividade">
           <div class="activity-row">
             <select class="te-select" data-tes="${eqId}|${i}"><option value="">Atividade…</option>${DB.atividades.map(a=>`<option value="${a.id}" ${String(r.atividadeId)===String(a.id)?'selected':''}>${esc(a.codigo)} · ${esc(a.descricao)}</option>`).join('')}</select>
-            <input type="number" step="0.01" min="0" class="te-qty" data-teq="${eqId}|${i}" placeholder="Qtd." value="${r.quantidadePrevista??''}">
+            <div class="qty-field"><label>Prevista</label><input type="number" step="0.01" min="0" class="te-qty" data-teq="${eqId}|${i}" placeholder="Qtd." value="${r.quantidadePrevista??''}"></div>
+            <div class="qty-field"><label>Executada</label><input type="number" step="0.01" min="0" class="te-exec" data-tee="${eqId}|${i}" placeholder="Qtd." value="${r.quantidadeExecutada??''}"></div>
             <button type="button" class="icon-btn te-remove" data-eq-rm="${eqId}|${i}" title="Remover atividade">${icon('close',13)}</button>
           </div>
           <div class="activity-fotos">
@@ -399,6 +415,7 @@ async function submitEdit(){
         atividades: editors[eqId].map((r,i)=>({
           atividadeId: Number(r.atividadeId),
           quantidadePrevista: r.quantidadePrevista? parseFloat(r.quantidadePrevista): null,
+          quantidadeExecutada: (r.quantidadeExecutada===''||r.quantidadeExecutada==null)? null : parseFloat(r.quantidadeExecutada),
           fotos: fotosUrls[eqId][i]||''
         }))
       }))
@@ -411,7 +428,7 @@ async function submitEdit(){
     }
     const q = loadQueue(); q.push(patch); saveQueue(q);
     observacao = '';
-    toast('Alterações registradas neste aparelho. Envio automático quando houver internet.');
+    enviado = true;
     render();
     syncNow();
   }catch(err){
@@ -449,7 +466,7 @@ async function syncNow(){
         at.atividades = pa.atividades.map(x=>({
           atividadeId: Number(x.atividadeId),
           quantidadePrevista: x.quantidadePrevista,
-          quantidadeExecutada: existing.find(y=>String(y.atividadeId)===String(x.atividadeId))?.quantidadeExecutada ?? null,
+          quantidadeExecutada: x.quantidadeExecutada != null ? x.quantidadeExecutada : (existing.find(y=>String(y.atividadeId)===String(x.atividadeId))?.quantidadeExecutada ?? null),
           fotos: x.fotos || existing.find(y=>String(y.atividadeId)===String(x.atividadeId))?.fotos || ''
         }));
         at.historico = at.historico||[];

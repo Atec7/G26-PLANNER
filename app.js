@@ -75,12 +75,6 @@ const MOTIVOS_REPROG = [
 ];
 const CUSTOM_FIELD_TYPES = [{v:'texto',l:'Texto'},{v:'numero',l:'Número'},{v:'data',l:'Data'},{v:'select',l:'Lista (opções)'}];
 const RDO_QUESTIONS = [
-  { id:'rdo_saida_base', label:'Saída da base' },
-  { id:'rdo_chegada', label:'Chegada' },
-  { id:'rdo_inicio_atividades', label:'Início das atividades' },
-  { id:'rdo_finalizacao', label:'Finalização das atividades' },
-  { id:'rdo_saida_obra', label:'Saída da obra' },
-  { id:'rdo_chegada_base', label:'Chegada na base' },
   { id:'rdo_condicoes', label:'Condições climáticas' },
   { id:'rdo_impedimento', label:'Impedimento de execução' },
   { id:'rdo_falta_material', label:'Falta de material' },
