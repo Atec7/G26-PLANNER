@@ -133,7 +133,7 @@ var IMGGB_KEY = '95bb16ee776d7e20f26857cec98bd372';
 var FOTOS_SEP = ';;';
 var _fotos = {};        // _fotos[eqId] = [ [File,...], [File,...], ... ] (uma lista por linha de atividade)
 var _fotosEnviando = false;
-function icon(name,size){ return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`; }
+function icon(name,size=18){ return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`; }
 
 /* --- estado --- */
 let DB = null;
@@ -435,7 +435,7 @@ function abrirModalAcidente(){
   const body = `
     <div style="color:var(--red);font-weight:700;font-size:14px;margin-bottom:12px;">${icon('alert',16)} CONFIRMAR INFORMAÇÃO DE ACIDENTE</div>
     <div style="font-size:12.5px;color:var(--muted);margin-bottom:16px;">Preencha o motivo/descrição do acidente. Isso enviará um alerta vermelho bloqueante para todas as telas do escritório (Admin) com localização, equipe e QR Code. O alarme sonoro tocará até que alguém confirme "Reportado".</div>
-    <div class="field"><label>Motivo / Descrição do acidente <span class="req">*</span></label><textarea id="acidente-motivo" rows="4" required placeholder="Ex.: Colisão de veículo na rota, queda de poste, choque elétrico..."></textarea></div>
+    <div class="field"><label>Motivo / Descrição do acidente <span class="req">*</span></label><textarea name="acidente-motivo" id="acidente-motivo" rows="4" required placeholder="Ex.: Colisão de veículo na rota, queda de poste, choque elétrico..."></textarea></div>
     <div style="margin-top:8px;padding:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:11px;color:#991b1b;">
       <strong>Equipe:</strong> ${esc(equipeLabel(eq))}<br>
       <strong>Programação:</strong> ${esc(progGidLabel)} · ${fmtDate(prog.dataProgramada)}<br>
