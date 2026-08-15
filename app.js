@@ -53,7 +53,7 @@ function nextId(){ DB.seq = (DB.seq||1)+1; return DB.seq; }
 
 let DB = structuredClone(DEFAULT_DATA);
 let currentView = 'dashboard';
-let progFilters = (()=>{ const r=monthRangeISO(); return { projeto:'', equipe:'', status:'', ciclo:'', dataDe:r.de, dataAte:r.ate, modo:'lista', calView:'mes', calDay:todayISO() }; })();
+let progFilters = (()=>{ const r=monthRangeISO(); return { projeto:'', equipe:'', status:'Programado', ciclo:'', dataDe:r.de, dataAte:r.ate, modo:'lista', calView:'mes', calDay:todayISO() }; })();
 let ativFilters = { q:'', fav:'' };
 let equipeFilters = { q:'', status:'' };
 let projFilters = { q:'', status:'' };
@@ -72,7 +72,7 @@ function autor(h){
 ========================================================= */
 const STATUS_PROG = ['Programado','Em Execução','Concluído','Reprogramado','Cancelado'];
 const STATUS_COLOR = { 'Programado':'var(--blue)','Em Execução':'var(--accent)','Concluído':'var(--green)','Reprogramado':'var(--purple)','Cancelado':'var(--red)' };
-const STATUS_PROJETO = ['Planejado','Em Andamento','Concluído','Encerrado','Cancelado'];
+const STATUS_PROJETO = ['Aguardando Viabilidade','Em Andamento','Concluído','Encerrado','Cancelado'];
 const MOTIVOS_REPROG = [
   'Condições climáticas','Falta de material','Falta de equipamento','Indisponibilidade de equipe',
   'Prioridade emergencial (urgência)','Solicitação da concessionária / cliente','Pendência de liberação / desligamento',
@@ -123,7 +123,7 @@ const NAV_ITEMS = [
   { id:'projetos',    label:'Projetos',      sub:'Cadastro de projetos', icon:'folder' },
   { id:'avanco',      label:'Avanço',        sub:'Progresso físico e financeiro', icon:'trend' },
   { id:'programacoes',label:'Programações',  sub:'Agenda, fluxo e reprogramação', icon:'calendar' },
-  { id:'RDO',         label:'RDO',           sub:'Execução das equipes em campo', icon:'check' },
+  { id:'RDO',         label:'RDO',           sub:'Execução das equipes em campo', icon:'clipboard' },
   { id:'historico',   label:'Histórico',     sub:'Linha do tempo de todas as alterações', icon:'clock' },
   { id:'admin',       label:'Administração', sub:'Campos personalizados de cada módulo', icon:'gear' },
 ];
@@ -149,6 +149,7 @@ const ICONS = {
   print:'<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
   whatsapp:'<path d="M21.11 4.88A11.47 11.47 0 0 0 12 2a11.5 11.5 0 0 0-8.14 19.5L2 22l2.6-1.82A11.47 11.47 0 0 0 12 23.5a11.5 11.5 0 0 0 8.14-19.62Z"/><path d="M8.6 8.9c.3-.1.6-.1.8.2l.9 1.4c.1.3.1.6-.1.8l-.5.6c.2.6.7 1.4 1.5 2.1.9.8 1.7 1.1 2.3 1.3l.6-.5c.2-.2.5-.3.8-.1l1.4.9c.3.2.4.5.2.8-.3.6-1 1.1-1.6 1.1-1.4 0-3.6-.8-5.8-3-2.3-2.3-3-4.5-3-5.9.1-.7.6-1.4 1.4-1.7Z"/>',
   hash:'<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
+  clipboard:'<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M9 12h6M9 16h6"/>',
 };
 function icon(name,size=16){ return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`; }
 
@@ -277,6 +278,50 @@ function findEquipe(id){ return DB.equipes.find(e=>e.id===Number(id)); }
 function findAtividade(id){ return DB.atividades.find(a=>a.id===Number(id)); }
 function findProjeto(id){ return DB.projetos.find(p=>p.id===Number(id)); }
 function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function resizeImageToDataUrl(file, maxDim=800){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=>reject(new Error('read'));
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=>reject(new Error('img'));
+      img.onload = ()=>{
+        let {width, height} = img;
+        if(width>maxDim || height>maxDim){
+          const k = Math.min(maxDim/width, maxDim/height);
+          width = Math.round(width*k); height = Math.round(height*k);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        try{ resolve(canvas.toDataURL('image/jpeg', 0.7)); }
+        catch(e){ resolve(reader.result); }
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+function anexosGridHtml(anexos, editable){
+  const list = anexos||[];
+  if(!list.length) return editable? '<div class="field-hint">Nenhum anexo ainda. Envie imagens para a equipe visualizar (croqui, localização, detalhe do serviço) — elas também saem no RDO.</div>' : '';
+  return `<div class="anexos-grid">${list.map((a,i)=>`
+    <div class="anexo-thumb">
+      <img src="${esc(a.dataUrl)}" alt="${esc(a.nome||'anexo')}" loading="lazy">
+      <div class="anexo-meta">${esc(a.nome||'')}</div>
+      ${editable? `<button type="button" class="icon-btn anexo-remove" data-i="${i}" title="Remover anexo">${icon('close',12)}</button>`:''}
+    </div>`).join('')}</div>`;
+}
+function anexosDisplayHtml(anexos, print=false){
+  const list = anexos||[];
+  if(!list.length) return '';
+  if(print) return `<div class="fotos">${list.map(a=>`<figure><img src="${esc(a.dataUrl)}" alt="${esc(a.nome||'anexo')}"><figcaption>${esc(a.nome||'Anexo do programador')}</figcaption></figure>`).join('')}</div>`;
+  return `<div class="anexos-grid">${list.map(a=>`
+    <a class="anexo-thumb" href="${esc(a.dataUrl)}" target="_blank" rel="noopener">
+      <img src="${esc(a.dataUrl)}" alt="${esc(a.nome||'anexo')}" loading="lazy">
+      <div class="anexo-meta">${esc(a.nome||'')}</div>
+    </a>`).join('')}</div>`;
+}
 function toast(msg, kind='ok'){
   const wrap = document.getElementById('toast-wrap');
   const t = document.createElement('div'); t.className='toast';
@@ -587,6 +632,7 @@ function openConfirmacaoModal(prog, atrib, onResolved){
           ${atrib.atividades.map((a,idx)=>{ const at=findAtividade(a.atividadeId);
             return `<div class="field"><label>${esc(at?.codigo||'')} · ${esc(at?.descricao||'')}</label><input type="number" step="0.01" class="exec-qty" data-idx="${idx}" value="${a.quantidadeExecutada ?? a.quantidadePrevista ?? ''}"></div>`;
           }).join('')}
+          <div class="field"><label>Motivo da conclusão <span class="req">*</span></label><input type="text" id="sim-motivo" maxlength="200" placeholder="Ex.: serviço executado conforme programado"></div>
         </div>
         <div class="modal-foot"><button type="button" class="btn btn-ghost" id="c-back">← Voltar</button><button type="button" class="btn btn-primary" id="c-concluir">Manter/editar e concluir</button></div>`;
     } else if(step==='nao'){
@@ -610,11 +656,13 @@ function openConfirmacaoModal(prog, atrib, onResolved){
     } else if(step==='sim'){
       document.getElementById('c-back').addEventListener('click', ()=>renderStep('question'));
       document.getElementById('c-concluir').addEventListener('click', ()=>{
+        const motivo = document.getElementById('sim-motivo').value.trim();
+        if(!motivo){ toast('Informe o motivo da conclusão.', 'error'); return; }
         document.querySelectorAll('.exec-qty').forEach(inp=>{ atrib.atividades[Number(inp.dataset.idx)].quantidadeExecutada = parseFloat(inp.value)||0; });
         const de = atrib.status;
         atrib.status='Concluído';
         atrib.historico = atrib.historico||[];
-        atrib.historico.push({...currentAutor(), ts:Date.now(), tipo:'confirmacao', de, para:'Concluído', motivo:'Execução confirmada pelo usuário (SIM)'});
+        atrib.historico.push({...currentAutor(), ts:Date.now(), tipo:'confirmacao', de, para:'Concluído', motivo});
         saveData(); root.innerHTML=''; toast('Programação concluída.'); renderContent(); onResolved && onResolved();
       });
     } else if(step==='nao'){
@@ -954,9 +1002,16 @@ function crewCard(eq){
       if(!requerEscrita()) return;
       id = Number(id);
   const inUse = flatAtribuicoes().some(x=>x.atribuicao.equipeId===id);
-  if(inUse){ toast('Equipe possui programações vinculadas. Remova ou reatribua antes de excluir.', 'error'); return; }
-  if(!confirm('Excluir esta equipe?')) return;
-  DB.equipes = DB.equipes.filter(e=>e.id!==id); saveData(); renderContent(); toast('Equipe excluída.');
+  if(inUse && !ehMestre()){ toast('Equipe possui programações vinculadas. Remova ou reatribua antes de excluir.', 'error'); return; }
+  if(inUse){
+    if(!confirm('Excluir esta equipe e REMOVER esta equipe de todas as programações vinculadas?\n\nEsta ação não pode ser desfeita.')) return;
+  } else {
+    if(!confirm('Excluir esta equipe?')) return;
+  }
+  DB.equipes = DB.equipes.filter(e=>e.id!==id);
+  DB.programacoes.forEach(pg=>{ pg.atribuicoes = (pg.atribuicoes||[]).filter(a=>a.equipeId!==id); });
+  DB.programacoes = DB.programacoes.filter(pg=>(pg.atribuicoes||[]).length);
+  saveData(); renderContent(); toast('Equipe excluída.');
 }
 
 /* =========================================================
@@ -1025,9 +1080,17 @@ function renderAtividades(){
       if(!requerEscrita()) return;
       id = Number(id);
   const inUse = flatAtribuicoes().some(x=>x.atribuicao.atividades.some(a=>a.atividadeId===id));
-  if(inUse){ toast('Atividade possui programações vinculadas. Não é possível excluir.', 'error'); return; }
-  if(!confirm('Excluir esta atividade?')) return;
-  DB.atividades = DB.atividades.filter(a=>a.id!==id); saveData(); renderContent(); toast('Atividade excluída.');
+  if(inUse && !ehMestre()){ toast('Atividade possui programações vinculadas. Não é possível excluir.', 'error'); return; }
+  if(inUse){
+    if(!confirm('Excluir esta atividade de TODAS as programações e planos físicos?\n\nEsta ação não pode ser desfeita.')) return;
+  } else {
+    if(!confirm('Excluir esta atividade?')) return;
+  }
+  DB.atividades = DB.atividades.filter(a=>a.id!==id);
+  DB.programacoes.forEach(pg=>{ pg.atribuicoes = (pg.atribuicoes||[]).filter(at=>{ at.atividades = (at.atividades||[]).filter(x=>x.atividadeId!==id); return (at.atividades||[]).length; }); });
+  DB.programacoes = DB.programacoes.filter(pg=>(pg.atribuicoes||[]).length);
+  DB.projetos.forEach(p=>{ p.planoFisico = (p.planoFisico||[]).filter(x=>x.atividadeId!==id); });
+  saveData(); renderContent(); toast('Atividade excluída.');
 }
 
 /* =========================================================
@@ -1083,7 +1146,7 @@ function renderProjetos(){
   el.querySelectorAll('[data-encerrar-pj]').forEach(b=>b.addEventListener('click', ()=>encerrarProjeto(b.dataset.encerrarPj)));
 }
 function projStatusBadge(status){
-  const colors = {'Planejado':'var(--blue)','Em Andamento':'var(--accent)','Concluído':'var(--green)','Encerrado':'var(--muted)','Cancelado':'var(--red)'};
+  const colors = {'Aguardando Viabilidade':'var(--blue)','Em Andamento':'var(--accent)','Concluído':'var(--green)','Encerrado':'var(--muted)','Cancelado':'var(--red)'};
   const c = colors[status]||'var(--muted)';
   return `<span class="badge" style="color:${c};background:${bgFromVar(c)}"><span class="badge-dot"></span>${status}</span>`;
 }
@@ -1183,9 +1246,17 @@ function openPlanoFisicoModal(pjId){
     function deleteProjeto(id){
       if(!requerEscrita()) return;
       id = Number(id);
-  const inUse = DB.programacoes.some(p=>p.projetoId===id);
-  if(inUse){ toast('Projeto possui programações vinculadas. Não é possível excluir.', 'error'); return; }
-  if(!confirm('Excluir este projeto?')) return;
+  const vinculadas = DB.programacoes.filter(p=>p.projetoId===id);
+  if(vinculadas.length){
+    if(ehMestre()){
+      if(!confirm(`Excluir este projeto e TODAS as ${vinculadas.length} programação(ões) vinculadas?\n\nEsta ação não pode ser desfeita.`)) return;
+      DB.programacoes = DB.programacoes.filter(p=>p.projetoId!==id);
+    } else {
+      toast('Projeto possui programações vinculadas. Não é possível excluir.', 'error'); return;
+    }
+  } else {
+    if(!confirm('Excluir este projeto?')) return;
+  }
   DB.projetos = DB.projetos.filter(p=>p.id!==id); saveData(); renderContent(); toast('Projeto excluído.');
 }
 function encerrarProjeto(id){
@@ -1547,15 +1618,35 @@ function findAtribuicaoGlobal(atribId){
   for(const p of DB.programacoes){ const f=(p.atribuicoes||[]).find(a=>a.id===Number(atribId)); if(f) return f; }
   return null;
 }
+function pedirMotivoStatus(atribId, novoStatus, onOk){
+  if(!requerEscrita()) return;
+  const atrib = findAtribuicaoGlobal(atribId);
+  if(!atrib || atrib.status===novoStatus) return;
+  const de = atrib.status;
+  const eq = findEquipe(atrib.equipeId);
+  const body = `
+    <div class="modal-body">
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">Alterar o status de <strong>${de}</strong> para <strong>${novoStatus}</strong>${eq? ' — '+esc(equipeLabel(eq)):''}</div>
+      <div class="field"><label>Motivo <span class="req">*</span></label><input type="text" name="motivo" required maxlength="200" placeholder="Descreva o motivo desta alteração de status"></div>
+      <div class="field"><label>Observações</label><textarea name="obs" rows="2" placeholder="Detalhes opcionais"></textarea></div>
+    </div>`;
+  openModal({
+    title:'Motivo da alteração de status', bodyHtml: body, submitLabel:'Alterar status',
+    onSubmit:(fd)=>{
+      const motivo = String(fd.get('motivo')||'').trim();
+      const obs = String(fd.get('obs')||'').trim();
+      if(!motivo){ toast('Informe o motivo da alteração.', 'error'); return false; }
+      atrib.status = novoStatus;
+      atrib.historico = atrib.historico||[];
+      atrib.historico.push({...currentAutor(), ts:Date.now(), tipo:'status', de, para:novoStatus, motivo, obs: obs||null});
+      saveData(); renderContent(); renderBanner(); toast('Status alterado para '+novoStatus+'.');
+      onOk && onOk();
+    }
+  });
+}
     function setAtribStatusGlobal(atribId, status){
       if(!requerEscrita()) return;
-      const atrib = findAtribuicaoGlobal(atribId);
-  if(!atrib || atrib.status===status) return;
-  const de = atrib.status;
-  atrib.status = status;
-  atrib.historico = atrib.historico||[];
-  atrib.historico.push({...currentAutor(), ts:Date.now(), tipo:'status', de, para:status, motivo:null});
-  saveData(); renderContent(); renderBanner(); toast('Status alterado para '+status+'.');
+      pedirMotivoStatus(atribId, status);
 }
 function bindKanbanDrag(area){
   let dragId = null;
@@ -1764,9 +1855,7 @@ function openAtribDetalhe(atribId){
     onMount:(root)=>{
       root.querySelectorAll('[data-set-status]').forEach(b=>b.addEventListener('click', ()=>{
         if(!requerEscrita()) return;
-        const de = atrib.status; atrib.status = b.dataset.setStatus; atrib.historico = atrib.historico||[];
-        atrib.historico.push({ts:Date.now(), tipo:'status', de, para:atrib.status, motivo:null}); saveData();
-        document.getElementById('modal-overlay')?.remove(); document.getElementById('modal-root').innerHTML=''; renderContent(); renderBanner();
+        pedirMotivoStatus(atrib.id, b.dataset.setStatus);
       }));
       root.querySelectorAll('[data-whats-detail]').forEach(b=>b.addEventListener('click', ()=>encaminharWhats(b.dataset.whatsDetail)));
       root.querySelectorAll('[data-edit-detail]').forEach(b=>b.addEventListener('click', ()=>{
@@ -1787,6 +1876,7 @@ function openAtribDetalhe(atribId){
       const pg = id ? DB.programacoes.find(x=>x.id===Number(id)) : null;
   let atribs = pg ? pg.atribuicoes.map(a=>({ equipeId:String(a.equipeId), atividades: a.atividades.map(x=>({atividadeId:String(x.atividadeId), quantidadePrevista:x.quantidadePrevista??''})) })) : [{ equipeId:'', atividades:[{atividadeId:'',quantidadePrevista:''}] }];
   let selProjeto = pg? findProjeto(pg.projetoId) : null;
+  let anexos = pg ? (pg.anexos||[]).map(a=>({...a})) : [];
 
   function atribBlockHtml(a,i){
     return `<div class="atrib-block" data-idx="${i}">
@@ -1818,6 +1908,11 @@ function openAtribDetalhe(atribId){
       <div class="field"><label>Ciclo recebido carteira <span class="req">*</span></label><input type="text" name="ciclo" class="ciclo-input" id="pg-ciclo" required maxlength="13" value="${esc(pg?.ciclo||'')}" placeholder="CICLO-XX/XXXX"><div class="field-hint">Preenchido automaticamente do projeto; pode ser ajustado.</div></div>
     </div>
     <div class="field"><label>Observações gerais</label><textarea name="observacoes">${esc(pg?.observacoes||'')}</textarea></div>
+    <div class="field"><label>Anexos do programador</label>
+      <input type="file" id="pg-anexos-input" accept="image/*" multiple>
+      <div class="field-hint">Imagens para a equipe visualizar (croqui, localização, detalhe do serviço). Também saem no RDO.</div>
+      <div id="pg-anexos-preview">${anexosGridHtml(anexos, true)}</div>
+    </div>
     ${renderCustomFieldsInputs('programacoes', pg)}
     <div class="field"><label>Equipes e atividades <span class="req">*</span></label>
       <div id="atribs-container">${renderAtribsHtml()}</div>
@@ -1854,6 +1949,24 @@ function openAtribDetalhe(atribId){
       }
       bindDynamic();
       document.getElementById('add-atrib-btn').addEventListener('click', ()=>{ atribs.push({equipeId:'',atividades:[{atividadeId:'',quantidadePrevista:''}]}); refreshContainer(); });
+      const anexosPreview = root.querySelector('#pg-anexos-preview');
+      const anexosInput = root.querySelector('#pg-anexos-input');
+      function paintAnexos(){
+        anexosPreview.innerHTML = anexosGridHtml(anexos, true);
+        anexosPreview.querySelectorAll('.anexo-remove').forEach(b=>b.addEventListener('click', ()=>{
+          anexos.splice(Number(b.dataset.i),1); paintAnexos();
+        }));
+      }
+      anexosInput.addEventListener('change', async ()=>{
+        const files = Array.from(anexosInput.files||[]);
+        for(const f of files){
+          if(anexos.length>=8){ toast('Máximo de 8 anexos por programação.', 'error'); break; }
+          try{ const dataUrl = await resizeImageToDataUrl(f); anexos.push({ nome: f.name||('anexo-'+Date.now()), dataUrl, ts: Date.now() }); }
+          catch(e){ toast('Não foi possível carregar a imagem '+esc(f.name), 'error'); }
+        }
+        anexosInput.value=''; paintAnexos();
+      });
+      paintAnexos();
     },
     onSubmit:(fd)=>{
       const ciclo = cicloMask(fd.get('ciclo'));
@@ -1864,7 +1977,7 @@ function openAtribDetalhe(atribId){
       const custom = parseCustomFieldsFromForm('programacoes', fd);
       if(pg){
         const dataBaseAntiga = pg.dataProgramada;
-        pg.projetoId = projetoId; pg.dataProgramada = dataBase; pg.ciclo = ciclo; pg.observacoes = observacoes; pg.custom = custom;
+        pg.projetoId = projetoId; pg.dataProgramada = dataBase; pg.ciclo = ciclo; pg.observacoes = observacoes; pg.custom = custom; pg.anexos = anexos;
         const oldAtribs = pg.atribuicoes;
         pg.atribuicoes = atribs.map(a=>{
           const existing = oldAtribs.find(old => String(old.equipeId)===String(a.equipeId));
@@ -1874,7 +1987,7 @@ function openAtribDetalhe(atribId){
         });
         toast('Programação atualizada.');
       } else {
-        const novaProg = { id: nextId(), gid: novoGid(), projetoId, dataProgramada: dataBase, ciclo, observacoes, custom,
+        const novaProg = { id: nextId(), gid: novoGid(), projetoId, dataProgramada: dataBase, ciclo, observacoes, custom, anexos,
           atribuicoes: atribs.map(a=> ({ id: nextId(), equipeId:Number(a.equipeId), dataProgramada: dataBase, status:'Programado',
             atividades: a.atividades.map(x=>({atividadeId:Number(x.atividadeId), quantidadePrevista:x.quantidadePrevista?parseFloat(x.quantidadePrevista):null, quantidadeExecutada:null})),
             historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Programação criada'}] })) };
@@ -2084,7 +2197,7 @@ function globalHistorico(){
   flatAtribuicoes().forEach(x=> (x.atribuicao.historico||[]).forEach(h=> events.push({...h, atribId:x.atribuicao.id, projetoId:x.programacao.projetoId, equipeId:x.atribuicao.equipeId})));
   return events.sort((a,b)=> b.ts - a.ts);
 }
-const HIST_TIPOS = [{v:'',l:'Todos os eventos'},{v:'criacao',l:'Criação'},{v:'status',l:'Mudança de status'},{v:'reprogramacao',l:'Reprogramação'},{v:'confirmacao',l:'Confirmação de execução'},{v:'equipe',l:'Alteração da equipe'}];
+const HIST_TIPOS = [{v:'',l:'Todos os eventos'},{v:'criacao',l:'Criação'},{v:'status',l:'Mudança de status'},{v:'reprogramacao',l:'Reprogramação'},{v:'confirmacao',l:'Confirmação de execução'},{v:'equipe',l:'Alteração da equipe'},{v:'rdo_edicao',l:'Edição de RDO'}];
 function renderHistorico(){
   const el = document.getElementById('content');
   const minTs = histFilters.dataDe? new Date(histFilters.dataDe+'T00:00:00').getTime() : (histFilters.ultimasHs? Date.now()-histFilters.ultimasHs*3600e3 : -Infinity);
@@ -2136,6 +2249,7 @@ function renderHistoricoTimeline(events, withContext){
     else if(h.tipo==='reprogramacao'){ dotColor='var(--purple)'; title=`Reprogramada: ${fmtDate(h.de)} → ${fmtDate(h.para)}`; }
     else if(h.tipo==='confirmacao'){ dotColor='var(--green)'; title='Execução confirmada'; }
     else if(h.tipo==='equipe'){ dotColor='var(--accent)'; title='Atividades alteradas pela equipe'; }
+    else if(h.tipo==='rdo_edicao'){ dotColor='var(--purple)'; title='Registro RDO editado'; }
     const ctx = withContext && pg ? `<div class="tl-meta">${esc(findProjeto(pg.projetoId)?.nome||'')} · Equipe ${equipeLabel(eq)}</div>` : '';
     return `<div class="tl-item ${withContext?'clickable':''}" ${withContext?`data-open-atrib="${h.atribId}"`:''} style="--dot-c:${dotColor}"><div class="tl-title">${title}</div><div class="tl-meta">${fmtDateTime(h.ts)} · <strong style="color:var(--muted);">${autor(h)}</strong></div>${ctx}${h.motivo? `<div class="tl-motivo"><strong>Motivo:</strong> ${esc(h.motivo)}${h.obs? ' — '+esc(h.obs):''}</div>`:''}</div>`;
   }).join('')}</div>`;
@@ -2409,6 +2523,7 @@ function garantirMaster(){
 }
 function podeEditar(){ return !CURRENT_USER || CURRENT_USER.nivel!=='leitura'; }
 function requerEscrita(){ if(podeEditar()) return true; toast('Seu usuário tem acesso somente leitura.', 'error'); return false; }
+function ehMestre(){ return !!(CURRENT_USER && String(CURRENT_USER.login)==='1'); }
 function usuarioRestrito(){ return !!(CURRENT_USER && CURRENT_USER.role==='supervisor' && CURRENT_USER.nivel==='programacao'); }
 function projetoVisivel(p){ return !usuarioRestrito() || (p.setor===CURRENT_USER.setor && p.coordenacao===CURRENT_USER.coordenacao); }
 function projetosVisiveis(){ return DB.projetos.filter(projetoVisivel); }
@@ -2727,6 +2842,10 @@ function openRDOModal(progId, attribId){
         <p class="admin-field-meta" style="margin:2px 0;">Eletricistas: ${esc((eq?.eletricistas||[]).filter(Boolean).join(', ')||'—')}</p>
       </div>
     </div>
+    ${(x.programacao.anexos&&x.programacao.anexos.length)? `<div style="margin-bottom:20px;">
+      <h4 style="margin-bottom:8px;">Anexos do programador</h4>
+      ${anexosDisplayHtml(x.programacao.anexos)}
+    </div>`:''}
     <div style="margin-bottom:20px;">
       <h4 style="margin-bottom:8px;">Horários do RDO</h4>
       <table style="width:100%;border-collapse:collapse;font-size:12.5px;">${horarios}</table>
@@ -2776,7 +2895,61 @@ function openRDOModal(progId, attribId){
     </div>
     <div class="admin-field-meta">Confirmado pela equipe em <strong>${rdoConfData(x)}</strong></div>`;
 
-  openModal({ title:'RDO — Detalhes da execução', bodyHtml: body, submitLabel:'Fechar', wide:true, footerBtns:[{ label: icon('print',14)+' Gerar PDF', cls:'btn', onClick: ()=> printRDOCompleto(x) }] });
+  openModal({ title:'RDO — Detalhes da execução', bodyHtml: body, submitLabel:'Fechar', wide:true, footerBtns:[
+    { label: icon('edit',14)+' Editar registro', cls:'btn', onClick: ()=> editRdoModal(x) },
+    { label: icon('print',14)+' Gerar PDF', cls:'btn', onClick: ()=> printRDOCompleto(x) }
+  ] });
+}
+
+function rdoOptionsHtml(q, atual){
+  const opts = q.id==='rdo_condicoes'? ['Bom','Nublado','Chuvoso','Impraticável'] : ['Não','Sim'];
+  return `<option value="">—</option>${opts.map(o=>`<option ${String(atual||'').trim()===o? 'selected':''}>${o}</option>`).join('')}`;
+}
+function editRdoModal(x){
+  if(!requerEscrita()) return;
+  const at = x.atribuicao;
+  const horarios = RDO_HORARIOS.map(h=>`<div class="field" style="flex:1;"><label>${h.label}</label><input type="time" name="${h.k}" value="${at[h.k]||''}"></div>`).join('');
+  const condicoes = RDO_QUESTIONS.map(q=>`<div class="field"><label>${q.label}</label><select name="${q.id}">${rdoOptionsHtml(q, at.rdoRespostas?.[q.id])}</select></div>`).join('');
+  const ativs = (at.atividades||[]).map((a,idx)=>{
+    const atDef = findAtividade(a.atividadeId);
+    return `<div class="field" style="display:flex;gap:8px;align-items:center;"><span style="flex:1;font-size:12px;"><strong>${esc(atDef?.codigo||'?')}</strong> · ${esc(atDef?.descricao||'')}</span><input type="number" step="0.01" min="0" name="exec_${idx}" value="${a.quantidadeExecutada!=null? a.quantidadeExecutada:''}" style="max-width:110px;" placeholder="Exec."></div>`;
+  }).join('') || '<p class="admin-field-meta">Sem atividades neste registro.</p>';
+  const body = `
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">Editando o registro RDO de <strong>${esc(equipeLabel(findEquipe(at.equipeId)))}</strong> — ${progGid(x.programacao)}</div>
+    <div class="field"><label>Motivo da edição <span class="req">*</span></label><input type="text" name="motivo" required maxlength="200" placeholder="Por que você está editando este registro RDO?"></div>
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-soft);">
+      <h4 style="font-size:12.5px;margin:0 0 10px;">Horários do RDO</h4>
+      <div class="field-row" style="grid-template-columns:1fr 1fr;">${horarios}</div>
+    </div>
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-soft);">
+      <h4 style="font-size:12.5px;margin:0 0 10px;">Condições do RDO</h4>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px;">${condicoes}</div>
+    </div>
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-soft);">
+      <h4 style="font-size:12.5px;margin:0 0 10px;">Quantidades executadas</h4>
+      ${ativs}
+    </div>
+    <div class="field" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-soft);"><label>Observação da execução</label><textarea name="obs" rows="3" placeholder="Observação registrada pela equipe">${esc(at.observacao||'')}</textarea></div>`;
+  openModal({
+    title:'Editar registro RDO', bodyHtml: body, wide:true, submitLabel:'Salvar alterações',
+    onSubmit:(fd)=>{
+      const motivo = String(fd.get('motivo')||'').trim();
+      if(!motivo){ toast('Informe o motivo da edição do registro.', 'error'); return false; }
+      const obs = String(fd.get('obs')||'').trim();
+      at.rdoRespostas = at.rdoRespostas||{};
+      RDO_HORARIOS.forEach(h=>{ at[h.k] = String(fd.get(h.k)||'').trim(); });
+      RDO_QUESTIONS.forEach(q=>{ at.rdoRespostas[q.id] = String(fd.get(q.id)||'').trim(); });
+      at.rdoCondicoes = at.rdoRespostas.rdo_condicoes||'';
+      (at.atividades||[]).forEach((a,idx)=>{
+        const v = fd.get('exec_'+idx);
+        a.quantidadeExecutada = (v!==null && String(v).trim()!=='')? parseFloat(v) : null;
+      });
+      at.observacao = obs;
+      at.historico = at.historico||[];
+      at.historico.push({...currentAutor(), ts:Date.now(), tipo:'rdo_edicao', de:null, para:'RDO', motivo, obs});
+      saveData(); renderContent(); toast('Registro RDO atualizado.');
+    }
+  });
 }
 
 function printRDOCompleto(x){
@@ -2897,6 +3070,8 @@ function printRDOCompleto(x){
     <h2>Observação da execução</h2>
     <p>${esc(x.atribuicao.observacao)||'—'}</p>
     <p class="meta">Confirmado pela equipe em <strong>${rdoConfData(x)}</strong></p>
+
+    ${(x.programacao.anexos&&x.programacao.anexos.length)? `<h2>Anexos do programador</h2>${anexosDisplayHtml(x.programacao.anexos, true)}`:''}
 
     <h2>Histórico do registro</h2>
     <table>

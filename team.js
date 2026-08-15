@@ -120,6 +120,7 @@ function renderRDOForm(){
     ['rdo_horario_inicio','Horário Início das atividades']
   ];
   return `
+    ${anexosDoProgramadorHtml()}
     <div class="panel section-gap" style="max-width:600px;margin:0 auto;">
       <div class="panel-head"><h3>Questionário RDO - Saída da Base</h3><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${prog.gid||'G26-'+String(prog.id).padStart(7,'0')}</span></div>
       <div style="padding:24px;">
@@ -144,6 +145,18 @@ function renderRDOForm(){
             <button class="btn btn-primary" id="rdo-concluir" style="width:100%;padding:12px;font-size:16px;">Concluir RDO</button>
           </div>
         </div>
+      </div>
+    </div>`;
+}
+
+function anexosDoProgramadorHtml(){
+  const anexos = (prog&&prog.anexos)||[];
+  if(!anexos.length) return '';
+  return `
+    <div class="panel section-gap" style="max-width:600px;margin:0 auto;margin-bottom:14px;">
+      <div class="panel-head"><h3>Anexos do programador</h3><span class="badge-prefix">${anexos.length} imagem(ns)</span></div>
+      <div style="padding:14px;display:flex;flex-wrap:wrap;gap:10px;">
+        ${anexos.map(a=>`<a href="${esc(a.dataUrl)}" target="_blank" rel="noopener" title="${esc(a.nome||'')}"><img src="${esc(a.dataUrl)}" alt="${esc(a.nome||'anexo')}" style="width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--border);" loading="lazy"></a>`).join('')}
       </div>
     </div>`;
 }
@@ -257,6 +270,7 @@ function render(){
   const pr = findProjeto(DB, prog.projetoId);
   resetFotos();
   root.innerHTML = `
+    ${anexosDoProgramadorHtml()}
     <div class="panel section-gap">
       <div class="panel-head">
         <div><h3>${esc(pr?.nome||'Projeto')}</h3><div class="admin-field-meta">${prog.gid||'G26-'+String(prog.id).padStart(7,'0')} · ${esc(pr?.codigo||'')} · Ciclo ${esc(prog.ciclo||'—')}</div></div>
