@@ -208,7 +208,8 @@ function init(){
   if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
   const cached = loadCache();
   if(cached){ DB = cached; dbToEditors(DB); render(); }
-  database.setPersistenceEnabled(true).catch(()=>{});
+  /* Persistência offline já vem habilitada por padrão no Firebase Web SDK
+     (v9+/10.x compat) — não usar database.setPersistenceEnabled aqui. */
   window.addEventListener('online', ()=>{ online=true; setStatus('Conectado — sincronizando…','ok'); syncNow(); });
   window.addEventListener('offline', ()=>{ online=false; setStatus('Offline — as alterações serão enviadas quando houver conexão','warn'); });
   DB_REF.once('value').then(snap=>{
