@@ -2689,18 +2689,33 @@ function waLink(phone, text){ return 'https://wa.me/' + phoneDigits(phone) + '?t
 const MAPS_KEY = 'cb9a3186df512370a0b85db130ca34d1';
 function mapsLinkByAddress(addr){ return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(String(addr||'').trim()); }
 function mapsLinkByCoords(lat,lng){ return 'https://www.google.com/maps/search/?api=1&query='+Number(lat)+','+Number(lng); }
-function staticMapUrl(lat,lng,zoom,w,h){
+function staticMapEsriUrl(lat,lng,zoom,w,h){
   const z = zoom||16, width = w||640, height = h||360;
-  return `https://maps.geoapify.com/v1/staticmap?style=osm-bright-smooth&width=${width}&height=${height}&center=lonlat:${Number(lng)},${Number(lat)}&zoom=${z}&scaleFactor=2&marker=lonlat:${Number(lng)},${Number(lat)};type:material;color:%23e02020;size:normal&apiKey=${MAPS_KEY}`;
+  const dLng = (360/Math.pow(2,z)) * (width/256);
+  const dLat = (170.1022/Math.pow(2,z)) * (height/256);
+  const minLng = Number(lng)-dLng, minLat = Number(lat)-dLat, maxLng = Number(lng)+dLng, maxLat = Number(lat)+dLat;
+  const bbox = [minLng, minLat, maxLng, maxLat].map(v=>Number(v).toFixed(6)).join(',');
+  return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&bboxSR=4326&size=${width},${height}&imageSR=4326&format=png&f=image`;
+}
+function staticMapUrl(lat,lng,zoom,w,h){
+  const z = zoom||16, width = Math.min((w||640), 650), height = Math.min((h||360), 450);
+  return `https://static-maps.yandex.ru/1.x/?ll=${Number(lng)},${Number(lat)}&z=${z}&size=${width},${height}&l=map&pt=${Number(lng)},${Number(lat)},pm2rdm`;
 }
 function staticMapFallbackUrl(lat,lng,zoom,w,h){
   const z = zoom||16, width = w||640, height = h||360;
   return `https://staticmap.openstreetmap.de/staticmap.php?center=${Number(lat)},${Number(lng)}&zoom=${z}&size=${width}x${height}&markers=${Number(lat)},${Number(lng)},red-pushpin`;
 }
+function staticMapProximo(img){
+  try{
+    const srcs = JSON.parse(img.dataset.srcs||'[]');
+    const n = (Number(img.dataset.si)||0)+1;
+    if(n < srcs.length){ img.dataset.si = n; img.src = srcs[n]; }
+    else { img.onerror = null; }
+  }catch(e){ img.onerror = null; }
+}
 function staticMapImgTag(lat,lng,zoom,w,h,alt,style){
-  const geo = staticMapUrl(lat,lng,zoom,w,h);
-  const fb = staticMapFallbackUrl(lat,lng,zoom,w,h);
-  return `<img src="${esc(geo)}" alt="${esc(alt||'Mapa')}" style="${esc(style||'width:100%;max-width:520px;border-radius:8px;border:1px solid var(--border-soft);display:block;')}" onerror="this.onerror=null; this.src='${esc(fb)}';">`;
+  const srcs = [staticMapEsriUrl(lat,lng,zoom,w,h), staticMapUrl(lat,lng,zoom,w,h), staticMapFallbackUrl(lat,lng,zoom,w,h)];
+  return `<img src="${esc(srcs[0])}" data-srcs="${esc(JSON.stringify(srcs))}" alt="${esc(alt||'Mapa')}" style="${esc(style||'width:100%;max-width:520px;border-radius:8px;border:1px solid var(--border-soft);display:block;')}" onerror="staticMapProximo(this)">`;
 }
 async function geoapifyGeocode(addr){
   if(!String(addr||'').trim()) return null;
@@ -2753,7 +2768,7 @@ function loadLeaflet(){
 function localWhatsLine(local, lat, lng){
   if(!local && (lat==null || lng==null)) return '';
   if(lat!=null && lng!=null){
-    return [`*Local:* ${local||'Ponto marcado no mapa'}`,`*Ver no mapa:* ${mapsLinkByCoords(lat,lng)}`,`*Imagem da localização:* ${staticMapUrl(lat,lng,15,640,360)}`];
+    return [`*Local:* ${local||'Ponto marcado no mapa'}`,`*Ver no mapa:* ${mapsLinkByCoords(lat,lng)}`,`*Imagem da localização:* ${staticMapEsriUrl(lat,lng,15,640,360)}`];
   }
   return [`*Local:* ${local}`,`*Ver no mapa:* ${mapsLinkByAddress(local)}`];
 }
@@ -2822,17 +2837,16 @@ function printDocumento(html){
   root.innerHTML = `<div class="print-sheet">${html}</div>`;
   const imgs = root.querySelectorAll('img');
   if(!imgs.length){ window.print(); return; }
-  let pendentes = 0, impresso = false;
-  const tentar = ()=>{
-    pendentes--;
-    if(pendentes<=0 && !impresso){ impresso = true; window.print(); }
-  };
-  imgs.forEach(img=>{
-    pendentes++;
-    img.addEventListener('load', tentar, {once:true});
-    img.addEventListener('error', tentar, {once:true});
-  });
-  setTimeout(()=>{ if(!impresso){ impresso = true; window.print(); } }, 1500);
+  const inicio = Date.now();
+  let impresso = false;
+  function tentarImprimir(){
+    if(impresso) return;
+    if(Date.now()-inicio > 8000){ impresso=true; window.print(); return; }
+    const pendentes = Array.from(imgs).filter(img=> !img.complete || img.naturalWidth===0).length;
+    if(pendentes===0){ impresso=true; window.print(); return; }
+    setTimeout(tentarImprimir, 250);
+  }
+  tentarImprimir();
 }
 function printProjeto(id){
   const pj = findProjeto(id);
@@ -3037,7 +3051,7 @@ function buildDocProgramacao(prog){
       <div class="ps-block-head">Localização no mapa — ${progGid(prog)}</div>
       ${staticMapImgTag(prog.localLat,prog.localLng,16,720,420, 'Mapa: '+(prog.local||''), 'width:100%;max-width:620px;border:1px solid #999;border-radius:4px;')}
       <div style="margin-top:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <img src="${esc(qrCodeUrl(mapsLinkByCoords(prog.localLat,prog.localLng), 100))}" alt="QR Code localização" style="width:100px;height:100px;border:1px solid #999;border-radius:4px;">
+        <div class="ps-qr-box">${qrSvgHtml(mapsLinkByCoords(prog.localLat,prog.localLng), 4)}</div>
         <div style="font-size:11px;color:#333;"><strong>Escaneie para abrir no Google Maps</strong><br>${esc(mapsLinkByCoords(prog.localLat,prog.localLng))}</div>
       </div>
     </div>`:''}
