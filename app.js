@@ -968,9 +968,18 @@ function openConfirmacaoModal(prog, atrib, onResolved){
           <div class="confirm-question">A PROGRAMAÇÃO FOI EXECUTADA?</div>
         </div>
         <div class="modal-foot" style="justify-content:center;gap:14px;">
+          <button type="button" class="btn btn-ghost" id="c-visualizar">${icon('search',14)} VISUALIZAR</button>
           <button type="button" class="btn btn-danger-solid" id="c-nao">NÃO</button>
           <button type="button" class="btn btn-primary" id="c-sim">SIM</button>
         </div>`;
+    } else if(step==='visualizar'){
+      const detalheHtml = atribDetalheHtml(prog, atrib, false);
+      inner = `
+        <div class="modal-body">
+          <div class="confirm-banner">${icon('alert',15)} Confira os dados e o retorno da equipe antes de responder.</div>
+          ${detalheHtml}
+        </div>
+        <div class="modal-foot"><button type="button" class="btn btn-ghost" id="c-back-visualizar">← Voltar à pergunta</button></div>`;
     } else if(step==='sim'){
       inner = `
         <div class="modal-body">
@@ -992,13 +1001,16 @@ function openConfirmacaoModal(prog, atrib, onResolved){
         </div>
         <div class="modal-foot"><button type="button" class="btn btn-ghost" id="c-back2">← Voltar</button><button type="button" class="btn btn-primary" id="c-reprogramar">Reprogramar</button></div>`;
     }
-    root.innerHTML = `<div class="modal-overlay" id="modal-overlay-conf"><div class="modal"><div class="modal-head"><h3>Confirmação de execução</h3></div>${inner}</div></div>`;
+    root.innerHTML = `<div class="modal-overlay" id="modal-overlay-conf"><div class="modal" style="${step==='visualizar'?'max-width:820px;':''}"><div class="modal-head"><h3>Confirmação de execução</h3></div>${inner}</div></div>`;
     bind(step);
   }
   function bind(step){
     if(step==='question'){
+      document.getElementById('c-visualizar').addEventListener('click', ()=>renderStep('visualizar'));
       document.getElementById('c-sim').addEventListener('click', ()=>renderStep('sim'));
       document.getElementById('c-nao').addEventListener('click', ()=>renderStep('nao'));
+    } else if(step==='visualizar'){
+      document.getElementById('c-back-visualizar').addEventListener('click', ()=>renderStep('question'));
     } else if(step==='sim'){
       document.getElementById('c-back').addEventListener('click', ()=>renderStep('question'));
       document.getElementById('c-concluir').addEventListener('click', ()=>{
@@ -2161,11 +2173,7 @@ function renderDayList(dayList){
   }).join('')}</div>`;
 }
 
-function openAtribDetalhe(atribId){
-  atribId = Number(atribId);
-  let programacao, atrib;
-  for(const pg of DB.programacoes){ const found = (pg.atribuicoes||[]).find(a=>a.id===atribId); if(found){ programacao=pg; atrib=found; break; } }
-  if(!atrib) return;
+function atribDetalheHtml(programacao, atrib, comAcoes=true){
   const pr = findProjeto(programacao.projetoId), eq = findEquipe(atrib.equipeId), late = isLate(atrib);
   const rows = atrib.atividades.map(a=>{
     const at = findAtividade(a.atividadeId);
@@ -2178,7 +2186,7 @@ function openAtribDetalhe(atribId){
   const totExec = rows.reduce((s,r)=>s+r.ve,0);
   const av = projetoAvanco(pr);
   const teamE = lastTeamEdit(atrib);
-  const body = `
+  return `
     <div style="display:flex;flex-direction:column;gap:16px;">
       <div class="dtl-header">
         <div style="min-width:0;">
@@ -2232,7 +2240,7 @@ function openAtribDetalhe(atribId){
         <div style="white-space:pre-wrap;line-height:1.55;">${esc(programacao.orientacoesPlanejamento)}</div>
       </div>`:''}
 
-      <div class="dtl-actions">
+      ${comAcoes? `<div class="dtl-actions">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <span class="dtl-actions-lbl">Alterar status:</span>
           ${STATUS_PROG.filter(s=>s!==atrib.status).map(s=>`<button type="button" class="btn btn-sm" data-set-status="${s}">→ ${s}</button>`).join('')}
@@ -2244,8 +2252,15 @@ function openAtribDetalhe(atribId){
           <button type="button" class="btn btn-sm" data-reprog-detail="${programacao.id}|${atrib.id}">${icon('reprog',13)} Reprogramar</button>
           <button type="button" class="btn btn-sm" data-hist-detail="${atrib.id}">${icon('history',13)} Histórico</button>
         </div>
-      </div>
+      </div>`:''}
     </div>`;
+}
+function openAtribDetalhe(atribId){
+  atribId = Number(atribId);
+  let programacao, atrib;
+  for(const pg of DB.programacoes){ const found = (pg.atribuicoes||[]).find(a=>a.id===atribId); if(found){ programacao=pg; atrib=found; break; } }
+  if(!atrib) return;
+  const body = atribDetalheHtml(programacao, atrib);
   openModal({ title:'Detalhe da programação', bodyHtml: body, submitLabel:'Fechar', wide:true,
     onMount:(root)=>{
       root.querySelectorAll('[data-set-status]').forEach(b=>b.addEventListener('click', ()=>{
