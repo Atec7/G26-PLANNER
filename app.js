@@ -2153,12 +2153,17 @@ function openAtribDetalhe(atribId){
         eqList.push(currentEq);
       }
     }
+    const searchId = `prog-act-search-${i}`;
     return `<div class="atrib-block" data-idx="${i}">
       <div class="atrib-head">
         <select class="atrib-equipe" data-idx="${i}"><option value="">Selecione a equipe…</option>${eqList.map(e=>`<option value="${e.id}" ${String(a.equipeId)===String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' · '+esc(e.encarregado):''}</option>`).join('')}</select>
         ${atribs.length>1? `<button type="button" class="icon-btn atrib-remove" data-idx="${i}">${icon('trash',14)}</button>`:''}
       </div>
       <div class="atrib-meta-live" data-idx="${i}"></div>
+      <div class="field" style="margin-bottom:8px;">
+        <label for="${searchId}">${icon('search',14)} Buscar atividade (código ou descrição)</label>
+        <input type="search" id="${searchId}" placeholder="Filtrar atividades…" style="width:100%;">
+      </div>
       <div class="atrib-activities">${a.atividades.map((at,j)=>activityRowHtml(a,i,at,j)).join('')}</div>
       <button type="button" class="btn btn-sm btn-ghost atrib-add-activity" data-idx="${i}">${icon('plus',13)} Adicionar atividade</button>
     </div>`;
@@ -2272,6 +2277,23 @@ function openAtribDetalhe(atribId){
         root.querySelectorAll('.act-select').forEach(s=>s.addEventListener('change', e=>{ atribs[e.target.dataset.idx].atividades[e.target.dataset.jdx].atividadeId = e.target.value; atualizarMetaIndicadores(); }));
         root.querySelectorAll('.act-qty').forEach(s=>s.addEventListener('input', e=>{ atribs[e.target.dataset.idx].atividades[e.target.dataset.jdx].quantidadePrevista = e.target.value; atualizarMetaIndicadores(); }));
         root.querySelectorAll('.act-remove').forEach(b=>b.addEventListener('click', e=>{ const i=Number(e.currentTarget.dataset.idx), j=Number(e.currentTarget.dataset.jdx); atribs[i].atividades.splice(j,1); refreshContainer(); }));
+        root.querySelectorAll('input[type="search"][id^="prog-act-search-"]').forEach(input=>{
+          const idx = input.id.replace('prog-act-search-','');
+          input.addEventListener('input', ()=>{
+            const term = input.value.toLowerCase();
+            root.querySelectorAll(`.act-select[data-idx="${idx}"]`).forEach(sel=>{
+              const selected = sel.value;
+              Array.from(sel.options).forEach(opt=>{
+                if(opt.value==='') return;
+                const txt = opt.textContent.toLowerCase();
+                opt.style.display = txt.includes(term) ? '' : 'none';
+              });
+              if(selected && !Array.from(sel.options).find(o=>o.value===selected && o.style.display!=='none')){
+                sel.value = '';
+              }
+            });
+          });
+        });
         atualizarMetaIndicadores();
       }
       bindDynamic();
