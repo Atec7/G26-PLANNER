@@ -43,9 +43,42 @@ let lastWrittenJson = null;
 let warnSaveFail = false;
 let servidorSincronizado = false;
 let lastServerJson = null;
+let salvando = false;
 const ADMIN_CACHE_KEY = 'g26_admin_cache';
 function loadAdminCache(){ try{ const c = JSON.parse(localStorage.getItem(ADMIN_CACHE_KEY)||'null'); return (c && c.synced && c.data)? c.data : null; }catch(e){ return null; } }
 function saveAdminCache(db, synced){ try{ localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify({ synced: !!synced, data: db })); }catch(e){} }
+function temPendente(){ try{ const p = JSON.parse(localStorage.getItem('g26_admin_pending')||'null'); return !!(p && p.snapshot); }catch(e){ return false; } }
+function atualizarStatusSync(){
+  const el = document.getElementById('nav-user');
+  if(!el) return;
+  const base = CURRENT_USER? 'Conectado: '+CURRENT_USER.nome+' · '+roleLabel(CURRENT_USER.role) : 'Dados sincronizados na nuvem (Firebase)';
+  if(!navigator.onLine){ el.textContent = base+' — OFFLINE'; return; }
+  if(salvando || temPendente()){ el.textContent = base+' — sincronizando…'; return; }
+  el.textContent = servidorSincronizado? base : 'Conectando ao Firebase…';
+}
+function aplicarPendente(){
+  if(!navigator.onLine) return;
+  atualizarStatusSync();
+  let pending = null;
+  try{ pending = JSON.parse(localStorage.getItem('g26_admin_pending')||'null'); }catch(e){}
+  if(!pending || !pending.snapshot || !CURRENT_USER) return;
+  DB_REF.once('value').then(snap=>{
+    const serverNow = snap.exists()? snap.val() : null;
+    if(serverNow === pending.server){
+      DB_REF.set(pending.snapshot)
+        .then(()=>{ try{ localStorage.removeItem('g26_admin_pending'); }catch(e){} toast('Alterações offline aplicadas ao servidor.'); })
+        .catch(err=>{ console.error('Falha ao aplicar alterações offline', err); toast('Falha ao aplicar alterações offline.', 'error'); })
+        .finally(()=> atualizarStatusSync());
+    }else{
+      try{ localStorage.removeItem('g26_admin_pending'); }catch(e){}
+      toast('Alterações offline NÃO aplicadas: o banco foi atualizado por outro aparelho. Nada foi sobrescrito.', 'error');
+      atualizarStatusSync();
+    }
+  }).catch(err=>{
+    console.error('Falha ao verificar dados antes de aplicar alterações offline', err);
+    atualizarStatusSync();
+  });
+}
 function saveData(){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>{ saveTimer=null; flushSave(); }, 300);
@@ -56,11 +89,14 @@ function guardarPendente(snapshot){
 function flushSave(){
   const snapshot = JSON.stringify(DB);
   lastWrittenJson = snapshot;
+  saveAdminCache(DB, true);
   if(!servidorSincronizado){
     guardarPendente(snapshot);
+    atualizarStatusSync();
     return;
   }
-  saveAdminCache(DB, true);
+  salvando = true;
+  atualizarStatusSync();
   saveQueue = saveQueue
     .then(()=> DB_REF.set(snapshot))
     .then(()=>{ try{ localStorage.removeItem('g26_admin_pending'); }catch(e){} })
@@ -71,7 +107,8 @@ function flushSave(){
         warnSaveFail = true;
         toast('Falha ao salvar no banco: '+err.message, 'error');
       }
-    });
+    })
+    .finally(()=>{ salvando = false; atualizarStatusSync(); });
 }
 function nextId(){ DB.seq = (DB.seq||1)+1; return DB.seq; }
 
@@ -3777,19 +3814,20 @@ function tryLogin(){
   CURRENT_USER = u;
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('login-pass').value='';
-  document.getElementById('nav-user').textContent = 'Conectado: '+u.nome+' · '+roleLabel(u.role);
+  atualizarStatusSync();
   registrarEvento('login','usuario',u.id,u.nome,'Entrou no sistema');
   iniciarPresenca();
   progFilters.ciclo = cicloPadrao();
   setView('dashboard');
   checkPendingConfirmations();
+  aplicarPendente();
   toast('Bem-vindo, '+u.nome+'!');
 }
 function logout(){
   registrarEvento('logout','usuario',CURRENT_USER? CURRENT_USER.id:null, CURRENT_USER? CURRENT_USER.nome:'', 'Saiu do sistema');
   pararPresenca();
   CURRENT_USER = null;
-  document.getElementById('nav-user').textContent = 'Dados sincronizados na nuvem (Firebase)';
+  atualizarStatusSync();
   showLoginScreen();
 }
 document.getElementById('login-btn').addEventListener('click', tryLogin);
@@ -3811,7 +3849,8 @@ document.getElementById('btn-logout').addEventListener('click', logout);
    INIT — carrega dados do Firebase Realtime Database
 ========================================================= */
 let booted = false;
-const _cachedData = loadAdminCache();
+const _bootPending = (()=>{ try{ const p = JSON.parse(localStorage.getItem('g26_admin_pending')||'null'); return (p && p.snapshot)? JSON.parse(p.snapshot) : null; }catch(e){ return null; } })();
+const _cachedData = _bootPending || loadAdminCache();
 if(_cachedData){
   DB = mergeData(_cachedData);
   if(!booted){
@@ -3823,9 +3862,11 @@ if(_cachedData){
 DB_REF.on('value', snap=>{
   servidorSincronizado = true;
   lastServerJson = snap.exists()? snap.val() : null;
+  atualizarStatusSync();
   if(saveTimer) return;
   const exists = snap.exists();
   if(exists && typeof snap.val()==='string' && snap.val()===lastWrittenJson) return;
+  if(salvando || temPendente()) return;
   try{
     if(exists){
       DB = mergeData(JSON.parse(snap.val()));
@@ -3858,25 +3899,9 @@ setTimeout(()=>{
   }
 }, 8000);
 
-window.addEventListener('online', ()=>{
-  let pending = null;
-  try{ pending = JSON.parse(localStorage.getItem('g26_admin_pending')||'null'); }catch(e){}
-  if(!pending || !pending.snapshot || !CURRENT_USER) return;
-  DB_REF.once('value').then(snap=>{
-    const serverNow = snap.exists()? snap.val() : null;
-    try{ localStorage.removeItem('g26_admin_pending'); }catch(e){}
-    if(serverNow === pending.server){
-      DB_REF.set(pending.snapshot)
-        .then(()=> toast('Alterações offline aplicadas ao servidor.'))
-        .catch(err=>{ console.error('Falha ao aplicar alterações offline', err); toast('Falha ao aplicar alterações offline.', 'error'); });
-    }else{
-      toast('Alterações offline NÃO aplicadas: o banco foi atualizado por outro aparelho. Nada foi sobrescrito.', 'error');
-    }
-  }).catch(err=>{
-    console.error('Falha ao verificar dados antes de aplicar alterações offline', err);
-    try{ localStorage.removeItem('g26_admin_pending'); }catch(e){}
-  });
-});
+window.addEventListener('online', ()=> aplicarPendente());
+window.addEventListener('offline', ()=> atualizarStatusSync());
+setInterval(()=>{ if(CURRENT_USER && (temPendente() || !servidorSincronizado)) aplicarPendente(); }, 15000);
 
 /* =========================================================
    RDO - Relatório de Execução das Equipes
