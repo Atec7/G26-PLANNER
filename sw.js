@@ -1,7 +1,7 @@
 /* G26 Planner · Service Worker
    Network-first para a origem e para os SDKs do Firebase;
    quando offline, usa o cache salvo na última visita. */
-const CACHE = 'g26-planner-v1';
+const CACHE = 'g26-planner-v2';
 
 self.addEventListener('install', ()=>{
   self.skipWaiting();

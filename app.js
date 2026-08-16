@@ -212,6 +212,9 @@ function renderTopbarActions(){
     projetos: ()=>actionBtn('Novo projeto', ()=>openProjetoModal()),
     programacoes: ()=>actionBtn('Nova programação', ()=>openProgramacaoModal()),
   } : {});
+  const dangerMap = (podeEditar()? {
+    atividades: ()=>btnDanger('Limpar todas', limparTodasAtividades),
+  } : {});
   const exportMap = {
     equipes: ()=>btnSecondary('Excel', exportEquipesCSV),
     atividades: ()=>btnSecondary('Excel', exportAtividadesCSV),
@@ -231,6 +234,7 @@ function renderTopbarActions(){
   if(exportMap[currentView]) el.appendChild(exportMap[currentView]());
   if(importMap[currentView]) el.appendChild(importMap[currentView]());
   if(docMap[currentView]) el.appendChild(docMap[currentView]());
+  if(dangerMap[currentView]) el.appendChild(dangerMap[currentView]());
   if(primary[currentView]) el.appendChild(primary[currentView]());
 }
 function actionBtn(label, onClick){
@@ -244,6 +248,13 @@ function btnSecondary(label, onClick){
   const b = document.createElement('button');
   b.className='btn';
   b.innerHTML = icon('download',14)+`<span>${label}</span>`;
+  b.addEventListener('click', onClick);
+  return b;
+}
+function btnDanger(label, onClick){
+  const b = document.createElement('button');
+  b.className='btn btn-danger-solid';
+  b.innerHTML = icon('trash',14)+`<span>${label}</span>`;
   b.addEventListener('click', onClick);
   return b;
 }
@@ -1322,6 +1333,20 @@ function renderAtividades(){
   DB.projetos.forEach(p=>{ p.planoFisico = (p.planoFisico||[]).filter(x=>x.atividadeId!==id); });
   registrarEvento('exclusao','atividade',id,findAtividade(id)? findAtividade(id).codigo+' · '+findAtividade(id).descricao : String(id),'Atividade excluída'+(inUse? ' e removida das programações':''));
   saveData(); renderContent(); toast('Atividade excluída.');
+}
+function limparTodasAtividades(){
+  if(!requerEscrita()) return;
+  const total = DB.atividades.length;
+  if(!total){ toast('Não há atividades cadastradas para limpar.', 'error'); return; }
+  if(!confirm(`EXCLUIR TODAS AS ${total} ATIVIDADES?\n\nTodas as atividades serão removidas do banco, inclusive das programações, planos físicos e favoritas.\n\nEsta ação não pode ser desfeita!`)) return;
+  if(!confirm('Confirmação final: deseja realmente APAGAR todas as atividades do banco de dados?')) return;
+  DB.atividades = [];
+  DB.programacoes.forEach(pg=>{ pg.atribuicoes = []; });
+  DB.programacoes = DB.programacoes.filter(pg=>(pg.atribuicoes||[]).length);
+  DB.projetos.forEach(p=>{ p.planoFisico = []; });
+  if(DB.favoritosAtividades) Object.keys(DB.favoritosAtividades).forEach(k=>{ DB.favoritosAtividades[k] = []; });
+  registrarEvento('exclusao','atividade',null,null,'Limpeza em massa: todas as atividades excluídas');
+  saveData(); renderContent(); toast(`${total} atividade(s) excluída(s).`);
 }
 
 /* =========================================================
