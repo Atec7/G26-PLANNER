@@ -16,9 +16,9 @@ self.addEventListener('fetch', (e)=>{
   const req = e.request;
   if(req.method!=='GET') return;
   const url = new URL(req.url);
-  const isFirebase = url.href.startsWith('https://www.gstatic.com/firebasejs/');
+  const isCdn = url.href.startsWith('https://www.gstatic.com/firebasejs/') || url.href.startsWith('https://cdn.jsdelivr.net/');
   const isOrigin = url.origin === self.location.origin;
-  if(!isOrigin && !isFirebase) return;
+  if(!isOrigin && !isCdn) return;
   e.respondWith(
     fetch(req)
       .then(res=>{

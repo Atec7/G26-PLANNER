@@ -18,6 +18,7 @@ const rtdb = firebase.database(app);
 const DB_REF = rtdb.ref('g26_planner/data');
 const PRES_REF = rtdb.ref('g26_planner/presenca');
 const ACCIDENT_REF = rtdb.ref('g26_planner/acidentes');
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
 
 const DEFAULT_DATA = {
   equipes: [], atividades: [], projetos: [], programacoes: [], usuarios: [],
@@ -40,6 +41,9 @@ let saveQueue = Promise.resolve();
 let saveTimer = null;
 let lastWrittenJson = null;
 let warnSaveFail = false;
+const ADMIN_CACHE_KEY = 'g26_admin_cache';
+function loadAdminCache(){ try{ return JSON.parse(localStorage.getItem(ADMIN_CACHE_KEY)||'null'); }catch(e){ return null; } }
+function saveAdminCache(db){ try{ localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify(db)); }catch(e){} }
 function saveData(){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>{ saveTimer=null; flushSave(); }, 300);
@@ -47,9 +51,18 @@ function saveData(){
 function flushSave(){
   const snapshot = JSON.stringify(DB);
   lastWrittenJson = snapshot;
+  saveAdminCache(DB);
   saveQueue = saveQueue
     .then(()=> DB_REF.set(snapshot))
-    .catch(err=>{ console.error('Falha ao salvar no Firebase', err); if(!warnSaveFail){ warnSaveFail=true; toast('Falha ao salvar no banco: '+err.message, 'error'); } });
+    .then(()=>{ try{ localStorage.removeItem('g26_admin_pending'); }catch(e){} })
+    .catch(err=>{
+      console.error('Falha ao salvar no Firebase', err);
+      try{ localStorage.setItem('g26_admin_pending', snapshot); }catch(e){}
+      if(navigator.onLine !== false && !warnSaveFail){
+        warnSaveFail = true;
+        toast('Falha ao salvar no banco: '+err.message, 'error');
+      }
+    });
 }
 function nextId(){ DB.seq = (DB.seq||1)+1; return DB.seq; }
 
@@ -204,6 +217,7 @@ function renderTopbarActions(){
   };
   const importMap = (podeEditar()? {
     atividades: ()=>btnSecondary('Importar em massa', openImportAtividadesModal),
+    projetos: ()=>btnSecondary('Importar em massa', openImportProjetosModal),
   } : {});
   if(exportMap[currentView]) el.appendChild(exportMap[currentView]());
   if(importMap[currentView]) el.appendChild(importMap[currentView]());
@@ -414,6 +428,32 @@ function exportCSV(filename, headers, rows){
   a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
   toast('Exportado: '+filename);
 }
+const ATIVIDADE_HEADERS = ['Código','Descrição','Unidade','Valor unitário'];
+const ATIVIDADE_EXEMPLO = ['MAN-100','Substituição de poste','un',850];
+const PROJETO_HEADERS = ['Código','Nome','Data início','Data fim','Receb. carteira','Vencimento','Setor','Coordenação','Ciclo (CICLO-MM/AAAA)','Valor orçado','Cidade','Descrição'];
+const PROJETO_EXEMPLO = ['PRJ-0001','Reforço de rede - Setor Norte','01/01/2026','30/06/2026','10/01/2026','31/12/2026','MANUTENÇÃO','RIO VERDE','CICLO-08/2026',10000,'Rio Verde','Reforço de rede em BT'];
+function baixarTemplateExcel(filename, headers, exampleRow){
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
+  ws['!cols'] = headers.map(h=>({wch: Math.max(12, String(h).length+2)}));
+  XLSX.utils.book_append_sheet(wb, ws, 'Template');
+  XLSX.writeFile(wb, filename);
+  toast('Template baixado: '+filename);
+}
+function normalizarLinhasExcel(rows, headers, exampleRow){
+  const example = exampleRow.map(c=>String(c??'').trim());
+  const header0 = String(headers[0]||'').trim();
+  return rows.map(r=> r.map(c=>{
+    if(c instanceof Date) return c.getFullYear()+'-'+String(c.getMonth()+1).padStart(2,'0')+'-'+String(c.getDate()).padStart(2,'0');
+    return String(c==null?'':c).trim();
+  })).filter(r=>{
+    if(!r.some(c=>c!=='')) return false;
+    if(r[0].startsWith('#')) return false;
+    if(r[0]===header0) return false;
+    if(JSON.stringify(r)===JSON.stringify(example)) return false;
+    return true;
+  });
+}
 function exportEquipesCSV(){
   exportCSV('equipes.csv',
     ['Nome da equipe','Nome complementar','Setor','Coordenação','Supervisor','Encarregado','Motorista','Meta diária','Eletricistas','Situação'],
@@ -501,53 +541,155 @@ function toggleFavAtividade(id){
   const at = findAtividade(id); if(!at) return;
   at.fav = !at.fav; saveData(); renderContent(); toast(at.fav? 'Marcada como favorita.' : 'Removida das favoritas.');
 }
-function importarAtividadesTexto(texto){
+function importarAtividadesLinhas(linhas){
   const parseValor = s => { const t=String(s??'').trim(); if(!t) return 0; const v = t.includes(',')? parseFloat(t.replace(/\./g,'').replace(',', '.')) : parseFloat(t); return isNaN(v)? 0 : v; };
   const codigoExiste = c => DB.atividades.some(a=>String(a.codigo).toLowerCase()===String(c).toLowerCase());
   let criadas=0, ignoradas=0, erros=0;
   const msgErro=[];
-  texto.split(/\r?\n/).forEach((linha,i)=>{
-    const partes = linha.split(/[;\t]/).map(p=>p.trim());
-    const codigo = partes[0]||'';
-    const descricao = partes[1]||'';
+  linhas.forEach((partes,i)=>{
+    const codigo = String(partes[0]||'').trim();
+    const descricao = String(partes[1]||'').trim();
     if(!codigo || !descricao){ erros++; if(msgErro.length<3) msgErro.push('Linha '+(i+1)+': faltando código ou descrição'); return; }
     if(codigoExiste(codigo)){ ignoradas++; return; }
-    DB.atividades.push({ id:nextId(), codigo, descricao, unidade: partes[2]||'', valorUnitario: parseValor(partes[3]), fav:false, custom:{} });
+    DB.atividades.push({ id:nextId(), codigo, descricao, unidade: String(partes[2]||'').trim(), valorUnitario: parseValor(partes[3]), fav:false, custom:{} });
     criadas++;
   });
   return { criadas, ignoradas, erros, msgErro };
 }
 function openImportAtividadesModal(){
-  if(!requerEscrita()) return;
-  const body = `
-    <div class="field"><label>Cole as linhas <span class="req">*</span></label>
-      <textarea name="linhas" id="imp-linhas" rows="8" placeholder="MAN-100;Substituição de poste;un;850&#10;CON-050;Instalação de rede BT;m;42,5&#10;POD-022;Poda de árvore;un;180"></textarea>
-      <div class="field-hint">Uma atividade por linha. Formato: <strong>Código;Descrição;Unidade;Valor unitário</strong>. Separe por ponto e vírgula, vírgula ou TAB (colar direto do Excel).</div>
-    </div>
-    <div class="field"><label>Ou escolha um arquivo CSV/TXT</label><input type="file" id="imp-arquivo" accept=".csv,.txt"></div>
-  `;
-  openModal({
-    title:'Importar atividades em massa', bodyHtml: body, submitLabel:'Importar atividades',
-    onMount:(root)=>{
-      const ta = root.querySelector('#imp-linhas');
-      const arq = root.querySelector('#imp-arquivo');
-      arq.addEventListener('change', e=>{
-        const f = e.target.files[0]; if(!f) return;
-        const rd = new FileReader();
-        rd.onload = ()=>{ ta.value = String(rd.result||'').replace(/^\uFEFF/,''); };
-        rd.readAsText(f, 'utf-8');
-        e.target.value='';
-      });
-    },
-    onSubmit:(fd)=>{
-      const texto = String(fd.get('linhas')||'').trim();
-      if(!texto){ toast('Cole as linhas ou escolha um arquivo.', 'error'); return false; }
-      const r = importarAtividadesTexto(texto);
-      if(r.criadas){ saveData(); renderContent(); }
-      toast(`Importadas ${r.criadas} atividade(s).`+(r.ignoradas? ` ${r.ignoradas} já existente(s) ignorada(s).`:'')+(r.erros? ` ${r.erros} linha(s) com erro.`:'')+(r.msgErro.length? ' '+r.msgErro.join(' — '):''));
-      return true;
-    }
+  openImportArquivoModal({
+    title:'Importar atividades em massa',
+    templateName:'template_atividades.xlsx',
+    headers: ATIVIDADE_HEADERS,
+    exampleRow: ATIVIDADE_EXEMPLO,
+    processar: importarAtividadesLinhas,
+    toastResumo: r=>`Importadas ${r.criadas} atividade(s).`+(r.ignoradas? ` ${r.ignoradas} já existente(s) ignorada(s).`:'')+(r.erros? ` ${r.erros} linha(s) com erro.`:'')+(r.msgErro.length? ' '+r.msgErro.join(' — '):'')
   });
+}
+/* --- Importação em massa de projetos --- */
+function parseDataISO(v){
+  if(!v) return '';
+  const s = String(v).trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);
+  if(!m) return '';
+  const d = m[1].padStart(2,'0'), mo = m[2].padStart(2,'0');
+  const a = m[3].length===2? '20'+m[3] : m[3];
+  return a+'-'+mo+'-'+d;
+}
+function parseValorNum(v){
+  const t = String(v??'').trim();
+  if(!t) return 0;
+  const n = t.includes(',')? parseFloat(t.replace(/\./g,'').replace(',','.')) : parseFloat(t);
+  return isNaN(n)? 0 : n;
+}
+function importarProjetosLinhas(linhas){
+  const normKey = s => String(s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const codigoExiste = c => DB.projetos.some(p=> normKey(p.codigo)===normKey(c));
+  const nomeExiste = n => DB.projetos.some(p=> p.nome && normKey(p.nome)===normKey(n));
+  let criados=0, ignorados=0, erros=0;
+  const msgErro=[];
+  linhas.forEach((partes,i)=>{
+    const codigo = String(partes[0]||'').trim();
+    const nome = String(partes[1]||'').trim();
+    if(!codigo || !nome){ erros++; if(msgErro.length<3) msgErro.push('Linha '+(i+1)+': faltando código ou nome'); return; }
+    if(codigoExiste(codigo) || nomeExiste(nome)){ ignorados++; return; }
+    let setor = partes[6]? normKey(partes[6]) : '';
+    let coordenacao = partes[7]? normKey(partes[7]) : '';
+    if(usuarioRestrito()){
+      if(setor && setor!==normKey(CURRENT_USER.setor)){ ignorados++; if(msgErro.length<3) msgErro.push('Linha '+(i+1)+': projeto fora do seu setor'); return; }
+      if(coordenacao && coordenacao!==normKey(CURRENT_USER.coordenacao)){ ignorados++; if(msgErro.length<3) msgErro.push('Linha '+(i+1)+': projeto fora da sua coordenação'); return; }
+      setor = normKey(CURRENT_USER.setor); coordenacao = normKey(CURRENT_USER.coordenacao);
+    }
+    if(!setor || !['MANUTENCAO','OBRAS'].includes(setor)){ erros++; if(msgErro.length<3) msgErro.push('Linha '+(i+1)+': setor inválido (use MANUTENÇÃO ou OBRAS)'); return; }
+    if(!coordenacao || !['RIO VERDE','QUIRINOPOLIS'].includes(coordenacao)){ erros++; if(msgErro.length<3) msgErro.push('Linha '+(i+1)+': coordenação inválida (use RIO VERDE ou QUIRINOPOLIS)'); return; }
+    setor = setor==='MANUTENCAO'? 'MANUTENÇÃO' : 'OBRAS';
+    coordenacao = coordenacao==='RIO VERDE'? 'RIO VERDE' : 'QUIRINOPOLIS';
+    const dataInicio = parseDataISO(partes[2]);
+    const dataFim = parseDataISO(partes[3]);
+    const dataRecebimentoCarteira = parseDataISO(partes[4]);
+    const dataVencimento = parseDataISO(partes[5]);
+    const ciclo = cicloMask(partes[8]);
+    if(!isCicloValido(ciclo)){ erros++; if(msgErro.length<3) msgErro.push('Linha '+(i+1)+': ciclo inválido (use MM/AAAA ou CICLO-MM/AAAA)'); return; }
+    if(!dataInicio || !dataRecebimentoCarteira || !dataVencimento){ erros++; if(msgErro.length<3) msgErro.push('Linha '+(i+1)+': preencha data início, receb. carteira e vencimento'); return; }
+    DB.projetos.push({
+      id: nextId(),
+      codigo: codigo,
+      nome: nome,
+      descricao: String(partes[11]||'').trim(),
+      dataInicio: dataInicio,
+      dataFim: dataFim,
+      dataRecebimentoCarteira: dataRecebimentoCarteira,
+      dataVencimento: dataVencimento,
+      dataViabilizacao: '',
+      setor: setor,
+      coordenacao: coordenacao,
+      cidade: String(partes[10]||'').trim(),
+      status: 'Aguardando Viabilidade',
+      valorOrcado: parseValorNum(partes[9]),
+      ciclo: ciclo,
+      planoFisico: [],
+      custom: {}
+    });
+    criados++;
+  });
+  return { criados, ignorados, erros, msgErro };
+}
+function openImportProjetosModal(){
+  openImportArquivoModal({
+    title:'Importar projetos em massa',
+    templateName:'template_projetos.xlsx',
+    headers: PROJETO_HEADERS,
+    exampleRow: PROJETO_EXEMPLO,
+    textoAviso: 'Todos os projetos importados entram no status "Aguardando Viabilidade". Projetos com código ou nome já cadastrado são ignorados (evita duplicidade). Datas no padrão DD/MM/AAAA e ciclo por extenso, ex.: CICLO-08/2026.',
+    processar: importarProjetosLinhas,
+    toastResumo: r=>`Importados ${r.criados} projeto(s) como "Aguardando Viabilidade".`+(r.ignorados? ` ${r.ignorados} duplicado(s)/ignorado(s).`:'')+(r.erros? ` ${r.erros} linha(s) com erro.`:'')+(r.msgErro.length? ' '+r.msgErro.join(' — '):'')
+  });
+}
+function openImportArquivoModal({title, templateName, headers, exampleRow, textoAviso, processar, toastResumo}){
+  if(!requerEscrita()) return;
+  if(typeof XLSX==='undefined'){ toast('Biblioteca de planilhas indisponível. Verifique a conexão e recarregue.', 'error'); return; }
+  const root = document.getElementById('modal-root');
+  let arquivo = null;
+  function importar(){
+    if(!arquivo){ toast('Escolha o arquivo preenchido antes de importar.', 'error'); return; }
+    const rd = new FileReader();
+    rd.onload = ()=>{
+      try{
+        const wb = XLSX.read(new Uint8Array(rd.result), {type:'array', cellDates:true});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const linhas = normalizarLinhasExcel(XLSX.utils.sheet_to_json(ws, {header:1, defval:''}), headers, exampleRow);
+        const r = processar(linhas);
+        root.innerHTML='';
+        if(r.criados>0){ saveData(); renderContent(); }
+        toast(toastResumo? toastResumo(r) : 'Importação concluída.');
+      }catch(err){
+        console.error('Falha ao ler o arquivo', err);
+        toast('Falha ao ler o arquivo. Use o template baixado.', 'error');
+      }
+    };
+    rd.readAsArrayBuffer(arquivo);
+  }
+  root.innerHTML = `
+    <div class="modal-overlay" id="modal-overlay">
+      <div class="modal">
+        <div class="modal-head"><h3>${title}</h3><button class="icon-btn" id="modal-close">${icon('close')}</button></div>
+        <div class="modal-body">
+          <div class="field"><button type="button" class="btn" id="dl-template">${icon('download',14)} Baixar template Excel</button>
+            <div class="field-hint">O template vem com o cabeçalho (colunas na ordem) e uma <strong>linha de exemplo</strong>. Preencha suas linhas abaixo do cabeçalho, salve e envie o arquivo.</div>
+          </div>
+          <div class="field"><label>Arquivo preenchido (.xlsx)</label><input type="file" id="imp-arquivo" accept=".xlsx,.xls,.csv"></div>
+          ${textoAviso? `<div class="field-hint">${textoAviso}</div>` : ''}
+        </div>
+        <div class="modal-foot"><button type="button" class="btn btn-ghost" id="modal-cancel">Cancelar</button><button type="button" class="btn btn-primary" id="imp-confirm">Importar arquivo</button></div>
+      </div>
+    </div>`;
+  document.getElementById('modal-close').addEventListener('click', ()=>{ root.innerHTML=''; });
+  document.getElementById('modal-cancel').addEventListener('click', ()=>{ root.innerHTML=''; });
+  document.getElementById('modal-overlay').addEventListener('click', e=>{ if(e.target.id==='modal-overlay') root.innerHTML=''; });
+  document.getElementById('dl-template').addEventListener('click', ()=>baixarTemplateExcel(templateName, headers, exampleRow));
+  document.getElementById('imp-arquivo').addEventListener('change', e=>{ arquivo = e.target.files[0]||null; });
+  document.getElementById('imp-confirm').addEventListener('click', importar);
 }
 /* =========================================================
    ATRIBUIÇÕES (flatten programação -> equipe)
@@ -1166,7 +1308,12 @@ function renderAtividades(){
 function renderProjetos(){
   const el = document.getElementById('content');
   const visiveis = projetosVisiveis();
-  if(!visiveis.length){ el.innerHTML = emptyState('Nenhum projeto cadastrado', 'Cadastre projetos de construção ou manutenção para agrupar as programações.'); bindEmptyCta(el, ()=>openProjetoModal()); return; }
+  if(!visiveis.length){
+    el.innerHTML = `<div class="panel"><div class="empty-state">${icon('empty',36)}<h3 style="margin-bottom:6px;">Nenhum projeto cadastrado</h3><p>Cadastre projetos de construção ou manutenção para agrupar as programações, ou importe em massa a partir de uma planilha.</p><div style="display:flex;gap:10px;margin-top:16px;justify-content:center;flex-wrap:wrap;"><button class="btn btn-primary" id="empty-cta">${icon('plus',15)} Novo projeto</button><button class="btn" id="empty-import">${icon('download',14)} Importar em massa</button></div></div></div>`;
+    document.getElementById('empty-cta').addEventListener('click', ()=>openProjetoModal());
+    document.getElementById('empty-import').addEventListener('click', ()=>openImportProjetosModal());
+    return;
+  }
   const customFields = DB.customFields.projetos||[];
   const list = visiveis.filter(p=>{
     if(projFilters.status && p.status!==projFilters.status) return false;
@@ -3570,6 +3717,15 @@ document.getElementById('btn-logout').addEventListener('click', logout);
    INIT — carrega dados do Firebase Realtime Database
 ========================================================= */
 let booted = false;
+const _cachedData = loadAdminCache();
+if(_cachedData){
+  DB = mergeData(_cachedData);
+  if(!booted){
+    booted = true;
+    progFilters.ciclo = cicloPadrao();
+    showLoginScreen();
+  }
+}
 DB_REF.on('value', snap=>{
   if(saveTimer) return;
   const exists = snap.exists();
@@ -3577,6 +3733,7 @@ DB_REF.on('value', snap=>{
   try{
     if(exists){
       DB = mergeData(JSON.parse(snap.val()));
+      saveAdminCache(DB);
     }
   }catch(err){ console.error('Falha ao ler dados do Firebase', err); }
   if(!booted){
@@ -3598,9 +3755,21 @@ setTimeout(()=>{
     garantirMaster();
     progFilters.ciclo = cicloPadrao();
     showLoginScreen();
-    toast('Sem conexão com o Firebase. Os dados ficarão apenas nesta sessão.', 'error');
+    toast('Sem conexão com o Firebase. Exibindo os dados salvos neste aparelho.', 'error');
   }
 }, 8000);
+
+window.addEventListener('online', ()=>{
+  let pending = null;
+  try{ pending = localStorage.getItem('g26_admin_pending'); }catch(e){}
+  if(!pending) return;
+  try{ localStorage.removeItem('g26_admin_pending'); }catch(e){}
+  if(CURRENT_USER && confirm('Alterações feitas offline neste aparelho serão aplicadas ao servidor. Continuar?')){
+    DB_REF.set(pending)
+      .then(()=> toast('Alterações offline aplicadas ao servidor.'))
+      .catch(err=>{ console.error('Falha ao aplicar alterações offline', err); toast('Falha ao aplicar alterações offline.', 'error'); });
+  }
+});
 
 /* =========================================================
    RDO - Relatório de Execução das Equipes
