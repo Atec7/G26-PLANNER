@@ -461,15 +461,15 @@ function baixarTemplateExcel(filename, headers, exampleRow){
   toast('Template baixado: '+filename);
 }
 function normalizarLinhasExcel(rows, headers, exampleRow){
-  const example = exampleRow.map(c=>String(c??'').trim());
-  const header0 = String(headers[0]||'').trim();
-  return rows.map(r=> r.map(c=>{
-    if(c instanceof Date) return c.getFullYear()+'-'+String(c.getMonth()+1).padStart(2,'0')+'-'+String(c.getDate()).padStart(2,'0');
-    return String(c==null?'':c).trim();
-  })).filter(r=>{
+  const normCell = c => { if(c instanceof Date) return c.getFullYear()+'-'+String(c.getMonth()+1).padStart(2,'0')+'-'+String(c.getDate()).padStart(2,'0'); return String(c==null?'':c).replace(/^\uFEFF/,'').trim(); };
+  const example = exampleRow.map(normCell);
+  const headerRow = headers.map(h=>String(h??'').trim());
+  const header0 = headerRow[0];
+  return rows.map(r=> r.map(normCell)).filter(r=>{
     if(!r.some(c=>c!=='')) return false;
     if(r[0].startsWith('#')) return false;
     if(r[0]===header0) return false;
+    if(JSON.stringify(r.slice(0,headerRow.length))===JSON.stringify(headerRow)) return false;
     if(JSON.stringify(r)===JSON.stringify(example)) return false;
     return true;
   });
@@ -597,7 +597,7 @@ function openImportAtividadesModal(){
     headers: ATIVIDADE_HEADERS,
     exampleRow: ATIVIDADE_EXEMPLO,
     processar: importarAtividadesLinhas,
-    toastResumo: r=>`Importadas ${r.criadas} atividade(s).`+(r.ignoradas? ` ${r.ignoradas} já existente(s) ignorada(s).`:'')+(r.erros? ` ${r.erros} linha(s) com erro.`:'')+(r.msgErro.length? ' '+r.msgErro.join(' — '):'')
+    toastResumo: (r,n)=>`Importadas ${r.criadas} atividade(s).`+(r.ignoradas? ` ${r.ignoradas} já existente(s) ignorada(s).`:'')+(r.erros? ` ${r.erros} linha(s) com erro.`:'')+(r.msgErro.length? ' '+r.msgErro.join(' — '):'')+(n===0? ' Nenhuma linha de dados encontrada no arquivo — confira o template e a aba correta do Excel.' : '')
   });
 }
 /* --- Importação em massa de projetos --- */
@@ -677,7 +677,7 @@ function openImportProjetosModal(){
     exampleRow: PROJETO_EXEMPLO,
     textoAviso: 'Todos os projetos importados entram no status "Aguardando Viabilidade". Projetos com código ou nome já cadastrado são ignorados (evita duplicidade). Datas no padrão DD/MM/AAAA e ciclo por extenso, ex.: CICLO-08/2026.',
     processar: importarProjetosLinhas,
-    toastResumo: r=>`Importados ${r.criados} projeto(s) como "Aguardando Viabilidade".`+(r.ignorados? ` ${r.ignorados} duplicado(s)/ignorado(s).`:'')+(r.erros? ` ${r.erros} linha(s) com erro.`:'')+(r.msgErro.length? ' '+r.msgErro.join(' — '):'')
+    toastResumo: (r,n)=>`Importados ${r.criados} projeto(s) como "Aguardando Viabilidade".`+(r.ignorados? ` ${r.ignorados} duplicado(s)/ignorado(s).`:'')+(r.erros? ` ${r.erros} linha(s) com erro.`:'')+(r.msgErro.length? ' '+r.msgErro.join(' — '):'')+(n===0? ' Nenhuma linha de dados encontrada no arquivo — confira o template e a aba correta do Excel.' : '')
   });
 }
 function openImportArquivoModal({title, templateName, headers, exampleRow, textoAviso, processar, toastResumo}){
@@ -691,12 +691,17 @@ function openImportArquivoModal({title, templateName, headers, exampleRow, texto
     rd.onload = ()=>{
       try{
         const wb = XLSX.read(new Uint8Array(rd.result), {type:'array', cellDates:true});
-        const ws = wb.Sheets[wb.SheetNames[0]];
+        let ws = null;
+        for(const name of wb.SheetNames){
+          const s = wb.Sheets[name];
+          if(s && s['!ref'] && XLSX.utils.decode_range(s['!ref']).e.r > 0){ ws = s; break; }
+        }
+        if(!ws) ws = wb.Sheets[wb.SheetNames[0]];
         const linhas = normalizarLinhasExcel(XLSX.utils.sheet_to_json(ws, {header:1, defval:''}), headers, exampleRow);
         const r = processar(linhas);
         root.innerHTML='';
         if(r.criados>0){ saveData(); renderContent(); }
-        toast(toastResumo? toastResumo(r) : 'Importação concluída.');
+        toast(toastResumo? toastResumo(r, linhas.length) : 'Importação concluída.');
       }catch(err){
         console.error('Falha ao ler o arquivo', err);
         toast('Falha ao ler o arquivo. Use o template baixado.', 'error');
