@@ -41,23 +41,32 @@ let saveQueue = Promise.resolve();
 let saveTimer = null;
 let lastWrittenJson = null;
 let warnSaveFail = false;
+let servidorSincronizado = false;
+let lastServerJson = null;
 const ADMIN_CACHE_KEY = 'g26_admin_cache';
-function loadAdminCache(){ try{ return JSON.parse(localStorage.getItem(ADMIN_CACHE_KEY)||'null'); }catch(e){ return null; } }
-function saveAdminCache(db){ try{ localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify(db)); }catch(e){} }
+function loadAdminCache(){ try{ const c = JSON.parse(localStorage.getItem(ADMIN_CACHE_KEY)||'null'); return (c && c.synced && c.data)? c.data : null; }catch(e){ return null; } }
+function saveAdminCache(db, synced){ try{ localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify({ synced: !!synced, data: db })); }catch(e){} }
 function saveData(){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>{ saveTimer=null; flushSave(); }, 300);
 }
+function guardarPendente(snapshot){
+  try{ localStorage.setItem('g26_admin_pending', JSON.stringify({ snapshot, server: lastServerJson })); }catch(e){}
+}
 function flushSave(){
   const snapshot = JSON.stringify(DB);
   lastWrittenJson = snapshot;
-  saveAdminCache(DB);
+  if(!servidorSincronizado){
+    guardarPendente(snapshot);
+    return;
+  }
+  saveAdminCache(DB, true);
   saveQueue = saveQueue
     .then(()=> DB_REF.set(snapshot))
     .then(()=>{ try{ localStorage.removeItem('g26_admin_pending'); }catch(e){} })
     .catch(err=>{
       console.error('Falha ao salvar no Firebase', err);
-      try{ localStorage.setItem('g26_admin_pending', snapshot); }catch(e){}
+      guardarPendente(snapshot);
       if(navigator.onLine !== false && !warnSaveFail){
         warnSaveFail = true;
         toast('Falha ao salvar no banco: '+err.message, 'error');
@@ -3727,15 +3736,21 @@ if(_cachedData){
   }
 }
 DB_REF.on('value', snap=>{
+  servidorSincronizado = true;
+  lastServerJson = snap.exists()? snap.val() : null;
   if(saveTimer) return;
   const exists = snap.exists();
   if(exists && typeof snap.val()==='string' && snap.val()===lastWrittenJson) return;
   try{
     if(exists){
       DB = mergeData(JSON.parse(snap.val()));
-      saveAdminCache(DB);
+      saveAdminCache(DB, true);
     }
   }catch(err){ console.error('Falha ao ler dados do Firebase', err); }
+  try{
+    const p = JSON.parse(localStorage.getItem('g26_admin_pending')||'null');
+    if(p && p.server === null) localStorage.removeItem('g26_admin_pending');
+  }catch(e){}
   if(!booted){
     booted = true;
     if(!exists) seedIfEmpty();
@@ -3751,24 +3766,31 @@ DB_REF.on('value', snap=>{
 setTimeout(()=>{
   if(!booted){
     booted = true;
-    seedIfEmpty();
     garantirMaster();
     progFilters.ciclo = cicloPadrao();
     showLoginScreen();
-    toast('Sem conexão com o Firebase. Exibindo os dados salvos neste aparelho.', 'error');
+    toast('Sem conexão com o Firebase. Os dados serão carregados assim que a conexão for restabelecida.', 'error');
   }
 }, 8000);
 
 window.addEventListener('online', ()=>{
   let pending = null;
-  try{ pending = localStorage.getItem('g26_admin_pending'); }catch(e){}
-  if(!pending) return;
-  try{ localStorage.removeItem('g26_admin_pending'); }catch(e){}
-  if(CURRENT_USER && confirm('Alterações feitas offline neste aparelho serão aplicadas ao servidor. Continuar?')){
-    DB_REF.set(pending)
-      .then(()=> toast('Alterações offline aplicadas ao servidor.'))
-      .catch(err=>{ console.error('Falha ao aplicar alterações offline', err); toast('Falha ao aplicar alterações offline.', 'error'); });
-  }
+  try{ pending = JSON.parse(localStorage.getItem('g26_admin_pending')||'null'); }catch(e){}
+  if(!pending || !pending.snapshot || !CURRENT_USER) return;
+  DB_REF.once('value').then(snap=>{
+    const serverNow = snap.exists()? snap.val() : null;
+    try{ localStorage.removeItem('g26_admin_pending'); }catch(e){}
+    if(serverNow === pending.server){
+      DB_REF.set(pending.snapshot)
+        .then(()=> toast('Alterações offline aplicadas ao servidor.'))
+        .catch(err=>{ console.error('Falha ao aplicar alterações offline', err); toast('Falha ao aplicar alterações offline.', 'error'); });
+    }else{
+      toast('Alterações offline NÃO aplicadas: o banco foi atualizado por outro aparelho. Nada foi sobrescrito.', 'error');
+    }
+  }).catch(err=>{
+    console.error('Falha ao verificar dados antes de aplicar alterações offline', err);
+    try{ localStorage.removeItem('g26_admin_pending'); }catch(e){}
+  });
 });
 
 /* =========================================================
