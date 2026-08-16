@@ -87,6 +87,24 @@ function guardarPendente(snapshot){
   try{ localStorage.setItem('g26_admin_pending', JSON.stringify({ snapshot, server: lastServerJson })); }catch(e){}
 }
 function flushSave(){
+  if(lastServerJson){
+    try{
+      const srv = JSON.parse(lastServerJson);
+      const srvRev = Number(srv && srv.rev)||0;
+      const localRev = Number(DB.rev)||0;
+      if(srvRev > localRev){
+        DB = mergeData(srv);
+        saveAdminCache(DB, true);
+        try{ localStorage.removeItem('g26_admin_pending'); }catch(e){}
+        if(booted && CURRENT_USER){
+          toast('Alteração local NÃO salva: o banco foi atualizado por outro aparelho com dados mais novos. Dados recarregados.', 'error');
+          renderBanner(); renderContent(); checkPendingConfirmations();
+        }
+        atualizarStatusSync();
+        return;
+      }
+    }catch(err){ console.error('Falha ao conferir versão antes de salvar', err); }
+  }
   DB.rev = (DB.rev||0)+1;
   const snapshot = JSON.stringify(DB);
   lastWrittenJson = snapshot;
@@ -358,6 +376,20 @@ function findEquipe(id){ return DB.equipes.find(e=>e.id===Number(id)); }
 function findAtividade(id){ return DB.atividades.find(a=>a.id===Number(id)); }
 function findProjeto(id){ return DB.projetos.find(p=>p.id===Number(id)); }
 function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function hl(text, q){
+  text = String(text??'');
+  const query = String(q||'').trim();
+  if(!query) return esc(text);
+  const lower = text.toLowerCase(), ql = query.toLowerCase();
+  const out = []; let i = 0, idx;
+  while((idx = lower.indexOf(ql, i)) !== -1){
+    if(idx > i) out.push(esc(text.slice(i, idx)));
+    out.push('<mark>'+esc(text.slice(idx, idx+ql.length))+'</mark>');
+    i = idx + ql.length;
+  }
+  out.push(esc(text.slice(i)));
+  return out.join('');
+}
 function anexoSrc(a){ return (a&&(a.url||a.dataUrl))||''; }
 function uploadToImgbb(file, tentativas=3){
   const fd = new FormData();
@@ -616,17 +648,27 @@ function atividadesOrdenadas(){
 function importarAtividadesLinhas(linhas){
   const parseValor = s => { const t=String(s??'').trim(); if(!t) return 0; const v = t.includes(',')? parseFloat(t.replace(/\./g,'').replace(',', '.')) : parseFloat(t); return isNaN(v)? 0 : v; };
   const codigoExiste = c => DB.atividades.some(a=>String(a.codigo).toLowerCase()===String(c).toLowerCase());
-  let criadas=0, ignoradas=0, erros=0;
+  const ocorrencias = {};
+  linhas.forEach(p=>{ const c = String(p[0]||'').trim(); if(c) ocorrencias[c] = (ocorrencias[c]||0)+1; });
+  const usados = {};
+  let criadas=0, ignoradas=0, erros=0, renumerados=0;
   const msgErro=[];
   linhas.forEach((partes,i)=>{
-    const codigo = String(partes[0]||'').trim();
+    const codigoBase = String(partes[0]||'').trim();
     const descricao = String(partes[1]||'').trim();
-    if(!codigo || !descricao){ erros++; if(msgErro.length<3) msgErro.push('Linha '+(i+1)+': faltando código ou descrição'); return; }
-    if(codigoExiste(codigo)){ ignoradas++; return; }
+    if(!codigoBase || !descricao){ erros++; if(msgErro.length<3) msgErro.push('Linha '+(i+1)+': faltando código ou descrição'); return; }
+    const repetido = (ocorrencias[codigoBase]||0) > 1;
+    let codigo = codigoBase;
+    if(repetido){
+      const n = (usados[codigoBase]||0)+1;
+      usados[codigoBase] = n;
+      if(n>1){ codigo = codigoBase+'-'+String(n).padStart(3,'0'); renumerados++; }
+    }
+    if(codigoExiste(codigo)){ ignorados++; return; }
     DB.atividades.push({ id:nextId(), codigo, descricao, unidade: String(partes[2]||'').trim(), valorUnitario: parseValor(partes[3]), custom:{} });
     criadas++;
   });
-  return { criadas, ignoradas, erros, msgErro };
+  return { criadas, ignoradas, erros, msgErro, renumerados };
 }
 function openImportAtividadesModal(){
   openImportArquivoModal({
@@ -634,8 +676,9 @@ function openImportAtividadesModal(){
     templateName:'template_atividades.xlsx',
     headers: ATIVIDADE_HEADERS,
     exampleRow: ATIVIDADE_EXEMPLO,
+    textoAviso: 'Se o arquivo tiver o mesmo código em várias linhas (ex.: número de OS repetido), o sistema renumerada automaticamente (5000000658-002, -003…) para cada serviço virar uma atividade. Códigos que já existem no banco são ignorados.',
     processar: importarAtividadesLinhas,
-    toastResumo: (r,n)=>`Importadas ${r.criadas} atividade(s).`+(r.ignoradas? ` ${r.ignoradas} já existente(s) ignorada(s).`:'')+(r.erros? ` ${r.erros} linha(s) com erro.`:'')+(r.msgErro.length? ' '+r.msgErro.join(' — '):'')+(n===0? ' Nenhuma linha de dados encontrada no arquivo — confira o template e a aba correta do Excel.' : '')
+    toastResumo: (r,n)=>`Importadas ${r.criadas} atividade(s).`+(r.renumerados? ` ${r.renumerados} código(s) repetido(s) renumerado(s) automaticamente (ex.: -002, -003).`:'')+(r.ignoradas? ` ${r.ignoradas} já existente(s) ignorada(s).`:'')+(r.erros? ` ${r.erros} linha(s) com erro.`:'')+(r.msgErro.length? ' '+r.msgErro.join(' — '):'')+(n===0? ' Nenhuma linha de dados encontrada no arquivo — confira o template e a aba correta do Excel.' : '')
   });
 }
 /* --- Importação em massa de projetos --- */
@@ -1335,22 +1378,24 @@ function renderAtividades(){
   el.innerHTML = `
     <div class="panel-head" style="padding:0;margin-bottom:16px;border:none;">
       <div class="filters">
-        <input id="f-at-q" placeholder="Buscar atividade…" value="${esc(ativFilters.q)}">
+        <div class="search-wrap"><span class="search-ic">${icon('search',14)}</span><input id="f-at-q" type="search" placeholder="Buscar por código ou descrição…" value="${esc(ativFilters.q)}"><button type="button" class="search-clear" id="f-at-q-clear" title="Limpar busca">${icon('close',12)}</button></div>
         <select id="f-at-fav"><option value="">Todas</option><option value="fav" ${ativFilters.fav==='fav'?'selected':''}>★ Favoritas</option><option value="normal" ${ativFilters.fav==='normal'?'selected':''}>Sem estrela</option></select>
       </div>
-      <span style="font-size:12px;color:var(--muted);">${list.length} de ${DB.atividades.length} atividades</span>
+      <span style="font-size:12px;color:var(--muted);">${ativFilters.q? 'Encontradas ':'Total '}<strong style="color:var(--accent);">${list.length}</strong> de ${DB.atividades.length} atividades</span>
     </div>
     <div class="panel"><div class="table-scroll"><table>
       <thead><tr><th>Fav.</th><th>Código</th><th>Descrição</th><th>Unidade</th><th>Valor unitário</th>${customFields.map(f=>`<th>${esc(f.label)}</th>`).join('')}<th></th></tr></thead>
       <tbody>${list.map(a=>`<tr>
         <td><button class="icon-btn ${isFavorita(a.id)?'fav':'star-off'}" title="${isFavorita(a.id)?'Favorita':'Marcar favorita'}" data-fav-at="${a.id}">${icon('star',15)}</button></td>
-        <td><span class="mono" style="color:var(--accent);font-weight:700;">${esc(a.codigo)}</span></td>
-        <td>${esc(a.descricao)}</td><td>${esc(a.unidade||'—')}</td><td class="mono">${fmtMoney(a.valorUnitario)}</td>
+        <td><span class="mono" style="color:var(--accent);font-weight:700;">${hl(a.codigo, ativFilters.q)}</span></td>
+        <td>${hl(a.descricao, ativFilters.q)}</td><td>${esc(a.unidade||'—')}</td><td class="mono">${fmtMoney(a.valorUnitario)}</td>
         ${customFields.map(f=>`<td>${esc(a.custom?.[f.id]||'—')}</td>`).join('')}
         <td><div class="row-actions"><button class="icon-btn" data-edit-at="${a.id}">${icon('edit',14)}</button><button class="icon-btn" data-del-at="${a.id}">${icon('trash',14)}</button></div></td>
-      </tr>`).join('') || `<tr class="empty-row"><td colspan="${6+customFields.length}">Nenhuma atividade encontrada com os filtros.</td></tr>`}
+      </tr>`).join('') || `<tr class="empty-row"><td colspan="${6+customFields.length}">Nenhuma atividade encontrada para "${esc(ativFilters.q)}".</td></tr>`}
       </tbody></table></div></div>`;
   document.getElementById('f-at-q').addEventListener('input', e=>{ ativFilters.q=e.target.value; renderContent(); });
+  document.getElementById('f-at-q').addEventListener('keydown', e=>{ if(e.key==='Escape'){ ativFilters.q=''; renderContent(); } });
+  document.getElementById('f-at-q-clear').addEventListener('click', ()=>{ ativFilters.q=''; renderContent(); });
   document.getElementById('f-at-fav').addEventListener('change', e=>{ ativFilters.fav=e.target.value; renderContent(); });
   el.querySelectorAll('[data-fav-at]').forEach(b=>b.addEventListener('click', ()=>toggleFavAtividade(b.dataset.favAt)));
   el.querySelectorAll('[data-edit-at]').forEach(b=>b.addEventListener('click', ()=>openAtividadeModal(b.dataset.editAt)));
@@ -3864,7 +3909,6 @@ DB_REF.on('value', snap=>{
   servidorSincronizado = true;
   lastServerJson = snap.exists()? snap.val() : null;
   atualizarStatusSync();
-  if(saveTimer) return;
   const exists = snap.exists();
   if(exists && typeof snap.val()==='string' && snap.val()===lastWrittenJson) return;
   if(salvando) return;
@@ -3872,17 +3916,6 @@ DB_REF.on('value', snap=>{
   try{ serverData = exists? JSON.parse(snap.val()) : null; }catch(err){ console.error('Falha ao ler dados do Firebase', err); }
   const serverRev = serverData? (serverData.rev||0) : 0;
   const localRev = DB.rev||0;
-  if(serverData && serverRev <= localRev){
-    let p = null;
-    try{ p = JSON.parse(localStorage.getItem('g26_admin_pending')||'null'); }catch(e){}
-    if(p && p.snapshot) return;
-    try{
-      DB = mergeData(serverData);
-      saveAdminCache(DB, true);
-    }catch(err){ console.error('Falha ao ler dados do Firebase', err); }
-    if(booted && CURRENT_USER){ renderBanner(); renderContent(); checkPendingConfirmations(); }
-    return;
-  }
   if(serverData && serverRev > localRev){
     try{ localStorage.removeItem('g26_admin_pending'); }catch(e){}
     try{
@@ -3891,6 +3924,21 @@ DB_REF.on('value', snap=>{
     }catch(err){ console.error('Falha ao ler dados do Firebase', err); }
     if(booted && CURRENT_USER){
       toast('Banco atualizado por outro aparelho. Dados recarregados.', 'error');
+      renderBanner(); renderContent(); checkPendingConfirmations();
+    }
+    return;
+  }
+  if(!exists || !serverData){
+    if(DB.rev && (DB.atividades.length || DB.equipes.length || DB.projetos.length || DB.programacoes.length) && CURRENT_USER && navigator.onLine && !salvando){
+      flushSave();
+    }
+    if(!booted){
+      booted = true;
+      if(!exists) seedIfEmpty();
+      garantirMaster();
+      progFilters.ciclo = cicloPadrao();
+      showLoginScreen();
+    }else if(CURRENT_USER){
       renderBanner(); renderContent(); checkPendingConfirmations();
     }
     return;
