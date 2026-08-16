@@ -701,7 +701,28 @@ function openImportArquivoModal({title, templateName, headers, exampleRow, texto
         const r = processar(linhas);
         root.innerHTML='';
         if(r.criados>0){ saveData(); renderContent(); }
-        toast(toastResumo? toastResumo(r, linhas.length) : 'Importação concluída.');
+        if(linhas.length===0){
+          const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:''}).slice(0,12);
+          root.innerHTML = `
+            <div class="modal-overlay" id="modal-overlay">
+              <div class="modal" style="max-width:660px;">
+                <div class="modal-head"><h3>Nenhuma linha válida reconhecida</h3><button class="icon-btn" id="modal-close">${icon('close')}</button></div>
+                <div class="modal-body">
+                  <div class="field-hint">O arquivo foi lido, mas nenhuma linha passou na validação. Abaixo está o <strong>que o sistema leu do arquivo</strong> (até 12 linhas). Se estas linhas não parecem com seus dados, o arquivo pode estar em outra aba ou coluna.</div>
+                  <div class="table-scroll"><table><thead><tr><th>#</th><th>Col. 1</th><th>Col. 2</th><th>Col. 3</th><th>Col. 4</th></tr></thead>
+                  <tbody>${raw.map((rr,i)=>`<tr><td>${i+1}</td><td>${esc(rr[0])}</td><td>${esc(rr[1])}</td><td>${esc(rr[2])}</td><td>${esc(rr[3])}</td></tr>`).join('') || '<tr class="empty-row"><td colspan="5">Arquivo vazio.</td></tr>'}</tbody></table></div>
+                  <div class="field-hint">Dica: baixe o template, preencha <strong>abaixo</strong> da linha de exemplo (código e descrição obrigatórios) e salve como .xlsx.</div>
+                </div>
+                <div class="modal-foot"><button type="button" class="btn btn-primary" id="modal-close2">Entendi</button></div>
+              </div>
+            </div>`;
+          const fechar = ()=>{ root.innerHTML=''; };
+          document.getElementById('modal-close').addEventListener('click', fechar);
+          document.getElementById('modal-close2').addEventListener('click', fechar);
+          document.getElementById('modal-overlay').addEventListener('click', e=>{ if(e.target.id==='modal-overlay') fechar(); });
+        } else {
+          toast(toastResumo? toastResumo(r, linhas.length) : 'Importação concluída.');
+        }
       }catch(err){
         console.error('Falha ao ler o arquivo', err);
         toast('Falha ao ler o arquivo. Use o template baixado.', 'error');
@@ -1343,11 +1364,10 @@ function limparTodasAtividades(){
   if(!requerEscrita()) return;
   const total = DB.atividades.length;
   if(!total){ toast('Não há atividades cadastradas para limpar.', 'error'); return; }
-  if(!confirm(`EXCLUIR TODAS AS ${total} ATIVIDADES?\n\nTodas as atividades serão removidas do banco, inclusive das programações, planos físicos e favoritas.\n\nEsta ação não pode ser desfeita!`)) return;
+  if(!confirm(`EXCLUIR TODAS AS ${total} ATIVIDADES?\n\nAs atividades serão removidas do banco. As programações, equipes e projetos serão MANTIDOS (apenas as atividades das programações e planos físicos serão removidas).\n\nEsta ação não pode ser desfeita!`)) return;
   if(!confirm('Confirmação final: deseja realmente APAGAR todas as atividades do banco de dados?')) return;
   DB.atividades = [];
-  DB.programacoes.forEach(pg=>{ pg.atribuicoes = []; });
-  DB.programacoes = DB.programacoes.filter(pg=>(pg.atribuicoes||[]).length);
+  DB.programacoes.forEach(pg=>{ (pg.atribuicoes||[]).forEach(at=>{ at.atividades = []; }); });
   DB.projetos.forEach(p=>{ p.planoFisico = []; });
   if(DB.favoritosAtividades) Object.keys(DB.favoritosAtividades).forEach(k=>{ DB.favoritosAtividades[k] = []; });
   registrarEvento('exclusao','atividade',null,null,'Limpeza em massa: todas as atividades excluídas');
