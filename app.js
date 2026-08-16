@@ -229,6 +229,7 @@ const ICONS = {
   star:'<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
   download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>',
   print:'<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
+  printer:'<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
   whatsapp:'<path d="M21.11 4.88A11.47 11.47 0 0 0 12 2a11.5 11.5 0 0 0-8.14 19.5L2 22l2.6-1.82A11.47 11.47 0 0 0 12 23.5a11.5 11.5 0 0 0 8.14-19.62Z"/><path d="M8.6 8.9c.3-.1.6-.1.8.2l.9 1.4c.1.3.1.6-.1.8l-.5.6c.2.6.7 1.4 1.5 2.1.9.8 1.7 1.1 2.3 1.3l.6-.5c.2-.2.5-.3.8-.1l1.4.9c.3.2.4.5.2.8-.3.6-1 1.1-1.6 1.1-1.4 0-3.6-.8-5.8-3-2.3-2.3-3-4.5-3-5.9.1-.7.6-1.4 1.4-1.7Z"/>',
   hash:'<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
   clipboard:'<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M9 12h6M9 16h6"/>',
@@ -2857,7 +2858,7 @@ function buildDocProjeto(pj){
     const atrCount = pg.atribuicoes?.length||0;
     const atvCount = pg.atribuicoes.reduce((s,a)=>s+(a.atividades?.length||0),0);
     const eqLabels = pg.atribuicoes.map(a=>equipeLabel(findEquipe(a.equipeId))).join(', ')||'—';
-    return `<tr><td>${esc(progGid(pg))}</td><td>${fmtDate(pg.dataProgramada)}</td><td>${esc(pg.ciclo||'—')}</td><td>${atrCount}</td><td>${atvCount}</td><td>${esc(eqLabels)}</td><td>${progStatusBadge(pg.status)}</td></tr>`;
+    return `<tr><td>${esc(progGid(pg))}</td><td>${fmtDate(pg.dataProgramada)}</td><td>${esc(pg.ciclo||'—')}</td><td>${atrCount}</td><td>${atvCount}</td><td>${esc(eqLabels)}</td><td>${projStatusBadge(pg.status)}</td></tr>`;
   }).join('') || '<tr><td colspan="7" style="text-align:center;color:#666;padding:12px;">Nenhuma programação vinculada</td></tr>';
   const customFields = DB.customFields.projetos||[];
   const customRows = customFields.map(f=>`<tr><th>${esc(f.label)}</th><td colspan="3">${esc(pj.custom?.[f.id]||'—')}</td></tr>`).join('');
@@ -2909,6 +2910,7 @@ function buildDocProjeto(pj){
           <div style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#666;margin-bottom:4px;">FINANCEIRO</div>
           <div style="font-size:22px;font-weight:700;color:${av.financeiroPct>=100?'#16a34a':av.financeiroPct>=80?'#f59e0b':'#2563eb'};">${av.financeiroPct.toFixed(1)}%</div>
           <div style="font-size:10.5px;color:#666;margin-top:2px;">Executado: ${fmtMoney(av.financeiroExecutado)} / ${fmtMoney(pj.valorOrcado||0)}</div>
+          <div style="font-size:10.5px;color:#666;margin-top:2px;">Restante: ${fmtMoney(av.restante)}</div>
         </div>
       </div>
     </div>
@@ -2935,6 +2937,32 @@ function buildDocProjeto(pj){
       <thead><tr style="background:#f4f4f4;"><th style="border:1px solid #444;padding:4px;">GID</th><th style="border:1px solid #444;padding:4px;">Data</th><th style="border:1px solid #444;padding:4px;">Ciclo</th><th style="width:50px;border:1px solid #444;padding:4px;">Eqps</th><th style="width:50px;border:1px solid #444;padding:4px;">Atvs</th><th style="border:1px solid #444;padding:4px;">Equipes</th><th style="border:1px solid #444;padding:4px;">Status</th></tr></thead>
       <tbody>${rowsProg}</tbody>
     </table>
+  </div>`:''}
+  ${programacoes.length? `
+  <div class="ps-block" style="break-inside:avoid;margin-bottom:14px;">
+    <div class="ps-block-head">DETALHES DAS PROGRAMAÇÕES (por equipe)</div>
+    ${programacoes.map(pg=>{
+      const prLocal = pg.local? `<tr><th style="border:1px solid #444;padding:4px;background:#f4f4f4;width:110px;">Local de execução</th><td style="border:1px solid #444;padding:4px;" colspan="5"><strong>${esc(pg.local)}</strong>${(pg.localLat!=null&&pg.localLng!=null)? ` — <a href="${esc(mapsLinkByCoords(pg.localLat,pg.localLng))}">${esc(mapsLinkByCoords(pg.localLat,pg.localLng))}</a>`:''}</td></tr>`:'';
+      const prObs = String(pg.orientacoesPlanejamento||'').trim()? `<tr><th style="border:1px solid #444;padding:4px;background:#f4f4f4;">Orientações</th><td style="border:1px solid #444;padding:4px;white-space:pre-wrap;" colspan="5">${esc(pg.orientacoesPlanejamento)}</td></tr>`:'';
+      return `
+      <div style="margin-bottom:12px;break-inside:avoid;">
+        <div style="font-weight:700;font-size:11.5px;border-bottom:1px solid #000;padding-bottom:4px;margin-bottom:6px;">${progGid(pg)} — ${fmtDate(pg.dataProgramada)} — Ciclo ${esc(pg.ciclo||'—')}</div>
+        <table style="width:100%;border-collapse:collapse;font-size:9.5px;">
+          <thead><tr style="background:#f4f4f4;"><th style="border:1px solid #444;padding:4px;width:110px;">Equipe</th><th style="border:1px solid #444;padding:4px;width:60px;">Encarregado</th><th style="border:1px solid #444;padding:4px;width:62px;">Código</th><th style="border:1px solid #444;padding:4px;">Atividade</th><th style="border:1px solid #444;padding:4px;width:46px;">Prev.</th><th style="border:1px solid #444;padding:4px;width:46px;">Exec.</th><th style="border:1px solid #444;padding:4px;width:70px;">Status</th></tr></thead>
+          <tbody>${(pg.atribuicoes||[]).map(at=>{
+            const eq = findEquipe(at.equipeId);
+            const linhas = (at.atividades||[]).map(a=>{
+              const atDef = findAtividade(a.atividadeId);
+              const exec = at.status==='Concluído' ? (a.quantidadeExecutada!=null? a.quantidadeExecutada : a.quantidadePrevista) : (a.quantidadeExecutada!=null? a.quantidadeExecutada : null);
+              return `<tr><td>${esc(equipeLabel(eq))}</td><td>${esc(eq?.encarregado||'—')}</td><td class="mono" style="font-weight:700;">${esc(atDef?.codigo||'?')}</td><td>${esc(atDef?.descricao||'')}</td><td style="text-align:center;">${a.quantidadePrevista??'—'}</td><td style="text-align:center;">${exec!=null?exec:'—'}</td><td>${esc(at.status||'—')}</td></tr>`;
+            }).join('') || `<tr><td colspan="7" style="border:1px solid #444;padding:4px;color:#666;">Sem atividades</td></tr>`;
+            return linhas;
+          }).join('')}</tbody>
+        </table>
+        ${prLocal}
+        ${prObs}
+      </div>`;
+    }).join('')}
   </div>`:''}
   ${customRows? `
   <div class="ps-block" style="break-inside:avoid;margin-bottom:14px;">
