@@ -419,6 +419,23 @@ function render(){
     h.textContent = n? `${n} foto${n>1?'s':''} adicionada${n>1?'s':''}` : 'Obrigatório: adicione ao menos 1 foto';
     h.className = 'te-photo-hint ' + (n? 'ok':'missing');
   });
+  root.querySelectorAll('input[type="search"][id^="te-search-"]').forEach(input=>{
+    const eqId = input.id.replace('te-search-','');
+    input.addEventListener('input', ()=>{
+      const term = input.value.toLowerCase();
+      root.querySelectorAll(`.te-select[data-tes^="${eqId}|"]`).forEach(sel=>{
+        const selected = sel.value;
+        Array.from(sel.options).forEach(opt=>{
+          if(opt.value==='') return;
+          const txt = opt.textContent.toLowerCase();
+          opt.style.display = txt.includes(term) ? '' : 'none';
+        });
+        if(selected && !Array.from(sel.options).find(o=>o.value===selected && o.style.display!=='none')){
+          sel.value = '';
+        }
+      });
+    });
+  });
   document.getElementById('team-submit').addEventListener('click', submitEdit);
   const btnAcidente = document.getElementById('btn-informar-acidente');
   if(btnAcidente){
@@ -484,9 +501,14 @@ function abrirModalAcidente(){
 function renderTeamBlock(eqId){
   const eq = findEquipe(DB, Number(eqId));
   const rows = editors[eqId];
+  const searchId = `te-search-${eqId}`;
   return `<div class="panel" style="border-color:var(--border);">
     <div class="panel-head"><h4>${equipeLabel(eq)}</h4><span class="badge-prefix">${eqtlLabel(eq)}</span></div>
     <div style="padding:12px 14px;">
+      <div class="field" style="margin-bottom:12px;">
+        <label for="${searchId}">${icon('search',14)} Buscar atividade (código ou descrição)</label>
+        <input type="search" id="${searchId}" placeholder="Filtrar atividades…" style="width:100%;">
+      </div>
       ${rows.map((r,i)=>`
         <div class="team-atividade">
           <div class="activity-row">

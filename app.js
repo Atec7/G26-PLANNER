@@ -471,7 +471,7 @@ function exportEquipesCSV(){
 function exportAtividadesCSV(){
   exportCSV('atividades.csv',
     ['Código','Descrição','Unidade','Valor unitário','Favorita'],
-    DB.atividades.map(a=>[a.codigo, a.descricao, a.unidade||'', fmtMoney(a.valorUnitario), a.fav? 'Sim':'Não']));
+    DB.atividades.map(a=>[a.codigo, a.descricao, a.unidade||'', fmtMoney(a.valorUnitario), isFavorita(a.id)? 'Sim':'Não']));
 }
 function exportProjetosCSV(){
   exportCSV('projetos.csv',
@@ -541,14 +541,28 @@ function exportHistoricoCSV(){
     rows);
 }
 
-/* --- Atividades favoritas --- */
-function atividadesOrdenadas(){
-  return [...DB.atividades].sort((a,b)=> (b.fav?1:0)-(a.fav?1:0) || String(a.codigo||'').localeCompare(String(b.codigo||''), 'pt', {numeric:true}));
+/* --- Atividades favoritas (por usuário) --- */
+function getUserFavoritos(){
+  const login = CURRENT_USER?.login || 'anon';
+  DB.favoritosAtividades = DB.favoritosAtividades || {};
+  DB.favoritosAtividades[login] = DB.favoritosAtividades[login] || [];
+  return new Set(DB.favoritosAtividades[login]);
+}
+function isFavorita(atividadeId){
+  return getUserFavoritos().has(Number(atividadeId));
 }
 function toggleFavAtividade(id){
   if(!requerEscrita()) return;
-  const at = findAtividade(id); if(!at) return;
-  at.fav = !at.fav; saveData(); renderContent(); toast(at.fav? 'Marcada como favorita.' : 'Removida das favoritas.');
+  const favs = getUserFavoritos();
+  const aid = Number(id);
+  if(favs.has(aid)) favs.delete(aid);
+  else favs.add(aid);
+  DB.favoritosAtividades[CURRENT_USER?.login || 'anon'] = [...favs];
+  saveData(); renderContent(); toast(favs.has(aid)? 'Marcada como favorita.' : 'Removida das favoritas.');
+}
+function atividadesOrdenadas(){
+  const favs = getUserFavoritos();
+  return [...DB.atividades].sort((a,b)=> (favs.has(b.id)?1:0)-(favs.has(a.id)?1:0) || String(a.codigo||'').localeCompare(String(b.codigo||''), 'pt', {numeric:true}));
 }
 function importarAtividadesLinhas(linhas){
   const parseValor = s => { const t=String(s??'').trim(); if(!t) return 0; const v = t.includes(',')? parseFloat(t.replace(/\./g,'').replace(',', '.')) : parseFloat(t); return isNaN(v)? 0 : v; };
@@ -560,7 +574,7 @@ function importarAtividadesLinhas(linhas){
     const descricao = String(partes[1]||'').trim();
     if(!codigo || !descricao){ erros++; if(msgErro.length<3) msgErro.push('Linha '+(i+1)+': faltando código ou descrição'); return; }
     if(codigoExiste(codigo)){ ignoradas++; return; }
-    DB.atividades.push({ id:nextId(), codigo, descricao, unidade: String(partes[2]||'').trim(), valorUnitario: parseValor(partes[3]), fav:false, custom:{} });
+    DB.atividades.push({ id:nextId(), codigo, descricao, unidade: String(partes[2]||'').trim(), valorUnitario: parseValor(partes[3]), custom:{} });
     criadas++;
   });
   return { criadas, ignoradas, erros, msgErro };
@@ -805,7 +819,7 @@ function createActivityEditorInline(containerEl, initial){
   function paint(){
     containerEl.innerHTML = items.map((it,j)=>`
       <div class="activity-row" data-j="${j}">
-        <select class="ae-select" data-j="${j}"><option value="">Atividade…</option>${atividadesOrdenadas().map(x=>`<option value="${x.id}" ${String(it.atividadeId)===String(x.id)?'selected':''}>${x.fav?'★ ':''}${esc(x.codigo)} · ${esc(x.descricao)}</option>`).join('')}</select>
+        <select class="ae-select" data-j="${j}"><option value="">Atividade…</option>${atividadesOrdenadas().map(x=>`<option value="${x.id}" ${String(it.atividadeId)===String(x.id)?'selected':''}>${isFavorita(x.id)?'★ ':''}${esc(x.codigo)} · ${esc(x.descricao)}</option>`).join('')}</select>
         <input type="number" step="0.01" min="0" class="ae-qty" data-j="${j}" placeholder="Qtd." value="${it.quantidadePrevista??''}">
         ${items.length>1?`<button type="button" class="icon-btn ae-remove" data-j="${j}">${icon('close',13)}</button>`:''}
       </div>`).join('');
@@ -1238,8 +1252,8 @@ function renderAtividades(){
   if(!DB.atividades.length){ el.innerHTML = emptyState('Nenhuma atividade cadastrada', 'Cadastre as atividades executadas em campo com código, descrição e valor unitário.'); bindEmptyCta(el, ()=>openAtividadeModal()); return; }
   const customFields = DB.customFields.atividades||[];
   const list = atividadesOrdenadas().filter(a=>{
-    if(ativFilters.fav==='fav' && !a.fav) return false;
-    if(ativFilters.fav==='normal' && a.fav) return false;
+    if(ativFilters.fav==='fav' && !isFavorita(a.id)) return false;
+    if(ativFilters.fav==='normal' && isFavorita(a.id)) return false;
     if(ativFilters.q){ const t=(a.codigo+' '+(a.descricao||'')).toLowerCase(); if(!t.includes(ativFilters.q.toLowerCase())) return false; }
     return true;
   });
@@ -1254,7 +1268,7 @@ function renderAtividades(){
     <div class="panel"><div class="table-scroll"><table>
       <thead><tr><th>Fav.</th><th>Código</th><th>Descrição</th><th>Unidade</th><th>Valor unitário</th>${customFields.map(f=>`<th>${esc(f.label)}</th>`).join('')}<th></th></tr></thead>
       <tbody>${list.map(a=>`<tr>
-        <td><button class="icon-btn ${a.fav?'fav':'star-off'}" title="${a.fav?'Favorita':'Marcar favorita'}" data-fav-at="${a.id}">${icon('star',15)}</button></td>
+        <td><button class="icon-btn ${isFavorita(a.id)?'fav':'star-off'}" title="${isFavorita(a.id)?'Favorita':'Marcar favorita'}" data-fav-at="${a.id}">${icon('star',15)}</button></td>
         <td><span class="mono" style="color:var(--accent);font-weight:700;">${esc(a.codigo)}</span></td>
         <td>${esc(a.descricao)}</td><td>${esc(a.unidade||'—')}</td><td class="mono">${fmtMoney(a.valorUnitario)}</td>
         ${customFields.map(f=>`<td>${esc(a.custom?.[f.id]||'—')}</td>`).join('')}
@@ -1277,7 +1291,6 @@ function renderAtividades(){
     </div>
     <div class="field"><label>Descrição <span class="req">*</span></label><textarea name="descricao" required placeholder="Descrição da atividade">${esc(at?.descricao||'')}</textarea></div>
     <div class="field"><label>Valor unitário (R$) <span class="req">*</span></label><input type="number" step="0.01" min="0" name="valorUnitario" required value="${at?.valorUnitario??''}" placeholder="0,00"></div>
-    <div class="field" style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="fav" id="at-fav" style="width:auto;" ${at?.fav?'checked':''}><label for="at-fav" style="margin:0;">${icon('star',14)} Marcar como atividade favorita</label><div class="field-hint">Favoritas aparecem em primeiro na lista e nos seletores.</div></div>
     ${renderCustomFieldsInputs('atividades', at)}
   `;
   openModal({
@@ -1286,7 +1299,7 @@ function renderAtividades(){
       const codigo = fd.get('codigo').trim();
       const dup = DB.atividades.find(a=>a.codigo.toLowerCase()===codigo.toLowerCase() && a.id!==at?.id);
       if(dup){ toast('Já existe uma atividade com esse código.', 'error'); return false; }
-      const data = { codigo, descricao: fd.get('descricao').trim(), unidade: fd.get('unidade').trim(), valorUnitario: parseFloat(fd.get('valorUnitario'))||0, fav: fd.get('fav')==='on', custom: parseCustomFieldsFromForm('atividades', fd) };
+      const data = { codigo, descricao: fd.get('descricao').trim(), unidade: fd.get('unidade').trim(), valorUnitario: parseFloat(fd.get('valorUnitario'))||0, custom: parseCustomFieldsFromForm('atividades', fd) };
       if(at){ Object.assign(at, data); toast('Atividade atualizada.'); registrarEvento('edicao','atividade',at.id,at.codigo+' · '+at.descricao,'Atividade atualizada'); }
       else { data.id = nextId(); DB.atividades.push(data); toast('Atividade cadastrada.'); registrarEvento('criacao','atividade',data.id,data.codigo+' · '+data.descricao,'Atividade criada'); }
       saveData(); renderContent();
@@ -2152,7 +2165,7 @@ function openAtribDetalhe(atribId){
   }
   function activityRowHtml(a,i,at,j){
     return `<div class="activity-row" data-idx="${i}" data-jdx="${j}">
-      <select class="act-select" data-idx="${i}" data-jdx="${j}"><option value="">Atividade…</option>${atividadesOrdenadas().map(x=>`<option value="${x.id}" ${String(at.atividadeId)===String(x.id)?'selected':''}>${x.fav?'★ ':''}${esc(x.codigo)} · ${esc(x.descricao)}</option>`).join('')}</select>
+      <select class="act-select" data-idx="${i}" data-jdx="${j}"><option value="">Atividade…</option>${atividadesOrdenadas().map(x=>`<option value="${x.id}" ${String(at.atividadeId)===String(x.id)?'selected':''}>${isFavorita(x.id)?'★ ':''}${esc(x.codigo)} · ${esc(x.descricao)}</option>`).join('')}</select>
       <input type="number" step="0.01" min="0" class="act-qty" data-idx="${i}" data-jdx="${j}" placeholder="Qtd." value="${at.quantidadePrevista??''}">
       ${a.atividades.length>1? `<button type="button" class="icon-btn act-remove" data-idx="${i}" data-jdx="${j}">${icon('close',13)}</button>`:''}
     </div>`;
@@ -3186,7 +3199,7 @@ function seedIfEmpty(){
   const eq1 = {id:nextId(), eqtl:'Equipe Alfa', prtn:'', setor:'MANUTENÇÃO', coordenacao:'RIO VERDE', supervisor:'Marcos Lima', encarregado:'José Ferreira', motorista:'Paulo Souza', metaDiaria:5000, eletricistas:['Carlos Alves','Renato Dias'], ativo:true, custom:{}};
   const eq2 = {id:nextId(), eqtl:'', prtn:'Equipe Bravo', setor:'MANUTENÇÃO', coordenacao:'RIO VERDE', supervisor:'Ana Ribeiro', encarregado:'Bruno Castro', motorista:'Diego Nunes', metaDiaria:3000, eletricistas:['Felipe Rocha'], ativo:true, custom:{}};
   DB.equipes.push(eq1, eq2);
-  const a1 = {id:nextId(), codigo:'MAN-014', descricao:'Substituição de poste de concreto', unidade:'un', valorUnitario:850, fav:true, custom:{}};
+  const a1 = {id:nextId(), codigo:'MAN-014', descricao:'Substituição de poste de concreto', unidade:'un', valorUnitario:850, custom:{}};
   const a2 = {id:nextId(), codigo:'MAN-022', descricao:'Poda de árvore próxima à rede', unidade:'un', valorUnitario:180, custom:{}};
   const a3 = {id:nextId(), codigo:'CON-005', descricao:'Instalação de rede de baixa tensão', unidade:'m', valorUnitario:42.5, custom:{}};
   DB.atividades.push(a1,a2,a3);
@@ -3456,7 +3469,7 @@ function rastrearItem(itemTipo, itemId){
     }
   } else if(itemTipo==='atividade'){
     const a = findAtividade(itemId);
-    if(a) present = `${esc(a.codigo)} · ${esc(a.descricao)} · Unidade ${esc(a.unidade||'—')} · Valor unitário ${fmtMoney(a.valorUnitario)}${a.fav? ' · Favorita':''}`;
+    if(a) present = `${esc(a.codigo)} · ${esc(a.descricao)} · Unidade ${esc(a.unidade||'—')} · Valor unitário ${fmtMoney(a.valorUnitario)}${isFavorita(a.id)? ' · Favorita':''}`;
   } else if(itemTipo==='projeto'){
     const p = findProjeto(itemId);
     if(p) present = `${esc(p.codigo)} · ${esc(p.nome)} · ${esc(p.status)} · ${esc([p.setor,p.coordenacao].filter(Boolean).join(' / ')||'—')} · ${esc(p.cidade||'—')} · Ciclo ${esc(p.ciclo||'—')} · Orçado ${fmtMoney(p.valorOrcado)} · Início ${fmtDate(p.dataInicio)} · Fim ${fmtDate(p.dataFim)}`;
