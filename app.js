@@ -202,6 +202,7 @@ const NAV_ITEMS = [
   { id:'equipes',     label:'Equipes',       sub:'Cadastro de equipes de campo', icon:'users' },
   { id:'atividades',  label:'Atividades',    sub:'Cadastro de códigos e valores unitários', icon:'list' },
   { id:'projetos',    label:'Projetos',      sub:'Cadastro de projetos', icon:'folder' },
+  { id:'ocndsose',    label:'OC/NDS/OSE',    sub:'Atividade não programada e programação comercial', icon:'layers' },
   { id:'avanco',      label:'Avanço',        sub:'Progresso físico e financeiro', icon:'trend' },
   { id:'programacoes',label:'Programações',  sub:'Agenda, fluxo e reprogramação', icon:'calendar' },
   { id:'RDO',         label:'RDO',           sub:'Execução das equipes em campo', icon:'clipboard' },
@@ -235,6 +236,7 @@ const ICONS = {
   database:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
   search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>',
   pin:'<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z"/><circle cx="12" cy="10" r="3"/>',
+  layers:'<path d="m12 2 10 6-10 6L2 8Z"/><path d="m2 16 10 6 10-6"/><path d="m2 12 10 6 10-6"/>',
 };
 function icon(name,size=16){ return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`; }
 
@@ -3355,8 +3357,25 @@ document.getElementById('import-file').addEventListener('change', (e)=>{
    ROUTER
 ========================================================= */
 function renderContent(){
-  const map = { dashboard: renderDashboard, alertas: renderAlertas, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin, RDO: renderProgramacoesConcluidas };
+  const map = { dashboard: renderDashboard, alertas: renderAlertas, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, ocndsose: renderOcNdsOse, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin, RDO: renderProgramacoesConcluidas };
   (map[currentView]||renderDashboard)();
+}
+
+/* =========================================================
+   VIEW: OC/NDS/OSE (em desenvolvimento)
+========================================================= */
+function renderOcNdsOse(){
+  const el = document.getElementById('content');
+  el.innerHTML = `
+    <div class="panel" style="max-width:720px;margin:24px auto;">
+      <div style="display:flex;align-items:center;gap:14px;padding:28px;">
+        <div style="flex-shrink:0;width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;color:var(--accent);background:rgba(224,164,88,.12);">${icon('layers',26)}</div>
+        <div>
+          <h3 style="margin:0 0 6px;">OC/NDS/OSE</h3>
+          <div style="font-size:13px;line-height:1.7;color:var(--muted);">Módulo de atividade não programada ou de programação comercial em desenvolvimento...</div>
+        </div>
+      </div>
+    </div>`;
 }
 
 /* =========================================================
