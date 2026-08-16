@@ -202,7 +202,8 @@ const NAV_ITEMS = [
   { id:'equipes',     label:'Equipes',       sub:'Cadastro de equipes de campo', icon:'users' },
   { id:'atividades',  label:'Atividades',    sub:'Cadastro de códigos e valores unitários', icon:'list' },
   { id:'projetos',    label:'Projetos',      sub:'Cadastro de projetos', icon:'folder' },
-  { id:'ocndsose',    label:'OC/NDS/OSE',    sub:'Atividade não programada e programação comercial', icon:'layers' },
+  { id:'osepoda',     label:'OSE/PODA',      sub:'Atividade não programada e programação comercial', icon:'tree' },
+  { id:'ocnds',       label:'OC/NDS',        sub:'Atividade não programada e programação comercial', icon:'siren' },
   { id:'avanco',      label:'Avanço',        sub:'Progresso físico e financeiro', icon:'trend' },
   { id:'programacoes',label:'Programações',  sub:'Agenda, fluxo e reprogramação', icon:'calendar' },
   { id:'RDO',         label:'RDO',           sub:'Execução das equipes em campo', icon:'clipboard' },
@@ -238,6 +239,8 @@ const ICONS = {
   search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>',
   pin:'<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z"/><circle cx="12" cy="10" r="3"/>',
   layers:'<path d="m12 2 10 6-10 6L2 8Z"/><path d="m2 16 10 6 10-6"/><path d="m2 12 10 6 10-6"/>',
+  tree:'<path d="M12 21V12"/><path d="M12 3c-2 0-3 2-3 4 0-2-2-3-4-3 0 3 2 4 3 6-2 0-4 1-4 3 0 1.5 1 3 3 3h10c2 0 3-1.5 3-3 0-2-2-3-4-3 1-2 3-3 3-6-2 0-4 1-4 3 0-2-1-4-3-4Z"/><path d="M12 21v-4"/>',
+  siren:'<path d="M7 18v-6a5 5 0 0 1 10 0v6"/><path d="M7 21h10"/><path d="M6.5 9.5 4 10M17.5 9.5 20 10M12 3v2M5 6l2 2M19 6l-2 2M8 12h.01M16 12h.01"/><path d="M12 18v3"/>',
 };
 function icon(name,size=16){ return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`; }
 
@@ -3385,21 +3388,27 @@ document.getElementById('import-file').addEventListener('change', (e)=>{
    ROUTER
 ========================================================= */
 function renderContent(){
-  const map = { dashboard: renderDashboard, alertas: renderAlertas, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, ocndsose: renderOcNdsOse, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin, RDO: renderProgramacoesConcluidas };
+  const map = { dashboard: renderDashboard, alertas: renderAlertas, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, osepoda: renderOsePoda, ocnds: renderOcNds, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin, RDO: renderProgramacoesConcluidas };
   (map[currentView]||renderDashboard)();
 }
 
 /* =========================================================
-   VIEW: OC/NDS/OSE (em desenvolvimento)
+   VIEW: OSE/PODA e OC/NDS (em desenvolvimento)
 ========================================================= */
-function renderOcNdsOse(){
+function renderOsePoda(){
+  renderModuloEmDesenvolvimento('OSE/PODA');
+}
+function renderOcNds(){
+  renderModuloEmDesenvolvimento('OC/NDS');
+}
+function renderModuloEmDesenvolvimento(titulo){
   const el = document.getElementById('content');
   el.innerHTML = `
     <div class="panel" style="max-width:720px;margin:24px auto;">
       <div style="display:flex;align-items:center;gap:14px;padding:28px;">
         <div style="flex-shrink:0;width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;color:var(--accent);background:rgba(224,164,88,.12);">${icon('layers',26)}</div>
         <div>
-          <h3 style="margin:0 0 6px;">OC/NDS/OSE</h3>
+          <h3 style="margin:0 0 6px;">${titulo}</h3>
           <div style="font-size:13px;line-height:1.7;color:var(--muted);">Módulo de atividade não programada ou de programação comercial em desenvolvimento...</div>
         </div>
       </div>
