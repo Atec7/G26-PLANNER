@@ -23,7 +23,7 @@ if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js').ca
 const DEFAULT_DATA = {
   equipes: [], atividades: [], projetos: [], programacoes: [], usuarios: [],
   customFields: { equipes: [], atividades: [], projetos: [], programacoes: [] },
-  seq: 1
+  seq: 1, rev: 0
 };
 function mergeData(raw){
   if(!raw || typeof raw!=='object') return structuredClone(DEFAULT_DATA);
@@ -87,6 +87,7 @@ function guardarPendente(snapshot){
   try{ localStorage.setItem('g26_admin_pending', JSON.stringify({ snapshot, server: lastServerJson })); }catch(e){}
 }
 function flushSave(){
+  DB.rev = (DB.rev||0)+1;
   const snapshot = JSON.stringify(DB);
   lastWrittenJson = snapshot;
   saveAdminCache(DB, true);
@@ -3866,7 +3867,34 @@ DB_REF.on('value', snap=>{
   if(saveTimer) return;
   const exists = snap.exists();
   if(exists && typeof snap.val()==='string' && snap.val()===lastWrittenJson) return;
-  if(salvando || temPendente()) return;
+  if(salvando) return;
+  let serverData = null;
+  try{ serverData = exists? JSON.parse(snap.val()) : null; }catch(err){ console.error('Falha ao ler dados do Firebase', err); }
+  const serverRev = serverData? (serverData.rev||0) : 0;
+  const localRev = DB.rev||0;
+  if(serverData && serverRev <= localRev){
+    let p = null;
+    try{ p = JSON.parse(localStorage.getItem('g26_admin_pending')||'null'); }catch(e){}
+    if(p && p.snapshot) return;
+    try{
+      DB = mergeData(serverData);
+      saveAdminCache(DB, true);
+    }catch(err){ console.error('Falha ao ler dados do Firebase', err); }
+    if(booted && CURRENT_USER){ renderBanner(); renderContent(); checkPendingConfirmations(); }
+    return;
+  }
+  if(serverData && serverRev > localRev){
+    try{ localStorage.removeItem('g26_admin_pending'); }catch(e){}
+    try{
+      DB = mergeData(serverData);
+      saveAdminCache(DB, true);
+    }catch(err){ console.error('Falha ao ler dados do Firebase', err); }
+    if(booted && CURRENT_USER){
+      toast('Banco atualizado por outro aparelho. Dados recarregados.', 'error');
+      renderBanner(); renderContent(); checkPendingConfirmations();
+    }
+    return;
+  }
   try{
     if(exists){
       DB = mergeData(JSON.parse(snap.val()));
