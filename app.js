@@ -329,6 +329,16 @@ function fmtDateTime(iso){ const dt=new Date(iso); return dt.toLocaleDateString(
 function fmtMoney(v){ return (Number(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
 function fmtNum(v){ return (Number(v)||0).toLocaleString('pt-BR',{maximumFractionDigits:2}); }
 function todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function gerarDatasIntervalo(inicio, fim){
+  const datas = [];
+  const cur = new Date(inicio+'T00:00:00');
+  const end = new Date(fim+'T00:00:00');
+  while(cur <= end){
+    datas.push(cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0')+'-'+String(cur.getDate()).padStart(2,'0'));
+    cur.setDate(cur.getDate()+1);
+  }
+  return datas;
+}
 function monthRangeISO(){
   const d = new Date();
   const y = d.getFullYear();
@@ -434,7 +444,7 @@ function comprimirImagem(file, maxLado=1800, qualidade=0.88){
 }
 function anexosGridHtml(anexos, editable){
   const list = anexos||[];
-  if(!list.length) return editable? '<div class="field-hint">Nenhum anexo ainda. Envie imagens para a equipe visualizar (croqui, localização, detalhe do serviço) — elas também saem no RDO.</div>' : '';
+  if(!list.length) return editable? '<div class="field-hint">💡 Nenhum anexo ainda. Envie imagens para a equipe visualizar (croqui, localização, detalhe do serviço) — elas também saem no RDO.</div>' : '';
   return `<div class="anexos-grid">${list.map((a,i)=>`
     <div class="anexo-thumb">
       <img src="${esc(anexoSrc(a))}" alt="${esc(a.nome||'anexo')}">
@@ -795,10 +805,10 @@ function openImportArquivoModal({title, templateName, headers, exampleRow, texto
               <div class="modal" style="max-width:660px;">
                 <div class="modal-head"><h3>Nenhuma linha válida reconhecida</h3><button class="icon-btn" id="modal-close">${icon('close')}</button></div>
                 <div class="modal-body">
-                  <div class="field-hint">O arquivo foi lido, mas nenhuma linha passou na validação. Abaixo está o <strong>que o sistema leu do arquivo</strong> (até 12 linhas). Se estas linhas não parecem com seus dados, o arquivo pode estar em outra aba ou coluna.</div>
+                  <div class="field-hint">💡 O arquivo foi lido, mas nenhuma linha passou na validação. Abaixo está o <strong>que o sistema leu do arquivo</strong> (até 12 linhas). Se estas linhas não parecem com seus dados, o arquivo pode estar em outra aba ou coluna.</div>
                   <div class="table-scroll"><table><thead><tr><th>#</th><th>Col. 1</th><th>Col. 2</th><th>Col. 3</th><th>Col. 4</th></tr></thead>
                   <tbody>${raw.map((rr,i)=>`<tr><td>${i+1}</td><td>${esc(rr[0])}</td><td>${esc(rr[1])}</td><td>${esc(rr[2])}</td><td>${esc(rr[3])}</td></tr>`).join('') || '<tr class="empty-row"><td colspan="5">Arquivo vazio.</td></tr>'}</tbody></table></div>
-                  <div class="field-hint">Dica: baixe o template, preencha <strong>abaixo</strong> da linha de exemplo (código e descrição obrigatórios) e salve como .xlsx.</div>
+                  <div class="field-hint">💡 Dica: baixe o template, preencha <strong>abaixo</strong> da linha de exemplo (código e descrição obrigatórios) e salve como .xlsx.</div>
                 </div>
                 <div class="modal-foot"><button type="button" class="btn btn-primary" id="modal-close2">Entendi</button></div>
               </div>
@@ -823,10 +833,10 @@ function openImportArquivoModal({title, templateName, headers, exampleRow, texto
         <div class="modal-head"><h3>${title}</h3><button class="icon-btn" id="modal-close">${icon('close')}</button></div>
         <div class="modal-body">
           <div class="field"><button type="button" class="btn" id="dl-template">${icon('download',14)} Baixar template Excel</button>
-            <div class="field-hint">O template vem com o cabeçalho (colunas na ordem) e uma <strong>linha de exemplo</strong>. Preencha suas linhas abaixo do cabeçalho, salve e envie o arquivo.</div>
+            <div class="field-hint">💡 O template vem com o cabeçalho (colunas na ordem) e uma <strong>linha de exemplo</strong>. Preencha suas linhas abaixo do cabeçalho, salve e envie o arquivo.</div>
           </div>
           <div class="field"><label>Arquivo preenchido (.xlsx)</label><input type="file" id="imp-arquivo" accept=".xlsx,.xls,.csv"></div>
-          ${textoAviso? `<div class="field-hint">${textoAviso}</div>` : ''}
+          ${textoAviso? `<div class="field-hint">💡 ${textoAviso}</div>` : ''}
         </div>
         <div class="modal-foot"><button type="button" class="btn btn-ghost" id="modal-cancel">Cancelar</button><button type="button" class="btn btn-primary" id="imp-confirm">Importar arquivo</button></div>
       </div>
@@ -1337,12 +1347,12 @@ function crewCard(eq){
     <div class="field"><label>Supervisor</label><input type="text" name="supervisor" value="${esc(eq?.supervisor||'')}" placeholder="Nome do supervisor"></div>
     <div class="field"><label>Encarregado</label><input type="text" name="encarregado" value="${esc(eq?.encarregado||'')}" placeholder="Nome do encarregado"></div>
     <div class="field"><label>Motorista</label><input type="text" name="motorista" value="${esc(eq?.motorista||'')}" placeholder="Nome do motorista"></div>
-    <div class="field"><label>WhatsApp</label><input type="text" name="whatsapp" value="${esc(eq?.whatsapp||'')}" placeholder="Ex: (11) 98765-4321" inputmode="tel"><div class="field-hint">Usado no botão "Encaminhar para equipe" das programações. Informe com DDD.</div></div>
-    <div class="field"><label>Meta diária (R$)</label><input type="number" step="0.01" min="0" name="metaDiaria" value="${eq?.metaDiaria??''}" placeholder="0,00"><div class="field-hint">Se a programação do dia ficar abaixo deste valor, o sistema alerta na programação.</div></div>
-    <div class="field"><label>Eletricistas</label><input type="text" name="eletricistas" value="${esc((eq?.eletricistas||[]).join(', '))}" placeholder="Separe por vírgula: Fulano, Ciclano"><div class="field-hint">Separe os nomes por vírgula.</div></div>
+    <div class="field"><label>WhatsApp</label><input type="text" name="whatsapp" value="${esc(eq?.whatsapp||'')}" placeholder="Ex: (11) 98765-4321" inputmode="tel"><div class="field-hint">💡 Usado no botão "Encaminhar para equipe" das programações. Informe com DDD.</div></div>
+    <div class="field"><label>Meta diária (R$)</label><input type="number" step="0.01" min="0" name="metaDiaria" value="${eq?.metaDiaria??''}" placeholder="0,00"><div class="field-hint">💡 Se a programação do dia ficar abaixo deste valor, o sistema alerta na programação.</div></div>
+    <div class="field"><label>Eletricistas</label><input type="text" name="eletricistas" value="${esc((eq?.eletricistas||[]).join(', '))}" placeholder="Separe por vírgula: Fulano, Ciclano"><div class="field-hint">💡 Separe os nomes por vírgula.</div></div>
     <div class="field-row">
-      <div class="field"><label>Setor <span class="req">*</span></label><select name="setor" required><option value="">Selecione…</option><option ${eq?.setor==='MANUTENÇÃO'||(usuarioRestrito()&&CURRENT_USER.setor==='MANUTENÇÃO')?'selected':''}>MANUTENÇÃO</option><option ${eq?.setor==='OBRAS'||(usuarioRestrito()&&CURRENT_USER.setor==='OBRAS')?'selected':''}>OBRAS</option></select><div class="field-hint">Vincular a equipe ao setor onde ela atua.</div></div>
-      <div class="field"><label>Coordenação <span class="req">*</span></label><select name="coordenacao" required><option value="">Selecione…</option><option ${eq?.coordenacao==='RIO VERDE'||(usuarioRestrito()&&CURRENT_USER.coordenacao==='RIO VERDE')?'selected':''}>RIO VERDE</option><option ${eq?.coordenacao==='QUIRINOPOLIS'||(usuarioRestrito()&&CURRENT_USER.coordenacao==='QUIRINOPOLIS')?'selected':''}>QUIRINOPOLIS</option></select><div class="field-hint">Vincular a equipe à coordenação onde ela atua.</div></div>
+      <div class="field"><label>Setor <span class="req">*</span></label><select name="setor" required><option value="">Selecione…</option><option ${eq?.setor==='MANUTENÇÃO'||(usuarioRestrito()&&CURRENT_USER.setor==='MANUTENÇÃO')?'selected':''}>MANUTENÇÃO</option><option ${eq?.setor==='OBRAS'||(usuarioRestrito()&&CURRENT_USER.setor==='OBRAS')?'selected':''}>OBRAS</option></select><div class="field-hint">💡 Vincular a equipe ao setor onde ela atua.</div></div>
+      <div class="field"><label>Coordenação <span class="req">*</span></label><select name="coordenacao" required><option value="">Selecione…</option><option ${eq?.coordenacao==='RIO VERDE'||(usuarioRestrito()&&CURRENT_USER.coordenacao==='RIO VERDE')?'selected':''}>RIO VERDE</option><option ${eq?.coordenacao==='QUIRINOPOLIS'||(usuarioRestrito()&&CURRENT_USER.coordenacao==='QUIRINOPOLIS')?'selected':''}>QUIRINOPOLIS</option></select><div class="field-hint">💡 Vincular a equipe à coordenação onde ela atua.</div></div>
     </div>
     ${renderCustomFieldsInputs('equipes', eq)}
     <div class="field" style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="ativo" id="eq-ativo" style="width:auto;" ${eq? (eq.ativo?'checked':'') : 'checked'}><label for="eq-ativo" style="margin:0;">Equipe ativa</label></div>
@@ -1569,24 +1579,24 @@ function viabilidadeAlertBadge(p){
       <div class="field"><label>Data fim prevista</label><input type="date" name="dataFim" value="${pj?.dataFim||''}"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Data recebimento carteira <span class="req">*</span></label><input type="date" name="dataRecebimentoCarteira" required value="${pj?.dataRecebimentoCarteira||''}"><div class="field-hint">Início da contagem do prazo de viabilização (20 dias corridos).</div></div>
-      <div class="field"><label>Data vencimento do projeto <span class="req">*</span></label><input type="date" name="dataVencimento" required value="${pj?.dataVencimento||''}"><div class="field-hint">Referência para os alertas de projetos vencendo.</div></div>
+      <div class="field"><label>Data recebimento carteira <span class="req">*</span></label><input type="date" name="dataRecebimentoCarteira" required value="${pj?.dataRecebimentoCarteira||''}"><div class="field-hint">💡 Início da contagem do prazo de viabilização (20 dias corridos).</div></div>
+      <div class="field"><label>Data vencimento do projeto <span class="req">*</span></label><input type="date" name="dataVencimento" required value="${pj?.dataVencimento||''}"><div class="field-hint">💡 Referência para os alertas de projetos vencendo.</div></div>
     </div>
-    <div class="field"><label>Data de viabilização</label><input type="date" name="dataViabilizacao" value="${pj?.dataViabilizacao||''}"><div class="field-hint">Informe a data quando o projeto for viabilizado. Enquanto vazio, o alerta de viabilidade permanece até o prazo de 20 dias corridos após o recebimento da carteira.</div></div>
+    <div class="field"><label>Data de viabilização</label><input type="date" name="dataViabilizacao" value="${pj?.dataViabilizacao||''}"><div class="field-hint">💡 Informe a data quando o projeto for viabilizado. Enquanto vazio, o alerta de viabilidade permanece até o prazo de 20 dias corridos após o recebimento da carteira.</div></div>
     <div class="field-row">
       <div class="field"><label>Setor <span class="req">*</span></label><select name="setor" required><option value="">Selecione…</option><option ${pj?.setor==='MANUTENÇÃO'||(usuarioRestrito()&&CURRENT_USER.setor==='MANUTENÇÃO')?'selected':''}>MANUTENÇÃO</option><option ${pj?.setor==='OBRAS'||(usuarioRestrito()&&CURRENT_USER.setor==='OBRAS')?'selected':''}>OBRAS</option></select></div>
       <div class="field"><label>Coordenação <span class="req">*</span></label><select name="coordenacao" required><option value="">Selecione…</option><option ${pj?.coordenacao==='RIO VERDE'||(usuarioRestrito()&&CURRENT_USER.coordenacao==='RIO VERDE')?'selected':''}>RIO VERDE</option><option ${pj?.coordenacao==='QUIRINOPOLIS'||(usuarioRestrito()&&CURRENT_USER.coordenacao==='QUIRINOPOLIS')?'selected':''}>QUIRINOPOLIS</option></select></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Cidade</label><input type="text" name="cidade" value="${esc(pj?.cidade||'')}" placeholder="Ex: Rio Verde"><div class="field-hint">Município de referência do projeto (usado na localização dos relatórios).</div></div>
-      <div class="field"><label>Valor orçado (R$)</label><input type="number" step="0.01" min="0" name="valorOrcado" value="${pj?.valorOrcado??''}" placeholder="0,00"><div class="field-hint">O avanço financeiro é calculado conforme as atividades concluídas pelas equipes.</div></div>
+      <div class="field"><label>Cidade</label><input type="text" name="cidade" value="${esc(pj?.cidade||'')}" placeholder="Ex: Rio Verde"><div class="field-hint">💡 Município de referência do projeto (usado na localização dos relatórios).</div></div>
+      <div class="field"><label>Valor orçado (R$)</label><input type="number" step="0.01" min="0" name="valorOrcado" value="${pj?.valorOrcado??''}" placeholder="0,00"><div class="field-hint">💡 O avanço financeiro é calculado conforme as atividades concluídas pelas equipes.</div></div>
     </div>
-    <div class="field"><label>Ciclo recebido carteira <span class="req">*</span></label><input type="text" name="ciclo" class="ciclo-input" required maxlength="13" value="${esc(pj?.ciclo||'')}" placeholder="CICLO-XX/XXXX"><div class="field-hint">Digite apenas o mês e o ano (ex.: 01/2026). O prefixo "CICLO-" é automático.</div></div>
+    <div class="field"><label>Ciclo recebido carteira <span class="req">*</span></label><input type="text" name="ciclo" class="ciclo-input" required maxlength="13" value="${esc(pj?.ciclo||'')}" placeholder="CICLO-XX/XXXX"><div class="field-hint">💡 Digite apenas o mês e o ano (ex.: 01/2026). O prefixo "CICLO-" é automático.</div></div>
     <div class="field">
       <label>Plano físico — atividades e quantidades</label>
       <div id="pj-plano-list"></div>
       <button type="button" class="btn btn-sm" id="pj-plano-add" style="margin-top:6px;align-self:flex-start;">${icon('plus',13)} Adicionar atividade</button>
-      <div class="field-hint">Cadastre as atividades e quantidades previstas do projeto. O avanço físico avança conforme as programações concluídas pelas equipes.</div>
+      <div class="field-hint">💡 Cadastre as atividades e quantidades previstas do projeto. O avanço físico avança conforme as programações concluídas pelas equipes.</div>
     </div>
     ${renderCustomFieldsInputs('projetos', pj)}
   `;
@@ -1618,7 +1628,7 @@ function openPlanoFisicoModal(pjId){
     <div class="field"><label>Plano físico — atividades e quantidades previstas</label>
       <div class="ae-list"></div>
       <button type="button" class="btn btn-sm" id="pf-add" style="margin-top:6px;align-self:flex-start;">${icon('plus',13)} Adicionar atividade</button>
-      <div class="field-hint">O avanço físico avança conforme as programações concluídas pelas equipes, comparando o executado com este plano.</div>
+      <div class="field-hint">💡 O avanço físico avança conforme as programações concluídas pelas equipes, comparando o executado com este plano.</div>
     </div>`;
   openModal({
     title:'Plano físico do projeto', bodyHtml:body, submitLabel:'Salvar plano físico',
@@ -1774,8 +1784,8 @@ function avancoCard(pj){
         <div class="stat-card" style="--accent-c:var(--red);padding:12px 14px;"><div class="lbl">Restante</div><div class="val" style="font-size:18px;">${fmtMoney(av.restante)}</div></div>
         <div class="stat-card" style="--accent-c:var(--accent);padding:12px 14px;"><div class="lbl">Concluídas</div><div class="val" style="font-size:18px;">${av.concluidoLinhas}<small>/ ${av.totalLinhas}</small></div></div>
       </div>
-      <div class="field"><label>Avanço físico</label>${progBarHtml(av.fisicoPct)}<div class="field-hint">${hintFisico}</div></div>
-      <div class="field"><label>Avanço financeiro</label>${progBarHtml(av.financeiroPct)}<div class="field-hint">${fmtMoney(av.valorExecutado)} executados de ${fmtMoney(av.valorOrcado)} orçados (${av.financeiroPct.toFixed(1)}%)</div></div>
+      <div class="field"><label>Avanço físico</label>${progBarHtml(av.fisicoPct)}<div class="field-hint">💡 ${hintFisico}</div></div>
+      <div class="field"><label>Avanço financeiro</label>${progBarHtml(av.financeiroPct)}<div class="field-hint">💡 ${fmtMoney(av.valorExecutado)} executados de ${fmtMoney(av.valorOrcado)} orçados (${av.financeiroPct.toFixed(1)}%)</div></div>
       ${eqRows.length? `<div class="table-scroll"><table class="min">
         <thead><tr><th>Equipe</th><th>Equipe comp.</th><th>Concluídas</th><th>Executado (R$)</th><th>Físico</th></tr></thead>
         <tbody>${eqRows.map(e=>{
@@ -1801,7 +1811,7 @@ function openAvancoDetalhe(pjId){
       <div class="stat-card" style="--accent-c:var(--red)"><div class="lbl">Restante</div><div class="val" style="font-size:19px;">${fmtMoney(av.restante)}</div></div>
       <div class="stat-card" style="--accent-c:var(--accent)"><div class="lbl">Atividades</div><div class="val" style="font-size:19px;">${av.concluidoLinhas}<small> / ${av.totalLinhas}</small></div></div>
     </div>
-    <div class="field"><label>Avanço físico (${av.fisicoPct.toFixed(1)}%)</label>${progBarHtml(av.fisicoPct)}<div class="field-hint">${av.hasPlano? `${av.execQty} de ${av.totalQty} unidades do plano físico executadas` : `${av.concluidoLinhas} de ${av.totalLinhas} atividades concluídas`}</div></div>
+    <div class="field"><label>Avanço físico (${av.fisicoPct.toFixed(1)}%)</label>${progBarHtml(av.fisicoPct)}<div class="field-hint">💡 ${av.hasPlano? `${av.execQty} de ${av.totalQty} unidades do plano físico executadas` : `${av.concluidoLinhas} de ${av.totalLinhas} atividades concluídas`}</div></div>
     <div class="field"><label>Avanço financeiro (${av.financeiroPct.toFixed(1)}%)</label>${progBarHtml(av.financeiroPct)}</div>
     ${av.hasPlano? `
     <div class="field">
@@ -2334,18 +2344,21 @@ function openAtribDetalhe(atribId){
   const baseFieldsHtml = `
     <div class="field"><label>Projeto <span class="req">*</span></label><select name="projetoId" id="pg-projeto" required>${projetosVisiveis().filter(p=>!['Encerrado','Aguardando Viabilidade'].includes(p.status)).map(pr=>`<option value="${pr.id}" ${pg?.projetoId===pr.id?'selected':''}>${esc(pr.codigo)} · ${esc(pr.nome)}</option>`).join('')}</select></div>
     <div class="field-row">
-      <div class="field"><label>Setor</label><input type="text" id="pg-setor" disabled value=""><div class="field-hint">Preenchido automaticamente do projeto.</div></div>
-      <div class="field"><label>Coordenação</label><input type="text" id="pg-coord" disabled value=""><div class="field-hint">Preenchido automaticamente do projeto.</div></div>
+      <div class="field"><label>Setor</label><input type="text" id="pg-setor" disabled value=""><div class="field-hint">💡 Preenchido automaticamente do projeto.</div></div>
+      <div class="field"><label>Coordenação</label><input type="text" id="pg-coord" disabled value=""><div class="field-hint">💡 Preenchido automaticamente do projeto.</div></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Data programada (base) <span class="req">*</span></label><input type="date" name="dataProgramada" required value="${pg?.dataProgramada||''}"></div>
-      <div class="field"><label>Ciclo recebido carteira <span class="req">*</span></label><input type="text" name="ciclo" class="ciclo-input" id="pg-ciclo" required maxlength="13" value="${esc(pg?.ciclo||'')}" placeholder="CICLO-XX/XXXX"><div class="field-hint">Preenchido automaticamente do projeto; pode ser ajustado.</div></div>
+      <div class="field"><label>Data início <span class="req">*</span></label><input type="date" name="dataInicio" required value="${pg?.dataProgramada||''}"></div>
+      <div class="field"><label>Data fim (opcional)</label><input type="date" name="dataFim" value="${pg?.dataProgramada||''}"><div class="field-hint">💡 Se preenchido, cria uma programação para cada dia no intervalo. Deixe vazio ou igual à data início para criar apenas 1 programação.</div></div>
+    </div>
+    <div class="field-row">
+      <div class="field" style="flex:1;"><label>Ciclo recebido carteira <span class="req">*</span></label><input type="text" name="ciclo" class="ciclo-input" id="pg-ciclo" required maxlength="13" value="${esc(pg?.ciclo||'')}" placeholder="CICLO-XX/XXXX"><div class="field-hint">💡 Preenchido automaticamente do projeto; pode ser ajustado.</div></div>
     </div>
     <div class="field"><label>Observações gerais</label><textarea name="observacoes">${esc(pg?.observacoes||'')}</textarea></div>
     <div class="field">
       <label>Local / endereço de execução</label>
       <input type="text" name="local" id="pg-local" value="${esc(pg?.local||'')}" placeholder="Digite o endereço onde a equipe vai executar…">
-      <div class="field-hint">Enquanto você digita, geramos automaticamente o link do Google Maps com a localização. Também dá para abrir o mapa e marcar o ponto exato. O local e o mapa vão para o documento (PDF), para os registros e para a mensagem do WhatsApp.</div>
+      <div class="field-hint">💡 Enquanto você digita, geramos automaticamente o link do Google Maps com a localização. Também dá para abrir o mapa e marcar o ponto exato. O local e o mapa vão para o documento (PDF), para os registros e para a mensagem do WhatsApp.</div>
       <div id="pg-local-tools"></div>
       <div id="pg-map-wrap" style="display:none;margin-top:8px;">
         <div id="pg-local-map" style="height:460px;width:100%;border-radius:10px;overflow:hidden;border:1px solid var(--border-soft);"></div>
@@ -2357,7 +2370,7 @@ function openAtribDetalhe(atribId){
     </div>
     <div class="field"><label>Anexos do programador</label>
       <input type="file" id="pg-anexos-input" accept="image/*" multiple>
-      <div class="field-hint">Imagens para a equipe visualizar (croqui, localização, detalhe do serviço). Também saem no RDO. A programação só pode ser salva depois que todas as imagens terminarem de enviar.</div>
+      <div class="field-hint">💡 Imagens para a equipe visualizar (croqui, localização, detalhe do serviço). Também saem no RDO. A programação só pode ser salva depois que todas as imagens terminarem de enviar.</div>
       <div id="pg-anexos-preview">${anexosGridHtml(anexos, true)}</div>
       <div id="pg-anexos-progress" style="display:none;margin-top:8px;">
         <div id="pg-anexos-progress-text" style="font-size:11px;color:var(--muted);margin-bottom:4px;">Enviando…</div>
@@ -2604,7 +2617,12 @@ function openAtribDetalhe(atribId){
       if(!isCicloValido(ciclo)){ toast('Informe o ciclo recebido no formato CICLO-XX/XXXX (ex.: CICLO-01/2026).', 'error'); return false; }
       if(!atribs.length || atribs.some(a=>!a.equipeId)){ toast('Selecione a equipe em todos os blocos.', 'error'); return false; }
       for(const a of atribs){ if(!a.atividades.length || a.atividades.some(x=>!x.atividadeId)){ toast('Selecione a atividade em todas as linhas.', 'error'); return false; } }
-      const dataBase = fd.get('dataProgramada'); const projetoId = Number(fd.get('projetoId')); const observacoes = fd.get('observacoes').trim();
+      const dataInicio = fd.get('dataInicio'); const dataFim = fd.get('dataFim') || dataInicio;
+      if(!dataInicio){ toast('Informe a data de início.', 'error'); return false; }
+      if(dataFim && dataFim < dataInicio){ toast('A data fim não pode ser anterior à data início.', 'error'); return false; }
+      const datas = gerarDatasIntervalo(dataInicio, dataFim || dataInicio);
+      if(datas.length > 31){ toast('O intervalo não pode ultrapassar 31 dias.', 'error'); return false; }
+      const projetoId = Number(fd.get('projetoId')); const observacoes = fd.get('observacoes').trim();
       const orientacoesPlanejamento = String(fd.get('orientacoesPlanejamento')||'').trim();
       const custom = parseCustomFieldsFromForm('programacoes', fd);
       const local = String(fd.get('local')||'').trim()||localAddr||'';
@@ -2612,23 +2630,29 @@ function openAtribDetalhe(atribId){
       const locLng = local? localLng : null;
       if(pg){
         const dataBaseAntiga = pg.dataProgramada;
-        pg.projetoId = projetoId; pg.dataProgramada = dataBase; pg.ciclo = ciclo; pg.observacoes = observacoes; pg.orientacoesPlanejamento = orientacoesPlanejamento; pg.custom = custom; pg.anexos = anexos; pg.local = local; pg.localLat = locLat; pg.localLng = locLng;
+        pg.projetoId = projetoId; pg.dataProgramada = dataInicio; pg.ciclo = ciclo; pg.observacoes = observacoes; pg.orientacoesPlanejamento = orientacoesPlanejamento; pg.custom = custom; pg.anexos = anexos; pg.local = local; pg.localLat = locLat; pg.localLng = locLng;
         const oldAtribs = pg.atribuicoes;
         pg.atribuicoes = atribs.map(a=>{
           const existing = oldAtribs.find(old => String(old.equipeId)===String(a.equipeId));
           const novasAtividades = a.atividades.map(x=>({atividadeId:Number(x.atividadeId), quantidadePrevista: x.quantidadePrevista?parseFloat(x.quantidadePrevista):null, quantidadeExecutada: existing? (existing.atividades.find(y=>y.atividadeId===Number(x.atividadeId))?.quantidadeExecutada ?? null) : null}));
-          if(existing){ if(existing.dataProgramada===dataBaseAntiga) existing.dataProgramada = dataBase; existing.atividades = novasAtividades; return existing; }
-          return { id: nextId(), equipeId:Number(a.equipeId), dataProgramada: dataBase, status:'Programado', atividades: novasAtividades, historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Atribuição adicionada à programação'}] };
+          if(existing){ if(existing.dataProgramada===dataBaseAntiga) existing.dataProgramada = dataInicio; existing.atividades = novasAtividades; return existing; }
+          return { id: nextId(), equipeId:Number(a.equipeId), dataProgramada: dataInicio, status:'Programado', atividades: novasAtividades, historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Atribuição adicionada à programação'}] };
         });
         toast('Programação atualizada.');
         registrarEvento('edicao','programacao',pg.id,progGid(pg), (pg.atribuicoes||[]).length+' equipe(s), '+pg.atribuicoes.reduce((s,a)=>s+(a.atividades?.length||0),0)+' atividade(s), '+anexos.length+' anexo(s)');
       } else {
-        const novaProg = { id: nextId(), gid: novoGid(), projetoId, dataProgramada: dataBase, ciclo, observacoes, orientacoesPlanejamento, custom, anexos, local, localLat: locLat, localLng: locLng,
-          atribuicoes: atribs.map(a=> ({ id: nextId(), equipeId:Number(a.equipeId), dataProgramada: dataBase, status:'Programado',
-            atividades: a.atividades.map(x=>({atividadeId:Number(x.atividadeId), quantidadePrevista:x.quantidadePrevista?parseFloat(x.quantidadePrevista):null, quantidadeExecutada:null})),
-            historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Programação criada'}] })) };
-        DB.programacoes.push(novaProg); toast('Programação criada.');
-        registrarEvento('criacao','programacao',novaProg.id,progGid(novaProg), novaProg.atribuicoes.length+' equipe(s), '+novaProg.atribuicoes.reduce((s,a)=>s+(a.atividades?.length||0),0)+' atividade(s), '+anexos.length+' anexo(s)');
+        const grupoId = 'GRP-'+Date.now()+'-'+Math.random().toString(36).slice(2,7);
+        let count = 0;
+        for(const dt of datas){
+          const novaProg = { id: nextId(), gid: novoGid(), grupoId, projetoId, dataProgramada: dt, ciclo, observacoes, orientacoesPlanejamento, custom, anexos: anexos.map(a=>({...a})), local, localLat: locLat, localLng: locLng,
+            atribuicoes: atribs.map(a=> ({ id: nextId(), equipeId:Number(a.equipeId), dataProgramada: dt, status:'Programado',
+              atividades: a.atividades.map(x=>({atividadeId:Number(x.atividadeId), quantidadePrevista:x.quantidadePrevista?parseFloat(x.quantidadePrevista):null, quantidadeExecutada:null})),
+              historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Programação criada'}] })) };
+          DB.programacoes.push(novaProg);
+          count++;
+        }
+        toast(count>1? count+' programações criadas no intervalo.' : 'Programação criada.');
+        registrarEvento('criacao','programacao',DB.programacoes[DB.programacoes.length-1].id,progGid(DB.programacoes[DB.programacoes.length-1]), count+' programação(ões), '+atribs.length+' equipe(s), '+atribs.reduce((s,a)=>s+a.atividades.length,0)+' atividade(s), '+anexos.length+' anexo(s)');
       }
       saveData(); renderContent(); renderBanner();
     }
@@ -3084,7 +3108,7 @@ function buildDocData(data, list){
 function openDocumentoDataModal(){
   const body = `
     <div class="field"><label>Data <span class="req">*</span></label><input type="date" name="data" required value="${todayISO()}"></div>
-    <div class="field-hint">Gera um documento de campo com todas as equipes programadas nesta data, para imprimir e preencher em campo.</div>`;
+    <div class="field-hint">💡 Gera um documento de campo com todas as equipes programadas nesta data, para imprimir e preencher em campo.</div>`;
   openModal({
     title:'Documento de campo — por data', bodyHtml:body, submitLabel:'Gerar e imprimir',
     onSubmit:(fd)=>{
@@ -3252,8 +3276,8 @@ function paintAdminUsersList(){
     <div class="field"><label>Papel (role) <span class="req">*</span></label><select name="role" required><option value="">Selecione…</option>${ROLES.map(r=>`<option value="${r.v}" ${u?.role===r.v?'selected':''}>${r.l} — ${r.d}</option>`).join('')}</select></div>
     <div class="field"><label>Nível de acesso <span class="req">*</span></label><select name="nivel" required><option value="">Selecione…</option>${NIVEIS_ACESSO.map(n=>`<option value="${n.v}" ${u?.nivel===n.v?'selected':''}>${n.l} — ${n.d}</option>`).join('')}</select></div>
     <div class="field-row">
-      <div class="field"><label>Setor</label><select name="setor"><option value="">Todos</option><option ${u?.setor==='MANUTENÇÃO'?'selected':''}>MANUTENÇÃO</option><option ${u?.setor==='OBRAS'?'selected':''}>OBRAS</option></select><div class="field-hint">Programadores só veem dados deste setor. Vazio = todos.</div></div>
-      <div class="field"><label>Coordenação</label><select name="coordenacao"><option value="">Todas</option><option ${u?.coordenacao==='RIO VERDE'?'selected':''}>RIO VERDE</option><option ${u?.coordenacao==='QUIRINOPOLIS'?'selected':''}>QUIRINOPOLIS</option></select><div class="field-hint">Programadores só veem dados desta coordenação. Vazio = todas.</div></div>
+      <div class="field"><label>Setor</label><select name="setor"><option value="">Todos</option><option ${u?.setor==='MANUTENÇÃO'?'selected':''}>MANUTENÇÃO</option><option ${u?.setor==='OBRAS'?'selected':''}>OBRAS</option></select><div class="field-hint">💡 Programadores só veem dados deste setor. Vazio = todos.</div></div>
+      <div class="field"><label>Coordenação</label><select name="coordenacao"><option value="">Todas</option><option ${u?.coordenacao==='RIO VERDE'?'selected':''}>RIO VERDE</option><option ${u?.coordenacao==='QUIRINOPOLIS'?'selected':''}>QUIRINOPOLIS</option></select><div class="field-hint">💡 Programadores só veem dados desta coordenação. Vazio = todas.</div></div>
     </div>
     <div class="field" style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="ativo" id="u-ativo" style="width:auto;" ${u? (u.ativo?'checked':'') : 'checked'}><label for="u-ativo" style="margin:0;">Usuário ativo</label></div>
   `;
