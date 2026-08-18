@@ -262,6 +262,74 @@ function renderRDOForm(){
     </div>`;
 }
 
+function renderOcNdsRDOForm(){
+  const horarioCampos = [
+    ['rdo_horario_chegada','Horário Chegada'],
+    ['rdo_horario_inicio','Horário Início das atividades']
+  ];
+  const gid = ocndsItem.gid||'G26-'+String(ocndsItem.id).padStart(7,'0');
+  const anexos = (ocndsItem&&ocndsItem.anexos)||[];
+  const anexosHtml = anexos.length ? `
+    <div class="panel section-gap" style="max-width:600px;margin:0 auto 14px;">
+      <div class="panel-head"><h3>Anexos do escritório</h3><span class="badge-prefix">${anexos.length} imagem(ns)</span></div>
+      <div style="padding:14px;">
+        <div class="anexos-grid">${anexos.map(a=>{ const src=a.url||a.dataUrl||''; return `<div class="anexo-thumb" role="button" tabindex="0" title="${esc(a.nome||'')}"><img src="${esc(src)}" alt="${esc(a.nome||'anexo')}"><div class="anexo-meta">${esc(a.nome||'')}</div></div>`; }).join('')}</div>
+      </div>
+    </div>` : '';
+  return `
+    ${anexosHtml}
+    <div class="panel section-gap" style="max-width:600px;margin:0 auto;">
+      <div class="panel-head"><h3>Questionário RDO - Saída da Base</h3><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${esc(gid)}</span></div>
+      <div style="padding:24px;">
+        <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">Responda às questões abaixo e informe os horários de saída da base. Os dados ficam salvos neste aparelho e são enviados quando você concluir as atividades.</p>
+        ${RDO_PERGUNTAS.map((p,i)=>`
+          <div style="margin-bottom:14px;">
+            <label style="display:block;font-weight:600;margin-bottom:4px;">${p.label}</label>
+            <select class="rdo-select" data-rdo="${p.id}" style="width:100%;padding:8px;font-size:14px;">
+              ${p.options.map(v=>`<option value="${v}" ${(p.padrao? v===p.padrao : v===p.options[0])?'selected':''}>${v}</option>`).join('')}
+            </select>
+          </div>`).join('')}
+        <div style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);">
+          <h4 style="margin:0 0 12px 0;font-size:13px;color:var(--dark);">KM do Veículo</h4>
+          <p style="font-size:12px;color:var(--muted-2);margin:0 0 14px 0;">Informe a quilometragem do veículo no início e fim das atividades.</p>
+          <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:4px;">KM Inicial</label>
+            <input type="number" class="rdo-input" data-rdo="rdo_km_inicial" inputmode="numeric" autocomplete="off" placeholder="0" style="width:100%;padding:8px;font-size:16px;font-family:'JetBrains Mono',monospace;letter-spacing:.06em;">
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:4px;">KM Final</label>
+            <input type="number" class="rdo-input" data-rdo="rdo_km_final" inputmode="numeric" autocomplete="off" placeholder="0" style="width:100%;padding:8px;font-size:16px;font-family:'JetBrains Mono',monospace;letter-spacing:.06em;">
+          </div>
+        </div>
+        <div style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);">
+          <h4 style="margin:0 0 12px 0;font-size:13px;color:var(--dark);">Horários de saída da base</h4>
+          <p style="font-size:12px;color:var(--muted-2);margin:0 0 14px 0;">Digite os números — o ":" entra automaticamente. Ex.: 07 30 → 07:30.</p>
+          ${horarioCampos.map(([id,label])=>`
+            <div style="margin-bottom:12px;">
+              <label style="display:block;margin-bottom:4px;">${label}</label>
+              <input type="text" class="rdo-input rdo-hora" data-rdo="${id}" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="HH:MM" style="width:100%;padding:8px;font-size:16px;font-family:'JetBrains Mono',monospace;letter-spacing:.06em;">
+            </div>`).join('')}
+          <p style="font-size:12px;color:var(--muted-2);margin:0 0 14px 0;">Os horários de <strong>finalização, saída da obra e chegada na base</strong> serão solicitados quando você concluir e enviar as atividades.</p>
+          <div style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);">
+            <button class="btn btn-primary" id="rdo-concluir" style="width:100%;padding:12px;font-size:16px;">Concluir RDO</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderOcNdsAnexosHtml(){
+  const anexos = (ocndsItem&&ocndsItem.anexos)||[];
+  if(!anexos.length) return '';
+  return `
+    <div class="panel section-gap" style="max-width:600px;margin:0 auto 14px;">
+      <div class="panel-head"><h3>Anexos do escritório</h3><span class="badge-prefix">${anexos.length} imagem(ns)</span></div>
+      <div style="padding:14px;">
+        <div class="anexos-grid">${anexos.map(a=>{ const src=a.url||a.dataUrl||''; return `<div class="anexo-thumb" role="button" tabindex="0" title="${esc(a.nome||'')}"><img src="${esc(src)}" alt="${esc(a.nome||'anexo')}"><div class="anexo-meta">${esc(a.nome||'')}</div></div>`; }).join('')}</div>
+      </div>
+    </div>`;
+}
+
 function anexosDoProgramadorHtml(){
   const anexos = (prog&&prog.anexos)||[];
   if(!anexos.length) return '';
@@ -387,6 +455,31 @@ function render(){
       return;
     }
 
+    const ocndsRdoPend = loadPendingRDO('ocnds_'+ocndsId);
+    if(ocndsRdoPend || (ocndsItem.rdoRespostas && Object.keys(ocndsItem.rdoRespostas||{}).length)){
+      rdoCompletado = true;
+    }
+
+    if(!rdoCompletado){
+      root.innerHTML = renderOcNdsRDOForm();
+      root.querySelectorAll('.rdo-hora').forEach(inp=>{
+        inp.addEventListener('input', ()=>{ maskHora(inp); });
+        inp.addEventListener('blur', ()=>{ padHora(inp); });
+      });
+      document.getElementById('rdo-concluir').addEventListener('click', ()=>{
+        const respostas = getRDORespostas();
+        if(!respostasRDOPreenchidas()){
+          toast('Responda todas as questões do RDO e preencha os horários (HH:MM) antes de continuar.', 'error');
+          return;
+        }
+        try{ savePendingRDO({ programacaoId: 'ocnds_'+ocndsId, ts: Date.now(), respostas: respostas }); }catch(e){}
+        rdoCompletado = true;
+        toast('RDO concluído. As respostas serão enviadas quando você concluir as ocorrência.');
+        render();
+      });
+      return;
+    }
+
     const isOC = ocndsItem.tipo === 'OC';
     const detalhesHtml = isOC ? `
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
@@ -405,7 +498,10 @@ function render(){
         <div class="field-hint">Preencha o número da ocorrência atribuída.</div>
       </div>` : '';
 
+    const anexosHtml = renderOcNdsAnexosHtml();
+
     root.innerHTML = `
+      ${anexosHtml}
       <div class="panel section-gap">
         <div class="panel-head">
           <div>
@@ -773,10 +869,10 @@ async function submitEditOcNds(){
           }))
         }))
       };
-      const pendRDO = loadPendingRDO(ocndsId);
+      const pendRDO = loadPendingRDO('ocnds_'+ocndsId);
       const respostas = Object.assign({}, (pendRDO&&pendRDO.respostas)||{}, horariosFinais||{});
       if(Object.keys(respostas).length){ patch.respostas = respostas; }
-      if(pendRDO) clearPendingRDO(ocndsId);
+      if(pendRDO) clearPendingRDO('ocnds_'+ocndsId);
       const q = loadQueue(); q.push(patch); saveQueue(q);
       observacao = '';
       enviado = true;
@@ -814,6 +910,7 @@ async function syncNowOcNds(){
       if(!item) return;
       item.numeroOC = patch.numeroOC || item.numeroOC;
       item.atividades = (patch.atribuicoes||[]).flatMap(pa=> pa.atividades||[]);
+      item.observacaoEquipe = patch.observacao || item.observacaoEquipe || '';
       item.status = 'Baixada';
       item.historico = item.historico||[];
       item.historico.push({ usuarioNome:'Equipe', usuarioLogin:'', ts:patch.ts, tipo:'equipe', de:'Despachada', para:'Baixada', motivo:patch.observacao });

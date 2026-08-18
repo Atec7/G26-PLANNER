@@ -3758,6 +3758,16 @@ function openOcNdsModal(id){
     </div>
 
     <div class="field"><label>Observações</label><textarea name="observacoes" rows="3" placeholder="Observações gerais...">${esc(item?.observacoes||'')}</textarea></div>
+
+    <div class="field"><label>Anexos do escritório</label>
+      <input type="file" id="ocnds-anexos-input" accept="image/*" multiple>
+      <div class="field-hint">💡 Imagens para a equipe visualizar em campo (croqui, localização, detalhe do serviço). Máximo 4 anexos.</div>
+      <div id="ocnds-anexos-preview">${anexosGridHtml(item?.anexos, true)}</div>
+      <div id="ocnds-anexos-progress" style="display:none;margin-top:8px;">
+        <div id="ocnds-anexos-progress-text" style="font-size:11px;color:var(--muted);margin-bottom:4px;">Enviando…</div>
+        <div style="height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden;"><div id="ocnds-anexos-progress-fill" style="height:100%;width:0%;background:var(--accent);transition:width .2s;"></div></div>
+      </div>
+    </div>
   `;
 
   openModal({
@@ -3795,6 +3805,52 @@ function openOcNdsModal(id){
         `;
         container.appendChild(div);
       });
+      let ocndsAnexosEnviando = false;
+      const anexosList = item ? (item.anexos||[]).map(a=>({...a})) : [];
+      window._ocndsAnexos = anexosList;
+      const ocndsPreview = root.querySelector('#ocnds-anexos-preview');
+      const ocndsInput = root.querySelector('#ocnds-anexos-input');
+      const ocndsProgress = root.querySelector('#ocnds-anexos-progress');
+      const ocndsProgressText = root.querySelector('#ocnds-anexos-progress-text');
+      const ocndsProgressFill = root.querySelector('#ocnds-anexos-progress-fill');
+      function paintOcndsAnexos(){
+        ocndsPreview.innerHTML = anexosGridHtml(anexosList, true);
+        ocndsPreview.querySelectorAll('.anexo-remove').forEach(b=>b.addEventListener('click', ()=>{
+          anexosList.splice(Number(b.dataset.i),1); paintOcndsAnexos();
+        }));
+      }
+      ocndsInput.addEventListener('change', async ()=>{
+        const files = Array.from(ocndsInput.files||[]);
+        if(!files.length) return;
+        const sobra = Math.max(0, 4 - anexosList.length);
+        const fila = files.slice(0, sobra);
+        if(files.length > sobra) toast('Máximo de 4 anexos por ocorrência.', 'error');
+        if(!fila.length){ ocndsInput.value=''; return; }
+        ocndsInput.disabled = true;
+        ocndsAnexosEnviando = true;
+        const total = fila.length;
+        let feitos = 0;
+        const atualizar = ()=>{
+          ocndsProgressFill.style.width = Math.round(feitos/total*100)+'%';
+          ocndsProgressText.textContent = total>1? `Enviando ${Math.min(feitos+1,total)} de ${total}…` : 'Enviando…';
+        };
+        ocndsProgress.style.display = 'block';
+        paintOcndsAnexos();
+        for(const f of fila){
+          try{
+            const blob = await comprimirImagem(f);
+            const url = await uploadToImgbb(blob);
+            anexosList.push({url, nome: f.name});
+          }catch(e){ console.error('Falha upload anexo OC/NDS:', e); toast('Falha ao enviar "'+f.name+'": '+e.message, 'error'); }
+          feitos++; atualizar(); paintOcndsAnexos();
+        }
+        ocndsAnexosEnviando = false;
+        ocndsInput.disabled = false;
+        ocndsInput.value = '';
+        ocndsProgress.style.display = 'none';
+        window._ocndsAnexos = anexosList;
+      });
+      paintOcndsAnexos();
     },
     onSubmit: (fd) => {
       const tipo = fd.get('tipo');
@@ -3832,6 +3888,7 @@ function openOcNdsModal(id){
         item.observacoes = observacoes;
         item.equipeId = equipeIds[0];
         item.equipeIds = equipeIds;
+        item.anexos = (window._ocndsAnexos||[]).slice();
         item.historico = item.historico||[];
         item.historico.push({...currentAutor(), ts:Date.now(), tipo:'edicao', de:null, para:item.status, motivo:'Ocorrência editada'});
         toast('Ocorrência atualizada.');
@@ -3851,6 +3908,7 @@ function openOcNdsModal(id){
             data,
             equipeId: eqId,
             observacoes,
+            anexos: (window._ocndsAnexos||[]).slice(),
             status: 'Despachada',
             numeroOC: '',
             atividades: [],
@@ -3943,6 +4001,18 @@ function openOcNdsDetalhe(id){
       ${detalhesHtml}
 
       ${x.observacoes? `<div class="dtl-section"><div class="dtl-section-head"><h4>Observações</h4></div><div style="padding:12px;white-space:pre-wrap;">${esc(x.observacoes)}</div></div>` : ''}
+
+      ${anexosDisplayHtml(x.anexos)}
+
+      ${x.observacaoEquipe? `<div class="dtl-section"><div class="dtl-section-head"><h4>Observação da equipe</h4></div><div style="padding:12px;white-space:pre-wrap;">${esc(x.observacaoEquipe)}</div></div>` : ''}
+
+      ${(x.rdoRespostas&&Object.keys(x.rdoRespostas).length)? `
+      <div class="dtl-section">
+        <div class="dtl-section-head"><h4>Questionário RDO respondido</h4></div>
+        <div style="padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          ${Object.entries(x.rdoRespostas).map(([k,v])=>`<div class="dtl-tile"><div class="dtl-tile-lbl">${esc(k)}</div><div class="dtl-tile-val" style="font-size:13px;">${esc(String(v))}</div></div>`).join('')}
+        </div>
+      </div>` : ''}
 
       ${historicoHtml}
 
