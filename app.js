@@ -542,6 +542,15 @@ document.addEventListener('click', (e)=>{
     const container = foto.closest('.rdo-fotos');
     const imgs = Array.from(container.querySelectorAll('.rdo-foto'));
     openLightbox(imgs.map(x=>x.src), imgs.indexOf(foto));
+    return;
+  }
+  const execFoto = e.target.closest('.dtl-exec-foto');
+  if(execFoto){
+    try {
+      const todasFotos = JSON.parse(execFoto.dataset.fotos);
+      const idx = Number(execFoto.dataset.idx)||0;
+      openLightbox(todasFotos, idx);
+    } catch(ex){}
   }
 });
 function toast(msg, kind='ok'){
@@ -2261,6 +2270,17 @@ function atribDetalheHtml(programacao, atrib, comAcoes=true){
       </div>
 
       ${teamE? `<div class="dtl-team-note">${icon('alert',14)} <div><strong>Alterada pela equipe</strong> em ${fmtDateTime(teamE.ts)} — ${esc(teamE.motivo||'')}</div></div>`:''}
+
+      ${(() => {
+        const todasFotos = (atrib.atividades||[]).flatMap(a => String(a.fotos||'').split(';;').filter(Boolean));
+        if(!todasFotos.length) return '';
+        return `<div class="dtl-section">
+          <div class="dtl-section-head"><h4>Fotos da execução</h4><span class="mono">${todasFotos.length} foto(s)</span></div>
+          <div style="padding:12px;display:flex;gap:8px;flex-wrap:wrap;">
+            ${todasFotos.map((url, fi) => `<div class="dtl-exec-foto" data-fotos='${esc(JSON.stringify(todasFotos))}' data-idx="${fi}" style="width:80px;height:80px;border-radius:8px;overflow:hidden;border:1px solid var(--border);cursor:zoom-in;flex-shrink:0;"><img src="${esc(url)}" alt="Foto execução ${fi+1}" style="width:100%;height:100%;object-fit:cover;"></div>`).join('')}
+          </div>
+        </div>`;
+      })()}
 
       <div class="dtl-section">
         <div class="dtl-section-head"><h4>Atividades</h4><span class="mono">${fmtMoney(totPrev)} previsto</span></div>
