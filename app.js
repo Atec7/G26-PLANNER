@@ -199,11 +199,6 @@ function nivelLabel(v){ return NIVEIS_ACESSO.find(n=>n.v===v)?.l || v; }
 const NAV_ITEMS = [
   { id:'dashboard',   label:'Painel',        sub:'Visão geral do sistema', icon:'grid' },
   { id:'alertas',     label:'Alertas',       sub:'Projetos vencendo, reprogramações e viabilidade', icon:'alert' },
-  { id:'medição',     label:'Medição',       sub:'Medição de quantidades e aferições', icon:'ruler', children:[
-    { id:'medição-projetos', label:'Projetos', sub:'Medição por projetos', icon:'folder' },
-    { id:'medição-ocnds',    label:'OC/NDS/OSE', sub:'Medição OC/NDS e OSE', icon:'siren' },
-    { id:'medição-poda',     label:'PODA', sub:'Medição de poda', icon:'tree' },
-  ]},
   { id:'equipes',     label:'Equipes',       sub:'Cadastro de equipes de campo', icon:'users' },
   { id:'atividades',  label:'Atividades',    sub:'Cadastro de códigos e valores unitários', icon:'list' },
   { id:'projetos',    label:'Projetos',      sub:'Cadastro de projetos', icon:'folder' },
@@ -246,53 +241,23 @@ const ICONS = {
   layers:'<path d="m12 2 10 6-10 6L2 8Z"/><path d="m2 16 10 6 10-6"/><path d="m2 12 10 6 10-6"/>',
   tree:'<path d="M12 21V12"/><path d="M12 3c-2 0-3 2-3 4 0-2-2-3-4-3 0 3 2 4 3 6-2 0-4 1-4 3 0 1.5 1 3 3 3h10c2 0 3-1.5 3-3 0-2-2-3-4-3 1-2 3-3 3-6-2 0-4 1-4 3 0-2-1-4-3-4Z"/><path d="M12 21v-4"/>',
   siren:'<path d="M7 18v-6a5 5 0 0 1 10 0v6"/><path d="M7 21h10"/><path d="M6.5 9.5 4 10M17.5 9.5 20 10M12 3v2M5 6l2 2M19 6l-2 2M8 12h.01M16 12h.01"/><path d="M12 18v3"/>',
-  ruler:'<path d="M21.7 7.3l-5-5a1 1 0 0 0-1.4 0l-13 13a1 1 0 0 0 0 1.4l5 5a1 1 0 0 0 1.4 0l13-13a1 1 0 0 0 0-1.4zM8 11l2 2M11 8l2 2M14 11l2 2"/>',
 };
 function icon(name,size=16){ return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`; }
 
-    const navExpanded = {};
     function renderNav(){
       const nav = document.getElementById('nav');
       const items = NAV_ITEMS.filter(it=> it.id!=='admin' || (CURRENT_USER && CURRENT_USER.role==='administrador'));
       const alertTotal = alertaCount();
       nav.innerHTML = items.map((it,i) => {
         const badge = it.id==='alertas' && alertTotal>0 ? `<span class="nav-badge">${alertTotal}</span>` : '';
-        const sep = i===items.length-1 ? '<div class="nav-sep"></div>' : '';
-        const isActive = currentView===it.id || (it.children && it.children.some(c=>c.id===currentView));
-        if(isActive) navExpanded[it.id] = true;
-        const expanded = !!navExpanded[it.id];
-        const chevron = it.children ? `<span class="nav-chevron ${expanded?'open':''}">${icon('chevR',14)}</span>` : '';
-        const mainBtn = `<button class="nav-item ${isActive?'active':''}" data-view="${it.id}" ${it.children?'data-has-children="1"':''}>${icon(it.icon)}<span>${it.label}</span>${badge}${chevron}</button>`;
-        if(!it.children) return sep + mainBtn;
-        const subBtns = it.children.map(c=> `<button class="nav-item nav-sub ${currentView===c.id?'active':''}" data-view="${c.id}">${icon(c.icon)}<span>${c.label}</span></button>`).join('');
-        return sep + mainBtn + `<div class="nav-sub-wrap ${expanded?'open':''}">${subBtns}</div>`;
+        return `${i===items.length-1?'<div class="nav-sep"></div>':''}<button class="nav-item ${currentView===it.id?'active':''}" data-view="${it.id}">${icon(it.icon)}<span>${it.label}</span>${badge}</button>`;
       }).join('');
-      nav.querySelectorAll('[data-has-children]').forEach(btn=>{
-        btn.addEventListener('click', (e)=>{
-          e.preventDefault();
-          e.stopPropagation();
-          const wrap = btn.nextElementSibling;
-          if(!wrap || !wrap.classList.contains('nav-sub-wrap')) return;
-          const view = btn.dataset.view;
-          navExpanded[view] = !navExpanded[view];
-          wrap.classList.toggle('open', navExpanded[view]);
-          btn.querySelector('.nav-chevron').classList.toggle('open', navExpanded[view]);
-        });
-      });
-      nav.querySelectorAll('.nav-item[data-view]:not([data-has-children])').forEach(btn=>{
-        btn.addEventListener('click', ()=> setView(btn.dataset.view));
-      });
+      nav.querySelectorAll('.nav-item').forEach(btn=> btn.addEventListener('click', ()=> setView(btn.dataset.view)));
     }
 function setView(view){
   currentView = view;
   document.getElementById('sidebar').classList.remove('open');
-  let meta = NAV_ITEMS.find(i=>i.id===view);
-  if(!meta && view.startsWith('medição-')){
-    meta = NAV_ITEMS.find(i=>i.id==='medição');
-    const child = meta?.children?.find(c=>c.id===view);
-    if(child){ meta = { ...meta, label: child.label, sub: child.sub }; }
-  }
-  if(!meta) meta = { label:view, sub:'' };
+  const meta = NAV_ITEMS.find(i=>i.id===view);
   document.getElementById('page-title').textContent = meta.label;
   document.getElementById('page-sub').textContent = meta.sub;
   renderNav(); renderTopbarActions(); renderContent(); renderBanner();
@@ -3461,7 +3426,7 @@ document.getElementById('import-file').addEventListener('change', (e)=>{
    ROUTER
 ========================================================= */
 function renderContent(){
-  const map = { dashboard: renderDashboard, alertas: renderAlertas, 'medição': renderMedição, 'medição-projetos': renderMediçãoProjetos, 'medição-ocnds': renderMediçãoOCNDS, 'medição-poda': renderMediçãoPoda, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, osepoda: renderOsePoda, ocnds: renderOcNds, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin, RDO: renderProgramacoesConcluidas };
+  const map = { dashboard: renderDashboard, alertas: renderAlertas, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, osepoda: renderOsePoda, ocnds: renderOcNds, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin, RDO: renderProgramacoesConcluidas };
   (map[currentView]||renderDashboard)();
 }
 
@@ -3473,18 +3438,6 @@ function renderOsePoda(){
 }
 function renderOcNds(){
   renderModuloEmDesenvolvimento('OC/NDS');
-}
-function renderMedição(){
-  renderModuloEmDesenvolvimento('Medição');
-}
-function renderMediçãoProjetos(){
-  renderModuloEmDesenvolvimento('Medição – Projetos');
-}
-function renderMediçãoOCNDS(){
-  renderModuloEmDesenvolvimento('Medição – OC/NDS/OSE');
-}
-function renderMediçãoPoda(){
-  renderModuloEmDesenvolvimento('Medição – PODA');
 }
 function renderModuloEmDesenvolvimento(titulo){
   const el = document.getElementById('content');
