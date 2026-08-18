@@ -206,6 +206,18 @@ function renderRDOForm(){
             </select>
           </div>`).join('')}
         <div style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);">
+          <h4 style="margin:0 0 12px 0;font-size:13px;color:var(--dark);">KM do Veículo</h4>
+          <p style="font-size:12px;color:var(--muted-2);margin:0 0 14px 0;">Informe a quilometragem do veículo no início e fim das atividades.</p>
+          <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:4px;">KM Inicial</label>
+            <input type="number" class="rdo-input" data-rdo="rdo_km_inicial" inputmode="numeric" autocomplete="off" placeholder="0" style="width:100%;padding:8px;font-size:16px;font-family:'JetBrains Mono',monospace;letter-spacing:.06em;">
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:4px;">KM Final</label>
+            <input type="number" class="rdo-input" data-rdo="rdo_km_final" inputmode="numeric" autocomplete="off" placeholder="0" style="width:100%;padding:8px;font-size:16px;font-family:'JetBrains Mono',monospace;letter-spacing:.06em;">
+          </div>
+        </div>
+        <div style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);">
           <h4 style="margin:0 0 12px 0;font-size:13px;color:var(--dark);">Horários de saída da base</h4>
           <p style="font-size:12px;color:var(--muted-2);margin:0 0 14px 0;">Digite os números — o ":" entra automaticamente. Ex.: 07 30 → 07:30.</p>
           ${horarioCampos.map(([id,label])=>`
@@ -748,6 +760,8 @@ async function syncNow(){
           at.rdoLicencaAmbiental = patch.respostas.rdo_licenca_ambiental || at.rdoLicencaAmbiental;
           at.rdoAutorizacaoEmbargo = patch.respostas.rdo_autorizacao_embargo || at.rdoAutorizacaoEmbargo;
           at.rdoDesligamento = patch.respostas.rdo_desligamento || at.rdoDesligamento;
+          at.rdoKmInicial = patch.respostas.rdo_km_inicial || at.rdoKmInicial;
+          at.rdoKmFinal = patch.respostas.rdo_km_final || at.rdoKmFinal;
         }
         changed = true;
       });

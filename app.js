@@ -178,6 +178,10 @@ const RDO_HORARIOS = [
   { k:'rdoHorarioSaidaObra', label:'Horário Saída da obra' },
   { k:'rdoHorarioChegadaBase', label:'Horário Chegada na base' }
 ];
+const RDO_KM = [
+  { k:'rdoKmInicial', label:'KM Inicial' },
+  { k:'rdoKmFinal', label:'KM Final' }
+];
 const IMGGB_KEY = '95bb16ee776d7e20f26857cec98bd372';
 const MODULOS_ADMIN = [{k:'equipes',l:'Equipes'},{k:'atividades',l:'Atividades'},{k:'projetos',l:'Projetos'},{k:'programacoes',l:'Programações'}];
 const ROLES = [
@@ -3404,6 +3408,13 @@ function paintAdminRdoList(){
         </table>
       </div>
       <div style="margin-bottom:16px;">
+        <h4>KM do Veículo</h4>
+        <table style="width:100%;border-collapse:collapse;">
+          ${RDO_KM.map(h=>`
+            <tr><td style="font-weight:600;padding-right:16px;">${h.label}</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao[h.k]||'--'}</td></tr>`).join('')}
+        </table>
+      </div>
+      <div style="margin-bottom:16px;">
         <h4>Condições Climáticas e Impedimentos</h4>
         <table style="width:100%;border-collapse:collapse;">
           <tr><td style="font-weight:600;padding-right:16px;">Condições climáticas</td><td style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">${entry.atribuicao.rdoCondicoes||'--'}</td></tr>
@@ -4143,9 +4154,10 @@ function rdoTemExecucao(x){
   const rdo = at.rdoRespostas||{};
   const temRespostas = Object.values(rdo).some(v=> v && String(v).trim()!=='');
   const temHorarios = RDO_HORARIOS.some(h=> at[h.k]);
+  const temKm = RDO_KM.some(h=> at[h.k]);
   const temExec = (at.atividades||[]).some(a=> a.quantidadeExecutada!=null && String(a.quantidadeExecutada).trim()!=='');
   const temCond = ['rdoCondicoes','rdoImpedimento','rdoFaltaMaterial','rdoProjetoIncoerente','rdoEquipeIncompleta','rdoFaltaVeiculo','rdoImpedimentoAcesso','rdoLicencaAmbiental','rdoAutorizacaoEmbargo','rdoDesligamento'].some(k=> at[k]);
-  return temRespostas || temHorarios || temExec || temCond || at.status==='Concluído';
+  return temRespostas || temHorarios || temKm || temExec || temCond || at.status==='Concluído';
 }
 function rdoResumo(x){
   const at = x.atribuicao;
@@ -4399,6 +4411,14 @@ function openRDOModal(progId, attribId){
       <table style="width:100%;border-collapse:collapse;font-size:12.5px;">${horarios}</table>
     </div>
     <div style="margin-bottom:20px;">
+      <h4 style="margin-bottom:8px;">KM do Veículo</h4>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        ${RDO_KM.map(h=> `
+          <tr><td style="font-weight:600;padding:5px 12px 5px 0;white-space:nowrap;">${h.label}</td>
+          <td style="padding:5px 10px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao[h.k]||'—'}</td></tr>`).join('')}
+      </table>
+    </div>
+    <div style="margin-bottom:20px;">
       <h4 style="margin-bottom:8px;">Condições do RDO</h4>
       <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
         ${RDO_QUESTIONS.map(q=>`
@@ -4457,6 +4477,7 @@ function editRdoModal(x){
   if(!requerEscrita()) return;
   const at = x.atribuicao;
   const horarios = RDO_HORARIOS.map(h=>`<div class="field" style="flex:1;"><label>${h.label}</label><input type="time" name="${h.k}" value="${at[h.k]||''}"></div>`).join('');
+  const kmFields = RDO_KM.map(h=>`<div class="field" style="flex:1;"><label>${h.label}</label><input type="number" name="${h.k}" value="${at[h.k]||''}" placeholder="0"></div>`).join('');
   const condicoes = RDO_QUESTIONS.map(q=>`<div class="field"><label>${q.label}</label><select name="${q.id}">${rdoOptionsHtml(q, at.rdoRespostas?.[q.id])}</select></div>`).join('');
   const ativs = (at.atividades||[]).map((a,idx)=>{
     const atDef = findAtividade(a.atividadeId);
@@ -4468,6 +4489,10 @@ function editRdoModal(x){
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-soft);">
       <h4 style="font-size:12.5px;margin:0 0 10px;">Horários do RDO</h4>
       <div class="field-row" style="grid-template-columns:1fr 1fr;">${horarios}</div>
+    </div>
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-soft);">
+      <h4 style="font-size:12.5px;margin:0 0 10px;">KM do Veículo</h4>
+      <div class="field-row" style="grid-template-columns:1fr 1fr;">${kmFields}</div>
     </div>
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-soft);">
       <h4 style="font-size:12.5px;margin:0 0 10px;">Condições do RDO</h4>
@@ -4486,6 +4511,7 @@ function editRdoModal(x){
       const obs = String(fd.get('obs')||'').trim();
       at.rdoRespostas = at.rdoRespostas||{};
       RDO_HORARIOS.forEach(h=>{ at[h.k] = String(fd.get(h.k)||'').trim(); });
+      RDO_KM.forEach(h=>{ at[h.k] = String(fd.get(h.k)||'').trim(); });
       RDO_QUESTIONS.forEach(q=>{ at.rdoRespostas[q.id] = String(fd.get(q.id)||'').trim(); });
       at.rdoCondicoes = at.rdoRespostas.rdo_condicoes||'';
       (at.atividades||[]).forEach((a,idx)=>{
@@ -4510,6 +4536,7 @@ function printRDOCompleto(x){
   const av = pr? projetoAvanco(pr) : null;
   const geradoPor = CURRENT_USER ? ((CURRENT_USER.nome||'') + (CURRENT_USER.login? ' ('+CURRENT_USER.login+')':'') || 'Sistema') : 'Sistema';
   const horarios = RDO_HORARIOS.map(h=>`<tr><td style="border:1px solid #999;padding:4px 8px;font-weight:600;background:#f5f5f5;">${h.label}</td><td style="border:1px solid #999;padding:4px 8px;">${x.atribuicao[h.k]||'—'}</td></tr>`).join('');
+  const kmRows = RDO_KM.map(h=>`<tr><td style="border:1px solid #999;padding:4px 8px;font-weight:600;background:#f5f5f5;">${h.label}</td><td style="border:1px solid #999;padding:4px 8px;">${x.atribuicao[h.k]||'—'}</td></tr>`).join('');
   const condicoes = RDO_QUESTIONS.map(q=>`<tr><td style="border:1px solid #999;padding:4px 8px;font-weight:600;background:#f5f5f5;">${q.label}</td><td style="border:1px solid #999;padding:4px 8px;">${String(rdo[q.id]||'')||'—'}</td></tr>`).join('');
   const impedHtml = imped.length? imped.map(i=>`<span style="display:inline-block;border:1px solid #d95555;color:#b33;background:#fdecec;border-radius:4px;padding:2px 8px;margin:2px 3px 2px 0;">${esc(i)}</span>`).join('') : '—';
   const ativRows = (x.atribuicao.atividades||[]).map((a,idx)=>{
@@ -4605,6 +4632,9 @@ function printRDOCompleto(x){
     <h2>Horários do RDO</h2>
     <table>${horarios}</table>
 
+    <h2>KM do Veículo</h2>
+    <table>${kmRows}</table>
+
     <h2>Condições do RDO</h2>
     <table>${condicoes}</table>
     <p class="meta" style="margin-top:8px;">Impedimentos: ${impedHtml}</p>
@@ -4664,6 +4694,7 @@ function exportRDOExcel(registros){
       'Confirmação': rdoConfData(x)
     };
     RDO_HORARIOS.forEach(h=> base[h.label]= x.atribuicao[h.k]||'');
+    RDO_KM.forEach(h=> base[h.label]= x.atribuicao[h.k]||'');
     const detalhe = (x.atribuicao.atividades||[]).map((a,idx)=>{
       const at = findAtividade(a.atividadeId);
       const p = parseFloat(a.quantidadePrevista)||0;
