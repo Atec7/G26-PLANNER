@@ -197,6 +197,46 @@ const NIVEIS_ACESSO = [
 function roleLabel(v){ return ROLES.find(r=>r.v===v)?.l || v; }
 function nivelLabel(v){ return NIVEIS_ACESSO.find(n=>n.v===v)?.l || v; }
 
+const TELAS = [
+  { id:'dashboard',       label:'Painel' },
+  { id:'alertas',         label:'Alertas' },
+  { id:'medição',         label:'Medição' },
+  { id:'medição-projetos',label:'Medição - Projetos' },
+  { id:'medição-ocnds',   label:'Medição - OC/NDS' },
+  { id:'medição-poda',    label:'Medição - PODA' },
+  { id:'equipes',         label:'Equipes' },
+  { id:'atividades',      label:'Atividades' },
+  { id:'projetos',        label:'Projetos' },
+  { id:'osepoda',         label:'OSE/PODA' },
+  { id:'ocnds',           label:'OC/NDS' },
+  { id:'avanco',          label:'Avanço' },
+  { id:'programacoes',    label:'Programações' },
+  { id:'RDO',             label:'RDO' },
+  { id:'historico',       label:'Histórico' },
+  { id:'admin',           label:'Administração' },
+];
+function telaPodeVer(telaId){
+  if(!CURRENT_USER) return true;
+  if(ehMestre()) return true;
+  const p = (CURRENT_USER.permissoes||{})[telaId];
+  return p === 'leitura' || p === 'edicao';
+}
+function telaPodeEditar(telaId){
+  if(!CURRENT_USER) return true;
+  if(ehMestre()) return true;
+  const p = (CURRENT_USER.permissoes||{})[telaId];
+  return p === 'edicao';
+}
+function podeEditar(){
+  if(!CURRENT_USER) return true;
+  if(ehMestre()) return true;
+  if(CURRENT_USER.permissoes && Object.keys(CURRENT_USER.permissoes).length){
+    return telaPodeEditar(currentView);
+  }
+  return CURRENT_USER.nivel !== 'leitura';
+}
+function requerEscrita(){ if(podeEditar()) return true; toast('Seu usuário não tem permissão de edição nesta tela.', 'error'); return false; }
+
 /* =========================================================
    NAVEGAÇÃO
 ========================================================= */
@@ -257,7 +297,14 @@ function icon(name,size=16){ return `<svg width="${size}" height="${size}" viewB
     const navExpanded = {};
     function renderNav(){
       const nav = document.getElementById('nav');
-      const items = NAV_ITEMS.filter(it=> it.id!=='admin' || (CURRENT_USER && CURRENT_USER.role==='administrador'));
+      const items = NAV_ITEMS.filter(it=>{
+        if(it.id==='admin') return CURRENT_USER && CURRENT_USER.role==='administrador';
+        if(it.children){
+          const visChildren = it.children.filter(c=> telaPodeVer(c.id));
+          if(!visChildren.length) return false;
+        }
+        return telaPodeVer(it.id);
+      });
       const alertTotal = alertaCount();
       nav.innerHTML = items.map((it,i) => {
         const badge = it.id==='alertas' && alertTotal>0 ? `<span class="nav-badge">${alertTotal}</span>` : '';
@@ -3311,49 +3358,82 @@ function renderAdmin(){
 function paintAdminUsersList(){
   const wrap = document.getElementById('admin-users-list');
   const users = DB.usuarios||[];
-  wrap.innerHTML = users.length? users.map(u=>`
-    <div class="admin-field-row">
+  wrap.innerHTML = users.length? users.map(u=>{
+    const perm = u.permissoes||{};
+    const permKeys = Object.keys(perm);
+    const temEdit = permKeys.filter(k=>perm[k]==='edicao').length;
+    const temVer = permKeys.filter(k=>perm[k]==='leitura').length;
+    const permResumo = permKeys.length ? `${temEdit} editar, ${temVer} ver` : nivelLabel(u.nivel);
+    return `<div class="admin-field-row">
       <div>
         <strong>${esc(u.nome)}</strong>
-        <div class="admin-field-meta">${esc(u.login)} · ${roleLabel(u.role)} · ${nivelLabel(u.nivel)}${u.setor||u.coordenacao? ' · '+esc([u.setor,u.coordenacao].filter(Boolean).join(' / ')):''}${u.ativo?'':' · Inativo'}</div>
+        <div class="admin-field-meta">${esc(u.login)} · ${permResumo}${u.setor||u.coordenacao? ' · '+esc([u.setor,u.coordenacao].filter(Boolean).join(' / ')):''}${u.ativo?'':' · Inativo'}</div>
       </div>
       <div class="row-actions">
         <button class="icon-btn" data-edit-user="${u.id}">${icon('edit',14)}</button>
         <button class="icon-btn" data-del-user="${u.id}">${icon('trash',14)}</button>
       </div>
-    </div>`).join('') : `<div style="padding:20px;color:var(--muted-2);font-size:12.5px;">Nenhum usuário cadastrado. Clique em "Novo usuário" para começar.</div>`;
+    </div>`;
+  }).join('') : `<div style="padding:20px;color:var(--muted-2);font-size:12.5px;">Nenhum usuário cadastrado. Clique em "Novo usuário" para começar.</div>`;
   wrap.querySelectorAll('[data-edit-user]').forEach(b=>b.addEventListener('click', ()=>openUsuarioModal(b.dataset.editUser)));
   wrap.querySelectorAll('[data-del-user]').forEach(b=>b.addEventListener('click', ()=>deleteUsuario(b.dataset.delUser)));
 }
     function openUsuarioModal(id){
       if(!requerEscrita()) return;
       const u = id ? (DB.usuarios||[]).find(x=>x.id===Number(id)) : null;
-  const body = `
-    <div class="field"><label>Nome <span class="req">*</span></label><input type="text" name="nome" required value="${esc(u?.nome||'')}" placeholder="Nome do usuário"></div>
-    <div class="field"><label>Login <span class="req">*</span></label><input type="text" name="login" required value="${esc(u?.login||'')}" placeholder="Ex: jose.silva"></div>
-    <div class="field"><label>Senha <span class="req">*</span></label><input type="password" name="senha" ${u? '': 'required'} value="" placeholder="${u? 'Deixe em branco para manter a atual':'Defina uma senha'}"></div>
-    <div class="field"><label>Papel (role) <span class="req">*</span></label><select name="role" required><option value="">Selecione…</option>${ROLES.map(r=>`<option value="${r.v}" ${u?.role===r.v?'selected':''}>${r.l} — ${r.d}</option>`).join('')}</select></div>
-    <div class="field"><label>Nível de acesso <span class="req">*</span></label><select name="nivel" required><option value="">Selecione…</option>${NIVEIS_ACESSO.map(n=>`<option value="${n.v}" ${u?.nivel===n.v?'selected':''}>${n.l} — ${n.d}</option>`).join('')}</select></div>
-    <div class="field-row">
-      <div class="field"><label>Setor</label><select name="setor"><option value="">Todos</option><option ${u?.setor==='MANUTENÇÃO'?'selected':''}>MANUTENÇÃO</option><option ${u?.setor==='OBRAS'?'selected':''}>OBRAS</option></select><div class="field-hint">💡 Programadores só veem dados deste setor. Vazio = todos.</div></div>
-      <div class="field"><label>Coordenação</label><select name="coordenacao"><option value="">Todas</option><option ${u?.coordenacao==='RIO VERDE'?'selected':''}>RIO VERDE</option><option ${u?.coordenacao==='QUIRINOPOLIS'?'selected':''}>QUIRINOPOLIS</option></select><div class="field-hint">💡 Programadores só veem dados desta coordenação. Vazio = todas.</div></div>
-    </div>
-    <div class="field" style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="ativo" id="u-ativo" style="width:auto;" ${u? (u.ativo?'checked':'') : 'checked'}><label for="u-ativo" style="margin:0;">Usuário ativo</label></div>
-  `;
+      const perm = u?.permissoes || {};
+      const permGrid = TELAS.map(t => {
+        const val = perm[t.id] || 'nenhum';
+        return `<div style="display:grid;grid-template-columns:1fr 100px 90px 80px;gap:0;align-items:center;border-bottom:1px solid var(--border-soft);padding:6px 0;font-size:13px;">
+          <span style="font-weight:500;">${t.label}</span>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;justify-content:center;"><input type="radio" name="perm_${t.id}" value="nenhum" ${val==='nenhum'?'checked':''} style="margin:0;"> Nenhum</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;justify-content:center;"><input type="radio" name="perm_${t.id}" value="leitura" ${val==='leitura'?'checked':''} style="margin:0;"> Ver</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;justify-content:center;"><input type="radio" name="perm_${t.id}" value="edicao" ${val==='edicao'?'checked':''} style="margin:0;"> Editar</label>
+        </div>`;
+      }).join('');
+      const body = `
+      <div class="field"><label>Nome <span class="req">*</span></label><input type="text" name="nome" required value="${esc(u?.nome||'')}" placeholder="Nome do usuário"></div>
+      <div class="field"><label>Login <span class="req">*</span></label><input type="text" name="login" required value="${esc(u?.login||'')}" placeholder="Ex: jose.silva"></div>
+      <div class="field"><label>Senha <span class="req">*</span></label><input type="password" name="senha" ${u? '': 'required'} value="" placeholder="${u? 'Deixe em branco para manter a atual':'Defina uma senha'}"></div>
+      <div class="field-row">
+        <div class="field"><label>Setor</label><select name="setor"><option value="">Todos</option><option ${u?.setor==='MANUTENÇÃO'?'selected':''}>MANUTENÇÃO</option><option ${u?.setor==='OBRAS'?'selected':''}>OBRAS</option></select></div>
+        <div class="field"><label>Coordenação</label><select name="coordenacao"><option value="">Todas</option><option ${u?.coordenacao==='RIO VERDE'?'selected':''}>RIO VERDE</option><option ${u?.coordenacao==='QUIRINOPOLIS'?'selected':''}>QUIRINOPOLIS</option></select></div>
+      </div>
+      <div class="field" style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="ativo" id="u-ativo" style="width:auto;" ${u? (u.ativo?'checked':'') : 'checked'}><label for="u-ativo" style="margin:0;">Usuário ativo</label></div>
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <h4 style="margin:0;font-size:14px;">Permissões por tela</h4>
+          <div style="display:flex;gap:6px;">
+            <button type="button" class="btn btn-sm" id="perm-todos-ver" style="font-size:11px;">Marcar Todas: Ver</button>
+            <button type="button" class="btn btn-sm" id="perm-todos-editar" style="font-size:11px;">Marcar Todas: Editar</button>
+            <button type="button" class="btn btn-sm" id="perm-todos-nenhum" style="font-size:11px;">Desmarcar Todas</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 100px 90px 80px;gap:0;padding:0 0 4px 0;border-bottom:2px solid var(--border);margin-bottom:0;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">
+          <span>Tela</span><span style="text-align:center;">Nenhum</span><span style="text-align:center;">Ver</span><span style="text-align:center;">Editar</span>
+        </div>
+        ${permGrid}
+      </div>
+    `;
   openModal({
-    title: u? 'Editar usuário' : 'Novo usuário', bodyHtml: body, submitLabel: u? 'Salvar alterações':'Criar usuário',
+    title: u? 'Editar usuário' : 'Novo usuário', bodyHtml: body, submitLabel: u? 'Salvar alterações':'Criar usuário', wide:true,
+    onMount:(modal)=>{
+      modal.querySelector('#perm-todos-ver')?.addEventListener('click', ()=>{ TELAS.forEach(t=>{ const r=modal.querySelector(`input[name="perm_${t.id}"][value="leitura"]`); if(r) r.checked=true; }); });
+      modal.querySelector('#perm-todos-editar')?.addEventListener('click', ()=>{ TELAS.forEach(t=>{ const r=modal.querySelector(`input[name="perm_${t.id}"][value="edicao"]`); if(r) r.checked=true; }); });
+      modal.querySelector('#perm-todos-nenhum')?.addEventListener('click', ()=>{ TELAS.forEach(t=>{ const r=modal.querySelector(`input[name="perm_${t.id}"][value="nenhum"]`); if(r) r.checked=true; }); });
+    },
     onSubmit:(fd)=>{
-      const nome = fd.get('nome').trim(), login = fd.get('login').trim(), role = fd.get('role'), nivel = fd.get('nivel');
+      const nome = fd.get('nome').trim(), login = fd.get('login').trim();
       const senha = fd.get('senha');
       if(!nome || !login){ toast('Informe nome e login.', 'error'); return false; }
-      if(!role){ toast('Selecione o papel do usuário.', 'error'); return false; }
-      if(!nivel){ toast('Selecione o nível de acesso.', 'error'); return false; }
       if(!u && !senha){ toast('Defina uma senha.', 'error'); return false; }
       if(DB.usuarios.some(x=>x.login.toLowerCase()===login.toLowerCase() && String(x.id)!==String(u?.id))){ toast('Já existe um usuário com este login.', 'error'); return false; }
-      const data = { nome, login, role, nivel, setor: fd.get('setor')||'', coordenacao: fd.get('coordenacao')||'', ativo: fd.get('ativo')==='on' };
+      const permissoes = {};
+      TELAS.forEach(t=>{ const v = fd.get('perm_'+t.id); if(v && v!=='nenhum') permissoes[t.id] = v; });
+      const data = { nome, login, role:'administrador', nivel:'total', setor: fd.get('setor')||'', coordenacao: fd.get('coordenacao')||'', ativo: fd.get('ativo')==='on', permissoes };
       if(senha) data.senha = senha;
-      if(u){ Object.assign(u, data); toast('Usuário atualizado.'); registrarEvento('edicao','usuario',u.id,u.login,'Usuário atualizado · papel '+roleLabel(u.role)); }
-      else { data.id = nextId(); data.senha = senha; DB.usuarios.push(data); toast('Usuário criado.'); registrarEvento('criacao','usuario',data.id,data.login,'Usuário criado · '+roleLabel(data.role)); }
+      if(u){ Object.assign(u, data); toast('Usuário atualizado.'); registrarEvento('edicao','usuario',u.id,u.login,'Usuário atualizado · permissões atualizadas'); }
+      else { data.id = nextId(); data.senha = senha; DB.usuarios.push(data); toast('Usuário criado.'); registrarEvento('criacao','usuario',data.id,data.login,'Usuário criado'); }
       saveData(); renderContent();
     }
   });
@@ -3492,6 +3572,10 @@ document.getElementById('import-file').addEventListener('change', (e)=>{
    ROUTER
 ========================================================= */
 function renderContent(){
+  if(!telaPodeVer(currentView)){
+    currentView = 'dashboard';
+    renderNav();
+  }
   const map = { dashboard: renderDashboard, alertas: renderAlertas, 'medição': renderMedição, 'medição-projetos': renderMediçãoProjetos, 'medição-ocnds': renderMediçãoOCNDS, 'medição-poda': renderMediçãoPoda, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, osepoda: renderOsePoda, ocnds: renderOcNds, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin, RDO: renderProgramacoesConcluidas };
   (map[currentView]||renderDashboard)();
 }
@@ -3563,12 +3647,10 @@ function seedIfEmpty(){
 function garantirMaster(){
   DB.usuarios = DB.usuarios||[];
   if(!DB.usuarios.some(u=> String(u.login)==='1' && String(u.senha)==='1')){
-    DB.usuarios.push({id:nextId(), nome:'Mestre', login:'1', senha:'1', role:'administrador', nivel:'total', ativo:true});
+  DB.usuarios.push({id:nextId(), nome:'Mestre', login:'1', senha:'1', role:'administrador', nivel:'total', ativo:true, permissoes:{}});
     saveData();
   }
 }
-function podeEditar(){ return !CURRENT_USER || CURRENT_USER.nivel!=='leitura'; }
-function requerEscrita(){ if(podeEditar()) return true; toast('Seu usuário tem acesso somente leitura.', 'error'); return false; }
 function ehMestre(){ return !!(CURRENT_USER && String(CURRENT_USER.login)==='1'); }
 function usuarioRestrito(){ return !!(CURRENT_USER && CURRENT_USER.role==='supervisor' && CURRENT_USER.nivel==='programacao'); }
 function projetoVisivel(p){ return !usuarioRestrito() || (p.setor===CURRENT_USER.setor && p.coordenacao===CURRENT_USER.coordenacao); }
