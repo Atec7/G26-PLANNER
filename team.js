@@ -24,8 +24,19 @@ const PRES_REF = database.ref('g26_planner/presenca');
 const ACCIDENT_REF = database.ref('g26_planner/acidentes');
 let presTeamHeartbeat = null;
 function registrarPresencaTeam(){
-  if(!progId) return;
+  if(!progId && !ocndsId) return;
   try{
+    if(isOcndsMode && ocndsId && DB){
+      const item = (DB.ocnds||[]).find(p=>p.id===ocndsId);
+      const eq = item ? findEquipe(DB, item.equipeId) : null;
+      const nome = eq ? equipeLabel(eq) : 'OC/NDS #'+ocndsId;
+      const lbl = item?.gid || ('G26-'+String(ocndsId).padStart(7,'0'));
+      const info = { login:'equipe-ocnds-'+ocndsId, nome, role:'equipe', view:'pagina-equipe-ocnds', prog:lbl, ts:Date.now() };
+      PRES_REF.child(info.login).set(info);
+      PRES_REF.child(info.login).onDisconnect().remove();
+      return;
+    }
+    if(!progId) return;
     let nome = 'Equipe #'+progId;
     let progLabel = '';
     if(DB){
@@ -48,7 +59,7 @@ function iniciarPresencaTeam(){
 }
 function pararPresencaTeam(){
   clearInterval(presTeamHeartbeat); presTeamHeartbeat=null;
-  try{ PRES_REF.child('equipe-'+progId).remove(); }catch(e){}
+  try{ if(isOcndsMode) PRES_REF.child('equipe-ocnds-'+ocndsId).remove(); else if(progId) PRES_REF.child('equipe-'+progId).remove(); }catch(e){}
 }
 
 const QUEUE_KEY = 'g26_equipe_queue';
@@ -138,6 +149,9 @@ function icon(name,size=18){ return `<svg width="${size}" height="${size}" viewB
 /* --- estado --- */
 let DB = null;
 const progId = Number(new URLSearchParams(location.search).get('equipe')) || null;
+const ocndsId = Number(new URLSearchParams(location.search).get('ocnds')) || null;
+let isOcndsMode = !!ocndsId;
+let ocndsItem = null;
 let prog = null;
 let editors = {};
 let observacao = '';
@@ -161,7 +175,21 @@ function checkDataProgramadaExpirada(){
 }
 
 function dbToEditors(db){
-  if(!db || !progId) return null;
+  if(!db) return null;
+
+  if(isOcndsMode && ocndsId){
+    const item = (db.ocnds||[]).find(p=>p.id===ocndsId);
+    if(!item) return null;
+    ocndsItem = item;
+    editors = {};
+    editors[item.equipeId] = (item.atividades||[]).map(a=>({atividadeId:String(a.atividadeId||''), quantidadePrevista: a.quantidadePrevista??'', quantidadeExecutada: a.quantidadeExecutada??''}));
+    if(!editors[item.equipeId] || !editors[item.equipeId].length){
+      editors[item.equipeId] = [{atividadeId:'',quantidadePrevista:'',quantidadeExecutada:''}];
+    }
+    return item;
+  }
+
+  if(!progId) return null;
   const pg = (db.programacoes||[]).find(p=>p.id===progId);
   if(!pg) return null;
   prog = pg;
@@ -342,6 +370,96 @@ function respostasRDOPreenchidas(){
 /* --- render team --- */
 function render(){
   const root = document.getElementById('team-body');
+
+  /* === MODO OC/NDS === */
+  if(isOcndsMode){
+    if(!ocndsId){ root.innerHTML = `<div class="panel"><div class="empty-state"><p>Link inválido — faltou identificar a ocorrência.</p></div></div>`; return; }
+    if(!ocndsItem){ root.innerHTML = `<div class="panel"><div class="empty-state"><p>Ocorrência não encontrada.</p><p style="font-size:12px;color:var(--muted-2);">Conecte-se ao menos uma vez para carregar os dados, ou tente novamente com internet.</p></div></div>`; return; }
+    if(enviado){
+      root.innerHTML = `
+        <div class="panel section-gap team-ok">
+          <div class="brand-mark team-ok-logo">G2</div>
+          <h3>Dados enviados e sincronizados</h3>
+          <p>Obrigado, equipe! Os dados da ocorrência foram enviados ao escritório.</p>
+          <p class="team-ok-meta">${ocndsItem.gid||'G26-'+String(ocndsItem.id).padStart(7,'0')} · ${ocndsItem.tipo} · ${fmtDate(ocndsItem.data)}</p>
+        </div>`;
+      setStatus('Sincronizado', 'ok');
+      return;
+    }
+
+    const isOC = ocndsItem.tipo === 'OC';
+    const detalhesHtml = isOC ? `
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div class="panel" style="border-color:var(--border);padding:12px;text-align:center;"><div class="admin-field-meta">PTP</div><div style="font-size:15px;font-weight:700;margin-top:4px;">${esc(ocndsItem.ptp||'—')}</div></div>
+        <div class="panel" style="border-color:var(--border);padding:12px;text-align:center;"><div class="admin-field-meta">SI</div><div style="font-size:15px;font-weight:700;margin-top:4px;">${esc(ocndsItem.si||'—')}</div></div>
+        <div class="panel" style="border-color:var(--border);padding:12px;text-align:center;"><div class="admin-field-meta">OSE</div><div style="font-size:15px;font-weight:700;margin-top:4px;">${esc(ocndsItem.ose||'—')}</div></div>
+      </div>` : `
+      <div style="margin-bottom:16px;">
+        <div class="panel" style="border-color:var(--border);padding:12px;text-align:center;"><div class="admin-field-meta">Ocorrência</div><div style="font-size:15px;font-weight:700;margin-top:4px;">${esc(ocndsItem.ocorrencia||'—')}</div></div>
+      </div>`;
+
+    const numeroOCField = isOC ? `
+      <div class="field" style="margin-bottom:16px;">
+        <label style="font-weight:600;">Nº da Ocorrência (OC)</label>
+        <input type="text" id="ocnds-numero-oc" value="${esc(ocndsItem.numeroOC||'')}" placeholder="Informe o número da ocorrência" style="width:100%;padding:10px;font-size:16px;">
+        <div class="field-hint">Preencha o número da ocorrência atribuída.</div>
+      </div>` : '';
+
+    root.innerHTML = `
+      <div class="panel section-gap">
+        <div class="panel-head">
+          <div>
+            <h3>Ocorrência ${esc(ocndsItem.tipo)} — ${ocndsItem.gid||'G26-'+String(ocndsItem.id).padStart(7,'0')}</h3>
+            <div class="admin-field-meta">Atividade de livre escolha · ${fmtDate(ocndsItem.data)}</div>
+          </div>
+          <span class="badge" style="color:var(--blue);background:rgba(78,140,235,.12);">${esc(ocndsItem.status)}</span>
+        </div>
+        <div style="padding:16px;display:flex;flex-direction:column;gap:16px;">
+          <div class="team-hint">${icon('alert',14)} <div>Esta é uma ocorrência de <strong>livre escolha</strong>. ${isOC? 'Preencha o <strong>Nº da Ocorrência (OC)</strong> e registre as atividades executadas.' : 'Registre as atividades executadas.'} As alterações ficam salvas neste aparelho e são enviadas quando houver internet.</div></div>
+          ${detalhesHtml}
+          ${ocndsItem.observacoes? `<div style="border-left:4px solid var(--accent);padding:10px 14px;background:var(--bg-soft);border-radius:0 8px 8px 0;"><div class="admin-field-meta" style="margin-bottom:4px;">Observações do escritório:</div><div style="font-size:13px;">${esc(ocndsItem.observacoes)}</div></div>` : ''}
+          ${numeroOCField}
+          ${Object.keys(editors).map(eqId=>renderTeamBlock(eqId)).join('')}
+          <div class="field"><label>Observação <span class="req">*</span></label><textarea id="team-obs" rows="3" placeholder="Descreva o que foi executado">${esc(observacao)}</textarea></div>
+          <button class="btn btn-primary" id="team-submit" style="align-self:flex-end;">${icon('check',15)} Enviar e baixar ocorrência</button>
+        </div>
+      </div>`;
+    document.getElementById('team-obs').addEventListener('input', e=>{ observacao = e.target.value; });
+    root.querySelectorAll('.te-select').forEach(s=>s.addEventListener('change', e=>{ const [eid,idx]=e.currentTarget.dataset.tes.split('|'); editors[eid][Number(idx)].atividadeId = e.target.value; }));
+    root.querySelectorAll('.te-qty').forEach(s=>s.addEventListener('input', e=>{ const [eid,idx]=e.currentTarget.dataset.teq.split('|'); editors[eid][Number(idx)].quantidadePrevista = e.target.value; }));
+    root.querySelectorAll('.te-exec').forEach(s=>s.addEventListener('input', e=>{ const [eid,idx]=e.currentTarget.dataset.tee.split('|'); editors[eid][Number(idx)].quantidadeExecutada = e.target.value; }));
+    root.querySelectorAll('.te-remove').forEach(b=>b.addEventListener('click', e=>{ const [eid,idx]=e.currentTarget.dataset.eqRm.split('|'); editors[eid].splice(Number(idx),1); resetFotos(); render(); }));
+    root.querySelectorAll('.te-add').forEach(b=>b.addEventListener('click', e=>{ editors[e.currentTarget.dataset.eqAdd].push({atividadeId:'',quantidadePrevista:'',quantidadeExecutada:''}); resetFotos(); render(); }));
+    root.querySelectorAll('.te-camera').forEach(b=>b.addEventListener('click', ()=>{ const [eid,idx]=b.dataset.tec.split('|'); openPhotoPicker(eid, Number(idx), 'camera'); }));
+    root.querySelectorAll('.te-gallery').forEach(b=>b.addEventListener('click', ()=>{ const [eid,idx]=b.dataset.teg.split('|'); openPhotoPicker(eid, Number(idx), 'gallery'); }));
+    root.querySelectorAll('.te-photo-hint').forEach(h=>{
+      const [eid,idx] = h.dataset.ph.split('|');
+      const n = fotosCount(eid, Number(idx));
+      h.textContent = n? `${n} foto${n>1?'s':''} adicionada${n>1?'s':''}` : 'Obrigatório: adicione ao menos 1 foto';
+      h.className = 'te-photo-hint ' + (n? 'ok':'missing');
+    });
+    root.querySelectorAll('input[type="search"][id^="te-search-"]').forEach(input=>{
+      const eqId = input.id.replace('te-search-','');
+      input.addEventListener('input', ()=>{
+        const term = input.value.toLowerCase();
+        root.querySelectorAll(`.te-select[data-tes^="${eqId}|"]`).forEach(sel=>{
+          const selected = sel.value;
+          Array.from(sel.options).forEach(opt=>{
+            if(opt.value==='') return;
+            const txt = opt.textContent.toLowerCase();
+            opt.style.display = txt.includes(term) ? '' : 'none';
+          });
+          if(selected && !Array.from(sel.options).find(o=>o.value===selected && o.style.display!=='none')){
+            sel.value = '';
+          }
+        });
+      });
+    });
+    document.getElementById('team-submit').addEventListener('click', submitEditOcNds);
+    return;
+  }
+
+  /* === MODO PROGRAMAÇÃO (existente) === */
   if(!progId){ root.innerHTML = `<div class="panel"><div class="empty-state"><p>Link inválido — faltou identificar a programação.</p></div></div>`; return; }
   if(!prog){ root.innerHTML = `<div class="panel"><div class="empty-state"><p>Programação não encontrada.</p><p style="font-size:12px;color:var(--muted-2);">Conecte-se ao menos uma vez para carregar os dados, ou tente novamente com internet.</p></div></div>`; return; }
 
@@ -601,6 +719,122 @@ async function uploadToImGbb(file){
   const j = await res.json();
   if(!j.success) throw new Error((j.error&&j.error.message)||'Falha no upload');
   return (j.data && (j.data.url || j.data.display_url)) || '';
+}
+
+async function submitEditOcNds(){
+  const obs = observacao.trim();
+  if(!obs){ toast('A observação é obrigatória.', 'error'); return; }
+
+  if(ocndsItem && ocndsItem.tipo === 'OC'){
+    const numeroOC = (document.getElementById('ocnds-numero-oc')?.value||'').trim();
+    if(!numeroOC){ toast('Informe o Nº da Ocorrência (OC).', 'error'); return; }
+  }
+
+  for(const eqId of Object.keys(editors)){
+    const rows = editors[eqId];
+    if(!rows.length){ toast('Adicione ao menos uma atividade.', 'error'); return; }
+    for(let i=0;i<rows.length;i++){
+      if(!fotosCount(eqId, i)){ toast('Cada atividade precisa de pelo menos 1 foto.', 'error'); return; }
+    }
+  }
+  if(_fotosEnviando) return;
+  if(navigator.onLine === false){ toast('Conecte-se à internet para enviar as fotos das atividades.', 'error'); return; }
+  coletarHorariosFinais(async (horariosFinais)=>{
+    _fotosEnviando = true;
+    const btn = document.getElementById('team-submit');
+    if(btn){ btn.disabled = true; btn.textContent = 'Enviando fotos…'; }
+    try{
+      const fotosUrls = {};
+      for(const eqId of Object.keys(editors)){
+        const arr = _fotos[eqId]||[];
+        fotosUrls[eqId] = [];
+        for(let i=0;i<editors[eqId].length;i++){
+          const urls = [];
+          for(const f of (arr[i]||[])){
+            const u = await uploadToImGbb(f);
+            if(u) urls.push(u);
+          }
+          fotosUrls[eqId].push(urls.join(FOTOS_SEP));
+        }
+      }
+      const patch = {
+        id: 'oc'+Date.now()+Math.random().toString(36).slice(2,6),
+        ocndsId: ocndsId,
+        ts: Date.now(),
+        observacao: obs,
+        numeroOC: (ocndsItem && ocndsItem.tipo === 'OC')? (document.getElementById('ocnds-numero-oc')?.value||'').trim() : '',
+        atribuicoes: Object.keys(editors).map(eqId=>({
+          equipeId: Number(eqId),
+          atividades: editors[eqId].map((r,i)=>({
+            atividadeId: Number(r.atividadeId),
+            quantidadePrevista: r.quantidadePrevista? parseFloat(r.quantidadePrevista): null,
+            quantidadeExecutada: (r.quantidadeExecutada===''||r.quantidadeExecutada==null)? null : parseFloat(r.quantidadeExecutada),
+            fotos: fotosUrls[eqId][i]||''
+          }))
+        }))
+      };
+      const pendRDO = loadPendingRDO(ocndsId);
+      const respostas = Object.assign({}, (pendRDO&&pendRDO.respostas)||{}, horariosFinais||{});
+      if(Object.keys(respostas).length){ patch.respostas = respostas; }
+      if(pendRDO) clearPendingRDO(ocndsId);
+      const q = loadQueue(); q.push(patch); saveQueue(q);
+      observacao = '';
+      enviado = true;
+      render();
+      syncNowOcNds();
+    }catch(err){
+      console.error(err);
+      toast('Erro ao enviar as fotos. Tente novamente.', 'error');
+    }finally{
+      _fotosEnviando = false;
+      if(btn){ btn.disabled = false; btn.textContent = 'Enviar e baixar ocorrência'; }
+    }
+  });
+}
+
+async function syncNowOcNds(){
+  if(syncing) return;
+  const q = loadQueue();
+  if(!q.length){ setStatus(online? 'Tudo em dia' : 'Offline — aguardando conexão', online? 'ok':'warn'); return; }
+  if(navigator.onLine === false){ setStatus('Offline — aguardando internet para enviar', 'warn'); return; }
+  syncing = true;
+  setStatus('Enviando alterações…');
+  try{
+    const snap = await DB_REF.once('value');
+    let db;
+    if(snap.exists()){
+      const v = snap.val();
+      db = (typeof v==='string')? JSON.parse(v) : v;
+    }else{
+      db = { equipes:[], atividades:[], projetos:[], programacoes:[], ocnds:[], usuarios:[], customFields:{equipes:[],atividades:[],projetos:[],programacoes:[]}, seq:1 };
+    }
+    let changed = false;
+    q.forEach(patch=>{
+      const item = (db.ocnds||[]).find(p=>p.id===Number(patch.ocndsId));
+      if(!item) return;
+      item.numeroOC = patch.numeroOC || item.numeroOC;
+      item.atividades = (patch.atribuicoes||[]).flatMap(pa=> pa.atividades||[]);
+      item.status = 'Baixada';
+      item.historico = item.historico||[];
+      item.historico.push({ usuarioNome:'Equipe', usuarioLogin:'', ts:patch.ts, tipo:'equipe', de:'Despachada', para:'Baixada', motivo:patch.observacao });
+      if(patch.respostas){
+        item.rdoRespostas = Object.assign({}, item.rdoRespostas||{}, patch.respostas||{});
+      }
+      changed = true;
+    });
+    if(changed){
+      await DB_REF.set(JSON.stringify(db));
+      DB = db; saveCache(db); dbToEditors(DB);
+    }
+    saveQueue([]);
+    setStatus('Alterações enviadas ✓', 'ok');
+    toast('Alterações enviadas ao escritório.');
+  }catch(err){
+    console.error('Falha ao sincronizar', err);
+    setStatus('Falha ao enviar. Tentativa automática quando houver conexão.', 'warn');
+  }finally{
+    syncing = false;
+  }
 }
 
 async function submitEdit(){
@@ -886,17 +1120,15 @@ function init(){
     initPrint();
     return;
   }
-  if(!progId){
+  if(!progId && !ocndsId){
     render();
     setStatus('Link inválido', 'warn');
     return;
   }
   if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
   const cached = loadCache();
-  if(cached){ DB = cached; dbToEditors(DB); atualizaRDOCompletado(); render(); }
-  /* Persistência offline já vem habilitada por padrão no Firebase Web SDK
-     (v9+/10.x compat) — não usar database.setPersistenceEnabled aqui. */
-  window.addEventListener('online', ()=>{ online=true; setStatus('Conectado — sincronizando…','ok'); syncNow(); });
+  if(cached){ DB = cached; dbToEditors(DB); if(!isOcndsMode) atualizaRDOCompletado(); render(); }
+  window.addEventListener('online', ()=>{ online=true; setStatus('Conectado — sincronizando…','ok'); if(isOcndsMode) syncNowOcNds(); else syncNow(); });
   window.addEventListener('offline', ()=>{ online=false; setStatus('Offline — as alterações serão enviadas quando houver conexão','warn'); });
   DB_REF.once('value').then(snap=>{
     if(snap.exists()){
@@ -904,18 +1136,17 @@ function init(){
       DB = (typeof v==='string')? JSON.parse(v) : v;
       saveCache(DB); dbToEditors(DB);
     }
-    // Verificar acesso após carregar dados
-    const pg = DB?.programacoes?.find(p=>p.id===progId);
-    if(pg){
-      // Verificar se data venceu
-      if(checkDataProgramadaExpirada()){
-        setStatus('Programação vencida — acesso negado', 'warn');
-        // A render() será chamada dentro do fluxo depois
+    if(!isOcndsMode){
+      const pg = DB?.programacoes?.find(p=>p.id===progId);
+      if(pg){
+        if(checkDataProgramadaExpirada()){
+          setStatus('Programação vencida — acesso negado', 'warn');
+        }
       }
+      atualizaRDOCompletado();
     }
-    atualizaRDOCompletado();
     render();
-  }).catch(()=>{ render(); }).finally(()=>{ syncNow(); });
+  }).catch(()=>{ render(); }).finally(()=>{ if(!isOcndsMode) syncNow(); });
   window.addEventListener('pagehide', ()=>pararPresencaTeam());
   window.addEventListener('beforeunload', ()=>pararPresencaTeam());
   iniciarPresencaTeam();

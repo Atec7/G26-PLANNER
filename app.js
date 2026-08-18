@@ -21,7 +21,7 @@ const ACCIDENT_REF = rtdb.ref('g26_planner/acidentes');
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
 
 const DEFAULT_DATA = {
-  equipes: [], atividades: [], projetos: [], programacoes: [], usuarios: [],
+  equipes: [], atividades: [], projetos: [], programacoes: [], ocnds: [], usuarios: [],
   customFields: { equipes: [], atividades: [], projetos: [], programacoes: [] },
   seq: 1, rev: 0
 };
@@ -151,7 +151,9 @@ function autor(h){
    CONSTANTES DE DOMÍNIO
 ========================================================= */
 const STATUS_PROG = ['Programado','Em Execução','Concluído','Reprogramado','Cancelado'];
-const STATUS_COLOR = { 'Programado':'var(--blue)','Em Execução':'var(--accent)','Concluído':'var(--green)','Reprogramado':'var(--purple)','Cancelado':'var(--red)' };
+const STATUS_COLOR = { 'Programado':'var(--blue)','Em Execução':'var(--accent)','Concluído':'var(--green)','Reprogramado':'var(--purple)','Cancelado':'var(--red)','Despachada':'var(--blue)','Baixada':'var(--accent)','Concluída':'var(--green)' };
+const STATUS_OC_NDS = ['Despachada','Baixada','Concluída'];
+const STATUS_OC_NDS_COLOR = { 'Despachada':'var(--blue)','Baixada':'var(--accent)','Concluída':'var(--green)' };
 const STATUS_PROJETO = ['Aguardando Viabilidade','Em Andamento','Concluído','Encerrado','Cancelado'];
 const MOTIVOS_REPROG = [
   'Condições climáticas','Falta de material','Falta de equipamento','Indisponibilidade de equipe',
@@ -245,7 +247,8 @@ const NAV_ITEMS = [
   { id:'alertas',     label:'Alertas',       sub:'Projetos vencendo, reprogramações e viabilidade', icon:'alert' },
   { id:'medição',     label:'Medição',       sub:'Medição de quantidades e aferições', icon:'ruler', children:[
     { id:'medição-projetos', label:'Projetos', sub:'Medição por projetos', icon:'folder' },
-    { id:'medição-ocnds',    label:'OC/NDS/OSE', sub:'Medição OC/NDS e OSE', icon:'siren' },
+    { id:'medição-oc',       label:'OC',         sub:'Medição OC', icon:'siren' },
+    { id:'medição-ndsose',   label:'NDS/OSE',    sub:'Medição NDS e OSE', icon:'siren' },
     { id:'medição-poda',     label:'PODA', sub:'Medição de poda', icon:'tree' },
   ]},
   { id:'equipes',     label:'Equipes',       sub:'Cadastro de equipes de campo', icon:'users' },
@@ -3576,7 +3579,7 @@ function renderContent(){
     currentView = 'dashboard';
     renderNav();
   }
-  const map = { dashboard: renderDashboard, alertas: renderAlertas, 'medição': renderMedição, 'medição-projetos': renderMediçãoProjetos, 'medição-ocnds': renderMediçãoOCNDS, 'medição-poda': renderMediçãoPoda, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, osepoda: renderOsePoda, ocnds: renderOcNds, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin, RDO: renderProgramacoesConcluidas };
+  const map = { dashboard: renderDashboard, alertas: renderAlertas, 'medição': renderMedição, 'medição-projetos': renderMediçãoProjetos, 'medição-oc': renderMediçãoOC, 'medição-ndsose': renderMediçãoNDSOSE, 'medição-poda': renderMediçãoPoda, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, osepoda: renderOsePoda, ocnds: renderOcNds, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin, RDO: renderProgramacoesConcluidas };
   (map[currentView]||renderDashboard)();
 }
 
@@ -3587,7 +3590,454 @@ function renderOsePoda(){
   renderModuloEmDesenvolvimento('OSE/PODA');
 }
 function renderOcNds(){
-  renderModuloEmDesenvolvimento('OC/NDS');
+  const el = document.getElementById('content');
+  if(!DB.equipes.length){
+    el.innerHTML = emptyState('Cadastre equipes primeiro', 'É necessário ter equipes cadastradas para despachar OC/NDS.');
+    return;
+  }
+  const list = (DB.ocnds||[]).slice().sort((a,b)=> String(b.data||'').localeCompare(String(a.data||'')));
+
+  const stats = (()=>{
+    const total = list.length;
+    const despachadas = list.filter(x=>x.status==='Despachada').length;
+    const baixadas = list.filter(x=>x.status==='Baixada').length;
+    const concluidas = list.filter(x=>x.status==='Concluída').length;
+    const oc = list.filter(x=>x.tipo==='OC').length;
+    const nds = list.filter(x=>x.tipo==='NDS').length;
+    return `
+      <div class="grid-stats">
+        <div class="stat-card"><div class="lbl">Total</div><div class="val">${total}</div></div>
+        <div class="stat-card" style="--accent-c:var(--blue);"><div class="lbl">Despachadas</div><div class="val">${despachadas}</div></div>
+        <div class="stat-card" style="--accent-c:var(--accent);"><div class="lbl">Baixadas</div><div class="val">${baixadas}</div></div>
+        <div class="stat-card" style="--accent-c:var(--green);"><div class="lbl">Concluídas</div><div class="val">${concluidas}</div></div>
+        <div class="stat-card"><div class="lbl">OC</div><div class="val">${oc}</div></div>
+        <div class="stat-card"><div class="lbl">NDS</div><div class="val">${nds}</div></div>
+      </div>`;
+  })();
+
+  const tabela = `
+    <div class="panel" style="padding:0;overflow:hidden;">
+      <div class="panel-head" style="padding:14px 16px;">
+        <div><h3>Ocorrências OC / NDS</h3><div class="admin-field-meta">Despacho de ocorrências para equipes de campo.</div></div>
+        <div class="filters" style="gap:6px;">
+          <button class="btn btn-sm btn-primary" id="ocnds-novo">${icon('plus',13)} Nova ocorrência</button>
+        </div>
+      </div>
+      ${!list.length ? `<div style="padding:40px;text-align:center;"><div class="empty-state">${icon('siren',36)}<h3 style="margin-bottom:6px;">Nenhuma ocorrência cadastrada</h3><p>Clique em "Nova ocorrência" para criar a primeira OC ou NDS.</p></div></div>` : `
+      <div style="overflow-x:auto;">
+        <table class="data-table" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:1050px;">
+          <thead>
+            <tr>
+              <th style="width:30px;">#</th>
+              <th>ID</th>
+              <th>Tipo</th>
+              <th>Setor</th>
+              <th>Coordenação</th>
+              <th style="text-align:center;">Data</th>
+              <th>Equipe</th>
+              <th>Detalhes</th>
+              <th style="text-align:center;">Status</th>
+              <th style="width:120px;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.map((x,i)=>{
+              const eq = findEquipe(x.equipeId);
+              const detalhes = x.tipo==='OC'
+                ? [x.ptp&&'PTP: '+x.ptp, x.si&&'SI: '+x.si, x.ose&&'OSE: '+x.ose].filter(Boolean).join(' · ')||'—'
+                : [x.ocorrencia&&'Ocorrência: '+x.ocorrencia].filter(Boolean).join('')||'—';
+              const badge = x.tipo==='OC'
+                ? `<span class="badge" style="color:var(--blue);background:rgba(78,140,235,.14);">OC</span>`
+                : `<span class="badge" style="color:var(--accent);background:rgba(224,164,88,.14);">NDS</span>`;
+              const stColor = STATUS_OC_NDS_COLOR[x.status]||'var(--muted)';
+              const stBg = bgFromVar(stColor);
+              return `
+                <tr data-ocnds-id="${x.id}" style="cursor:pointer;" title="Ver detalhes">
+                  <td style="text-align:center;color:var(--muted-2);">${i+1}</td>
+                  <td class="mono">${esc(x.gid||'G26-'+String(x.id).padStart(7,'0'))}</td>
+                  <td>${badge}</td>
+                  <td style="font-size:12px;">${esc(x.setor||'—')}</td>
+                  <td style="font-size:12px;">${esc(x.coordenacao||'—')}</td>
+                  <td style="text-align:center;" class="mono">${fmtDate(x.data)}</td>
+                  <td><span class="badge-prefix">${eqtlLabel(eq)}</span><div class="admin-field-meta">${esc(eq?.supervisor||'')}</div></td>
+                  <td style="font-size:12px;color:var(--muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(detalhes)}</td>
+                  <td style="text-align:center;"><span class="badge" style="color:${stColor};background:${stBg};"><span class="badge-dot"></span>${esc(x.status)}</span></td>
+                  <td style="text-align:center;">
+                    <div class="row-actions">
+                      <button class="icon-btn" title="Encaminhar WhatsApp" data-ocnds-whats="${x.id}">${icon('whatsapp',14)}</button>
+                      <button class="icon-btn" title="Editar" data-ocnds-edit="${x.id}">${icon('edit',14)}</button>
+                      <button class="icon-btn" title="Excluir" data-ocnds-del="${x.id}">${icon('trash',14)}</button>
+                    </div>
+                  </td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`}
+    </div>`;
+
+  el.innerHTML = `<div class="section-gap">${stats}${tabela}</div>`;
+
+  document.getElementById('ocnds-novo').addEventListener('click', ()=> openOcNdsModal());
+
+  el.querySelectorAll('tr[data-ocnds-id]').forEach(tr=>{
+    tr.addEventListener('click', (e)=>{
+      if(e.target.closest('[data-ocnds-whats]') || e.target.closest('[data-ocnds-edit]') || e.target.closest('[data-ocnds-del]')) return;
+      openOcNdsDetalhe(Number(tr.dataset.ocndsId));
+    });
+  });
+
+  el.querySelectorAll('[data-ocnds-whats]').forEach(b=> b.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    encaminharWhatsOcNds(Number(b.dataset.ocndsWhats));
+  }));
+
+  el.querySelectorAll('[data-ocnds-edit]').forEach(b=> b.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    openOcNdsModal(Number(b.dataset.ocndsEdit));
+  }));
+
+  el.querySelectorAll('[data-ocnds-del]').forEach(b=> b.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    deletarOcNds(Number(b.dataset.ocndsDel));
+  }));
+}
+
+function openOcNdsModal(id){
+  if(!requerEscrita()) return;
+  const item = id ? (DB.ocnds||[]).find(x=>x.id===Number(id)) : null;
+
+  const userSetor = CURRENT_USER?.setor || '';
+  const userCoord = CURRENT_USER?.coordenacao || '';
+  const isRestricted = usuarioRestrito();
+
+  const body = `
+    <div class="field-row">
+      <div class="field"><label>Setor <span class="req">*</span></label>
+        <select name="setor" id="ocnds-setor" required ${isRestricted?'disabled':''}>
+          <option value="">Selecione…</option>
+          <option value="OBRAS" ${(item?.setor||userSetor)==='OBRAS'?'selected':''}>OBRAS</option>
+          <option value="MANUTENÇÃO" ${(item?.setor||userSetor)==='MANUTENÇÃO'?'selected':''}>MANUTENÇÃO</option>
+        </select>
+      </div>
+      <div class="field"><label>Coordenação <span class="req">*</span></label>
+        <select name="coordenacao" id="ocnds-coord" required ${isRestricted?'disabled':''}>
+          <option value="">Selecione…</option>
+          <option value="RIO VERDE" ${(item?.coordenacao||userCoord)==='RIO VERDE'?'selected':''}>RIO VERDE</option>
+          <option value="QUIRINOPOLIS" ${(item?.coordenacao||userCoord)==='QUIRINOPOLIS'?'selected':''}>QUIRINÓPOLIS</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field"><label>Tipo <span class="req">*</span></label>
+      <select name="tipo" id="ocnds-tipo" required>
+        <option value="OC" ${item?.tipo==='OC'?'selected':''}>OC (Ocorrência)</option>
+        <option value="NDS" ${item?.tipo==='NDS'?'selected':''}>NDS (Nota de Serviço)</option>
+      </select>
+    </div>
+
+    <div id="ocnds-campos-oc" style="display:${(!item || item.tipo==='OC')?'block':'none'};">
+      <div class="field-row">
+        <div class="field"><label>PTP</label><input type="text" name="ptp" value="${esc(item?.ptp||'')}" placeholder="Número do PTP"></div>
+        <div class="field"><label>SI</label><input type="text" name="si" value="${esc(item?.si||'')}" placeholder="Número do SI"></div>
+      </div>
+      <div class="field"><label>OSE</label><input type="text" name="ose" value="${esc(item?.ose||'')}" placeholder="Número da OSE"></div>
+    </div>
+
+    <div id="ocnds-campos-nds" style="display:${item?.tipo==='NDS'?'block':'none'};">
+      <div class="field"><label>Ocorrência <span class="req">*</span></label><input type="text" name="ocorrencia" value="${esc(item?.ocorrencia||'')}" placeholder="Número da ocorrência"></div>
+    </div>
+
+    <div class="field"><label>Data <span class="req">*</span></label><input type="date" name="data" required value="${item?.data||todayISO()}"></div>
+
+    <div class="field"><label>Equipe(s) <span class="req">*</span></label>
+      <div id="ocnds-equipe-container">
+        ${renderOcNdsEquipeSelects(item)}
+      </div>
+      <button type="button" class="btn btn-sm btn-ghost" id="ocnds-add-equipe" style="margin-top:6px;">${icon('plus',13)} Adicionar equipe</button>
+    </div>
+
+    <div class="field"><label>Observações</label><textarea name="observacoes" rows="3" placeholder="Observações gerais...">${esc(item?.observacoes||'')}</textarea></div>
+  `;
+
+  openModal({
+    title: item ? 'Editar ocorrência' : 'Nova ocorrência OC/NDS',
+    bodyHtml: body,
+    wide: true,
+    submitLabel: item ? 'Salvar alterações' : 'Despachar',
+    onMount: (root) => {
+      const tipoSelect = root.querySelector('#ocnds-tipo');
+      const camposOC = root.querySelector('#ocnds-campos-oc');
+      const camposNDS = root.querySelector('#ocnds-campos-nds');
+      tipoSelect.addEventListener('change', ()=>{
+        if(tipoSelect.value==='OC'){
+          camposOC.style.display='block';
+          camposNDS.style.display='none';
+        } else {
+          camposOC.style.display='none';
+          camposNDS.style.display='block';
+        }
+      });
+      root.querySelector('#ocnds-add-equipe').addEventListener('click', ()=>{
+        const container = root.querySelector('#ocnds-equipe-container');
+        const idx = container.querySelectorAll('.ocnds-equipe-row').length;
+        const div = document.createElement('div');
+        div.className = 'ocnds-equipe-row field-row';
+        div.style.marginBottom = '8px';
+        div.innerHTML = `
+          <div class="field" style="flex:1;">
+            <select name="equipeId_${idx}" class="ocnds-equipe-select">
+              <option value="">Selecione a equipe…</option>
+              ${equipesVisiveis().map(e=>`<option value="${e.id}">${equipeLabel(e)}${e.encarregado? ' · '+esc(e.encarregado):''}</option>`).join('')}
+            </select>
+          </div>
+          <button type="button" class="icon-btn" onclick="this.closest('.ocnds-equipe-row').remove()">${icon('trash',14)}</button>
+        `;
+        container.appendChild(div);
+      });
+    },
+    onSubmit: (fd) => {
+      const tipo = fd.get('tipo');
+      const data = fd.get('data');
+      const observacoes = fd.get('observacoes').trim();
+      const setor = isRestricted ? userSetor : fd.get('setor');
+      const coordenacao = isRestricted ? userCoord : fd.get('coordenacao');
+
+      if(!setor || !coordenacao){ toast('Informe o setor e a coordenação.', 'error'); return false; }
+      if(!data){ toast('Informe a data.', 'error'); return false; }
+
+      if(tipo==='OC'){
+        const ocorr = fd.get('ocorrencia');
+      } else {
+        const ocorr = fd.get('ocorrencia');
+        if(!ocorr || !ocorr.trim()){ toast('Informe o número da ocorrência.', 'error'); return false; }
+      }
+
+      const equipeRows = document.querySelectorAll('.ocnds-equipe-select');
+      const equipeIds = [];
+      equipeRows.forEach(sel=>{
+        if(sel.value) equipeIds.push(Number(sel.value));
+      });
+      if(!equipeIds.length){ toast('Selecione ao menos uma equipe.', 'error'); return false; }
+
+      if(item){
+        item.tipo = tipo;
+        item.setor = setor;
+        item.coordenacao = coordenacao;
+        item.ptp = fd.get('ptp').trim();
+        item.si = fd.get('si').trim();
+        item.ose = fd.get('ose').trim();
+        item.ocorrencia = fd.get('ocorrencia')?.trim()||'';
+        item.data = data;
+        item.observacoes = observacoes;
+        item.equipeId = equipeIds[0];
+        item.equipeIds = equipeIds;
+        item.historico = item.historico||[];
+        item.historico.push({...currentAutor(), ts:Date.now(), tipo:'edicao', de:null, para:item.status, motivo:'Ocorrência editada'});
+        toast('Ocorrência atualizada.');
+        registrarEvento('edicao','ocnds',item.id,item.gid||'OC/NDS #'+item.id,'Editada');
+      } else {
+        for(const eqId of equipeIds){
+          const novo = {
+            id: nextId(),
+            gid: novoGid(),
+            tipo,
+            setor,
+            coordenacao,
+            ptp: fd.get('ptp').trim(),
+            si: fd.get('si').trim(),
+            ose: fd.get('ose').trim(),
+            ocorrencia: fd.get('ocorrencia')?.trim()||'',
+            data,
+            equipeId: eqId,
+            observacoes,
+            status: 'Despachada',
+            numeroOC: '',
+            atividades: [],
+            rdoRespostas: {},
+            historico:[{...currentAutor(), ts:Date.now(), tipo:'criacao', de:null, para:'Despachada', motivo:'Ocorrência despachada para equipe'}]
+          };
+          DB.ocnds = DB.ocnds||[];
+          DB.ocnds.push(novo);
+          registrarEvento('criacao','ocnds',novo.id,novo.gid,'OC/NDS '+tipo+' · Equipe '+equipeLabel(findEquipe(eqId)));
+        }
+        toast(equipeIds.length>1? equipeIds.length+' ocorrências despachadas.' : 'Ocorrência despachada.');
+      }
+
+      saveData(); renderContent();
+    }
+  });
+}
+
+function renderOcNdsEquipeSelects(item){
+  const equipes = item ? [item.equipeId] : [''];
+  return equipes.map((eqId, i)=>`
+    <div class="ocnds-equipe-row field-row" style="margin-bottom:8px;">
+      <div class="field" style="flex:1;">
+        <select name="equipeId_${i}" class="ocnds-equipe-select">
+          <option value="">Selecione a equipe…</option>
+          ${equipesVisiveis().map(e=>`<option value="${e.id}" ${String(eqId)===String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' · '+esc(e.encarregado):''}</option>`).join('')}
+        </select>
+      </div>
+      ${(!item || equipes.length>1)? `<button type="button" class="icon-btn" onclick="this.closest('.ocnds-equipe-row').remove()">${icon('trash',14)}</button>` : ''}
+    </div>
+  `).join('');
+}
+
+function openOcNdsDetalhe(id){
+  const x = (DB.ocnds||[]).find(y=>y.id===Number(id));
+  if(!x) return;
+  const eq = findEquipe(x.equipeId);
+  const stColor = STATUS_OC_NDS_COLOR[x.status]||'var(--muted)';
+  const isOC = x.tipo==='OC';
+
+  const detalhesHtml = isOC ? `
+    <div class="dtl-grid">
+      <div class="dtl-tile"><div class="dtl-tile-lbl">Setor</div><div class="dtl-tile-val">${esc(x.setor||'—')}</div></div>
+      <div class="dtl-tile"><div class="dtl-tile-lbl">Coordenação</div><div class="dtl-tile-val">${esc(x.coordenacao||'—')}</div></div>
+      <div class="dtl-tile"><div class="dtl-tile-lbl">Tipo</div><div class="dtl-tile-val"><span class="badge" style="color:var(--blue);background:rgba(78,140,235,.14);">OC</span></div></div>
+      <div class="dtl-tile"><div class="dtl-tile-lbl">PTP</div><div class="dtl-tile-val mono">${esc(x.ptp||'—')}</div></div>
+      <div class="dtl-tile"><div class="dtl-tile-lbl">SI</div><div class="dtl-tile-val mono">${esc(x.si||'—')}</div></div>
+      <div class="dtl-tile"><div class="dtl-tile-lbl">OSE</div><div class="dtl-tile-val mono">${esc(x.ose||'—')}</div></div>
+      <div class="dtl-tile"><div class="dtl-tile-lbl">Nº OC (equipe)</div><div class="dtl-tile-val mono">${esc(x.numeroOC||'Aguardando…')}</div></div>
+    </div>` : `
+    <div class="dtl-grid">
+      <div class="dtl-tile"><div class="dtl-tile-lbl">Setor</div><div class="dtl-tile-val">${esc(x.setor||'—')}</div></div>
+      <div class="dtl-tile"><div class="dtl-tile-lbl">Coordenação</div><div class="dtl-tile-val">${esc(x.coordenacao||'—')}</div></div>
+      <div class="dtl-tile"><div class="dtl-tile-lbl">Tipo</div><div class="dtl-tile-val"><span class="badge" style="color:var(--accent);background:rgba(224,164,88,.14);">NDS</span></div></div>
+      <div class="dtl-tile"><div class="dtl-tile-lbl">Ocorrência</div><div class="dtl-tile-val mono">${esc(x.ocorrencia||'—')}</div></div>
+    </div>`;
+
+  const historicoHtml = (x.historico||[]).length ? `
+    <div class="dtl-section">
+      <div class="dtl-section-head"><h4>Histórico</h4><span class="mono">${x.historico.length} evento(s)</span></div>
+      <div style="padding:12px;display:flex;flex-direction:column;gap:8px;">
+        ${x.historico.slice().reverse().map(h=>`
+          <div style="display:flex;gap:10px;align-items:flex-start;font-size:12px;">
+            <div style="width:8px;height:8px;border-radius:50%;background:${STATUS_OC_NDS_COLOR[h.para]||'var(--muted)'};flex-shrink:0;margin-top:4px;"></div>
+            <div>
+              <div><strong>${esc(h.usuarioNome||'Sistema')}</strong> · ${fmtDateTime(h.ts)}</div>
+              <div style="color:var(--muted);">${esc(h.motivo||h.tipo||'')}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>` : '';
+
+  const body = `
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div class="dtl-header">
+        <div style="min-width:0;">
+          <div class="dtl-code">${esc(x.gid||'G26-'+String(x.id).padStart(7,'0'))}</div>
+          <div class="dtl-title">Ocorrência ${esc(x.tipo)}</div>
+          <div class="dtl-meta">
+            <span>${icon('calendar',12)} ${fmtDate(x.data)}</span>
+            <span>${icon('users',12)} ${esc(equipeLabel(eq))}</span>
+          </div>
+        </div>
+        <div><span class="badge" style="color:${stColor};background:${bgFromVar(stColor)};font-size:13px;padding:6px 14px;"><span class="badge-dot"></span>${esc(x.status)}</span></div>
+      </div>
+
+      <div class="dtl-tile" style="grid-column:1/-1;"><div class="dtl-tile-lbl">Equipe</div><div class="dtl-tile-val"><span class="badge-prefix">${esc(equipeLabel(eq))}</span><div class="admin-field-meta" style="margin-top:4px;">Supervisor: ${esc(eq?.supervisor||'—')} · Encarregado: ${esc(eq?.encarregado||'—')}</div></div></div>
+
+      ${detalhesHtml}
+
+      ${x.observacoes? `<div class="dtl-section"><div class="dtl-section-head"><h4>Observações</h4></div><div style="padding:12px;white-space:pre-wrap;">${esc(x.observacoes)}</div></div>` : ''}
+
+      ${historicoHtml}
+
+      ${x.status!=='Concluída'? `
+      <div class="dtl-actions">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span class="dtl-actions-lbl">Alterar status:</span>
+          ${STATUS_OC_NDS.filter(s=>s!==x.status).map(s=>`<button type="button" class="btn btn-sm" data-ocnds-set-status="${x.id}|${s}">→ ${s}</button>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm" data-ocnds-edit-detail="${x.id}">${icon('edit',13)} Editar</button>
+          <button type="button" class="btn btn-sm" data-ocnds-hist-detail="${x.id}">${icon('history',13)} Histórico</button>
+        </div>
+      </div>` : `<div class="dtl-actions"><div style="font-size:13px;color:var(--green);font-weight:600;">${icon('check',14)} Ocorrência concluída e registrada no RDO.</div></div>`}
+    </div>`;
+
+  openModal({
+    title: 'Detalhe da ocorrência',
+    bodyHtml: body,
+    wide: true,
+    submitLabel: 'Fechar',
+    onSubmit: ()=>{},
+    onMount: (root) => {
+      root.querySelectorAll('[data-ocnds-set-status]').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const [itemId, novoStatus] = btn.dataset.ocndsSetStatus.split('|');
+          alterarStatusOcNds(Number(itemId), novoStatus);
+        });
+      });
+      root.querySelectorAll('[data-ocnds-edit-detail]').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          openOcNdsModal(Number(btn.dataset.ocndsEditDetail));
+        });
+      });
+    }
+  });
+}
+
+function alterarStatusOcNds(id, novoStatus){
+  if(!requerEscrita()) return;
+  const x = (DB.ocnds||[]).find(y=>y.id===Number(id));
+  if(!x) return;
+  const antigo = x.status;
+  x.status = novoStatus;
+  x.historico = x.historico||[];
+  x.historico.push({...currentAutor(), ts:Date.now(), tipo:'status', de:antigo, para:novoStatus, motivo:`Status alterado de "${antigo}" para "${novoStatus}"`});
+  registrarEvento('status','ocnds',x.id,x.gid||'OC/NDS #'+x.id, antigo+' → '+novoStatus);
+  saveData(); renderContent();
+  toast('Status alterado para "'+novoStatus+'".');
+  openOcNdsDetalhe(id);
+}
+
+function deletarOcNds(id){
+  if(!requerEscrita()) return;
+  const x = (DB.ocnds||[]).find(y=>y.id===Number(id));
+  if(!x) return;
+  if(x.status==='Concluída'){ toast('Não é possível excluir uma ocorrência concluída.', 'error'); return; }
+  if(!confirm('Excluir esta ocorrência?')) return;
+  DB.ocnds = (DB.ocnds||[]).filter(y=>y.id!==id);
+  registrarEvento('exclusao','ocnds',id,x.gid||'OC/NDS #'+id,'Excluída');
+  saveData(); renderContent();
+  toast('Ocorrência excluída.');
+}
+
+function encaminharWhatsOcNds(id){
+  const x = (DB.ocnds||[]).find(y=>y.id===Number(id));
+  if(!x) return;
+  const eq = findEquipe(x.equipeId);
+  if(!eq || !eq.whatsapp){ toast('Equipe sem WhatsApp cadastrado.', 'error'); return; }
+  const link = equipePageUrlOcNds(x.id);
+  const detalhes = x.tipo==='OC'
+    ? `PTP: ${x.ptp||'—'} | SI: ${x.si||'—'} | OSE: ${x.ose||'—'}`
+    : `Ocorrência: ${x.ocorrencia||'—'}`;
+  const texto = `🔔 *OC/NDS ${x.tipo} — ${x.gid||'G26-'+String(x.id).padStart(7,'0')}*\n\nSetor: ${x.setor||'—'}\nCoordenação: ${x.coordenacao||'—'}\nStatus: ${x.status}\nData: ${fmtDate(x.data)}\n${detalhes}\n\nAcesse os detalhes e preencha as informações:\n${link}`;
+  window.open(waLink(eq.whatsapp, texto), '_blank');
+}
+
+function equipePageUrlOcNds(id){
+  let base = location.href.split(/[?#]/)[0];
+  base = base.replace(/[\\/]index\.html$/i, '');
+  if(base && !base.endsWith('/')) base += '/';
+  return base + 'team.html?ocnds=' + id;
+}
+
+function ocndsVisiveis(){
+  return DB.ocnds||[];
+}
+
+function flatOcNds(){
+  return ocndsVisiveis().map(x=>({
+    ocnds: x,
+    equipe: findEquipe(x.equipeId),
+    status: x.status,
+    isRdo: x.status==='Concluída'
+  }));
 }
 function renderMedição(){
   renderModuloEmDesenvolvimento('Medição');
@@ -3595,8 +4045,11 @@ function renderMedição(){
 function renderMediçãoProjetos(){
   renderModuloEmDesenvolvimento('Medição – Projetos');
 }
-function renderMediçãoOCNDS(){
-  renderModuloEmDesenvolvimento('Medição – OC/NDS/OSE');
+function renderMediçãoOC(){
+  renderModuloEmDesenvolvimento('Medição – OC');
+}
+function renderMediçãoNDSOSE(){
+  renderModuloEmDesenvolvimento('Medição – NDS/OSE');
 }
 function renderMediçãoPoda(){
   renderModuloEmDesenvolvimento('Medição – PODA');
@@ -4472,6 +4925,65 @@ function renderProgramacoesConcluidas(){
   document.getElementById('rdo-export').addEventListener('click', ()=> exportRDOExcel(registros));
   // Imprimir
   document.getElementById('rdo-print').addEventListener('click', ()=> printRDOReport(registros));
+
+  // Seção OC/NDS concluídas
+  const ocndsConcluidas = (DB.ocnds||[]).filter(x=>x.status==='Concluída').sort((a,b)=> String(b.data||'').localeCompare(String(a.data||'')));
+  if(ocndsConcluidas.length){
+    const ocndsSection = document.createElement('div');
+    ocndsSection.innerHTML = `
+      <div class="panel" style="padding:0;overflow:hidden;margin-top:24px;">
+        <div class="panel-head" style="padding:14px 16px;">
+          <div><h3>Ocorrências OC/NDS Concluídas</h3><div class="admin-field-meta">${ocndsConcluidas.length} ocorrência(s) concluída(s) e registrada(s) no RDO.</div></div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="data-table" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:1050px;">
+            <thead>
+              <tr>
+                <th style="width:30px;">#</th>
+                <th>ID</th>
+                <th>Tipo</th>
+                <th>Setor</th>
+                <th>Coord.</th>
+                <th>Detalhes</th>
+                <th>Equipe</th>
+                <th style="text-align:center;">Data</th>
+                <th style="text-align:center;">Status</th>
+                <th style="width:40px;"></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${ocndsConcluidas.map((x,i)=>{
+                const eq = findEquipe(x.equipeId);
+                const badge = x.tipo==='OC'
+                  ? `<span class="badge" style="color:var(--blue);background:rgba(78,140,235,.14);">OC</span>`
+                  : `<span class="badge" style="color:var(--accent);background:rgba(224,164,88,.14);">NDS</span>`;
+                const detalhes = x.tipo==='OC'
+                  ? [x.ptp&&'PTP: '+x.ptp, x.si&&'SI: '+x.si, x.ose&&'OSE: '+x.ose, x.numeroOC&&'OC: '+x.numeroOC].filter(Boolean).join(' · ')||'—'
+                  : [x.ocorrencia&&'Ocorrência: '+x.ocorrencia].filter(Boolean).join('')||'—';
+                return `
+                  <tr data-ocnds-rdo="${x.id}" style="cursor:pointer;" title="Ver detalhes">
+                    <td style="text-align:center;color:var(--muted-2);">${i+1}</td>
+                    <td class="mono">${esc(x.gid||'G26-'+String(x.id).padStart(7,'0'))}</td>
+                    <td>${badge}</td>
+                    <td style="font-size:12px;">${esc(x.setor||'—')}</td>
+                    <td style="font-size:12px;">${esc(x.coordenacao||'—')}</td>
+                    <td style="font-size:12px;color:var(--muted);">${esc(detalhes)}</td>
+                    <td>${esc(equipeLabel(eq))}<div class="admin-field-meta">${esc(eq?.supervisor||'')}</div></td>
+                    <td style="text-align:center;" class="mono">${fmtDate(x.data)}</td>
+                    <td style="text-align:center;"><span class="badge" style="color:var(--green);background:rgba(34,139,34,.14);"><span class="badge-dot"></span>Concluída</span></td>
+                    <td style="text-align:center;">${icon('search',13)}</td>
+                  </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    el.querySelector('.section-gap').appendChild(ocndsSection);
+
+    ocndsSection.querySelectorAll('tr[data-ocnds-rdo]').forEach(tr=>{
+      tr.addEventListener('click', ()=> openOcNdsDetalhe(Number(tr.dataset.ocndsRdo)));
+    });
+  }
 }
 
 function openRDOModal(progId, attribId){
