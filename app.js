@@ -253,11 +253,12 @@ const NAV_ITEMS = [
   ]},
   { id:'equipes',     label:'Equipes',       sub:'Cadastro de equipes de campo', icon:'users' },
   { id:'atividades',  label:'Atividades',    sub:'Cadastro de códigos e valores unitários', icon:'list' },
-  { id:'projetos',    label:'Projetos',      sub:'Cadastro de projetos', icon:'folder' },
+  { id:'projetos',    label:'Projetos',      sub:'Cadastro de projetos', icon:'folder', children:[
+    { id:'avanco',      label:'Avanço',        sub:'Progresso físico e financeiro', icon:'trend' },
+    { id:'programacoes',label:'Programações',  sub:'Agenda, fluxo e reprogramação', icon:'calendar' },
+  ]},
   { id:'osepoda',     label:'OSE/PODA',      sub:'Atividade não programada e programação comercial', icon:'tree' },
   { id:'ocnds',       label:'OC/NDS',        sub:'Atividade não programada e programação comercial', icon:'siren' },
-  { id:'avanco',      label:'Avanço',        sub:'Progresso físico e financeiro', icon:'trend' },
-  { id:'programacoes',label:'Programações',  sub:'Agenda, fluxo e reprogramação', icon:'calendar' },
   { id:'RDO',         label:'RDO',           sub:'Execução das equipes em campo', icon:'clipboard' },
   { id:'historico',   label:'Histórico',     sub:'Linha do tempo de todas as alterações', icon:'clock' },
   { id:'admin',       label:'Administração', sub:'Campos personalizados de cada módulo', icon:'gear' },
@@ -2913,7 +2914,7 @@ function buildWhatsMessage(prog, atrib){
     return `${i+1}. *${at?.codigo||'?'}* · ${at?.descricao||''} — ${a.quantidadePrevista??'—'} ${at?.unidade||''}`;
   }).join('\n');
   return [
-    `*G26 PLANNER · Programação de Redes Elétricas*`,
+    `*G26 New · Programação de Redes Elétricas*`,
     ``,
     `*Programação:* ${progGid(prog)}`,
     `*Projeto:* ${pr?.nome||'—'} (${pr?.codigo||''})`,
@@ -3166,7 +3167,7 @@ function buildDocProgramacao(prog){
   const pr = findProjeto(prog.projetoId);
   return `
     <div class="ps-head">
-      <div><h1>G26 Planner · Programação de Redes Elétricas</h1><div class="ps-sub">Documento de campo — programação</div></div>
+      <div><h1>G26 New · Programação de Redes Elétricas</h1><div class="ps-sub">Documento de campo — programação</div></div>
       <div style="text-align:right;"><div style="font-size:14px;font-weight:700;">${fmtDate(prog.dataProgramada)}</div><div class="ps-sub">Emissão: ${fmtDateTime(Date.now())}</div></div>
     </div>
     <table class="ps-info">
@@ -3207,7 +3208,7 @@ function docAnexosHtml(prog){
 function buildDocData(data, list){
   return `
     <div class="ps-head">
-      <div><h1>G26 Planner · Programação de Redes Elétricas</h1><div class="ps-sub">Documento de campo — ${fmtDate(data)}</div></div>
+      <div><h1>G26 New · Programação de Redes Elétricas</h1><div class="ps-sub">Documento de campo — ${fmtDate(data)}</div></div>
       <div style="text-align:right;"><div style="font-size:14px;font-weight:700;">${fmtDate(data)}</div><div class="ps-sub">${list.length} equipe(s) programada(s)</div></div>
     </div>
     ${list.map(x=> docAtribuicaoHtml(x.programacao, x.atribuicao)).join('')}
@@ -3546,12 +3547,12 @@ function bindEmptyCta(el, fn){ const b = el.querySelector('#empty-cta'); if(b) b
 /* =========================================================
    BACKUP
 ========================================================= */
-document.getElementById('btn-backup').addEventListener('click', ()=>{
+document.getElementById('btn-backup')?.addEventListener('click', ()=>{
   const choice = confirm('Clique OK para EXPORTAR os dados (baixar backup). Clique Cancelar para IMPORTAR um arquivo de backup.');
   if(choice){
     const blob = new Blob([JSON.stringify(DB, null, 2)], {type:'application/json'});
     const url = URL.createObjectURL(blob); const a = document.createElement('a');
-    a.href = url; a.download = `g26_planner_backup_${todayISO()}.json`; a.click(); URL.revokeObjectURL(url);
+    a.href = url; a.download = `g26_new_backup_${todayISO()}.json`; a.click(); URL.revokeObjectURL(url);
     toast('Backup exportado.');
   } else { document.getElementById('import-file').click(); }
 });
@@ -4651,7 +4652,7 @@ function showLoginScreen(){
     }
   }catch(e){ localStorage.removeItem('g26_login_saved'); }
   if(u.value==='') u.focus(); else p.focus();
-  document.getElementById('nav-user').textContent = CURRENT_USER? 'Conectado: '+CURRENT_USER.nome : 'Dados sincronizados na nuvem (Firebase)';
+  const navUser = document.getElementById('nav-user'); if(navUser) navUser.textContent = CURRENT_USER? 'Conectado: '+CURRENT_USER.nome : 'Dados sincronizados na nuvem (Firebase)';
 }
 function tryLogin(){
   const login = document.getElementById('login-user').value.trim();
@@ -4697,7 +4698,7 @@ document.getElementById('pwd-eye').addEventListener('click', ()=>{
   btn.innerHTML = show? EYE_CLOSED : EYE_OPEN;
   btn.title = show? 'Ocultar senha' : 'Mostrar senha';
 });
-document.getElementById('btn-logout').addEventListener('click', logout);
+document.getElementById('btn-logout')?.addEventListener('click', logout);
 
 /* =========================================================
    INIT — carrega dados do Firebase Realtime Database

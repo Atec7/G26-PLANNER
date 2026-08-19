@@ -1,5 +1,5 @@
 /* =========================================================
-   G26 Planner · Página da equipe (offline-first + sync automático)
+   G26 New · Página da equipe (offline-first + sync automático)
    Permite editar APENAS as atividades/quantidades da programação,
    com observação obrigatória. Funciona offline (fila local) e
    sincroniza sozinho quando a internet volta.
@@ -1146,7 +1146,7 @@ function buildDocEquipeHtml(pg, eqId){
   return `
   <div class="print-sheet">
     <div class="ps-head">
-      <div><h1>G26 Planner · Programação de Redes Elétricas</h1><div class="ps-sub">Documento de campo — equipe</div></div>
+      <div><h1>G26 New · Programação de Redes Elétricas</h1><div class="ps-sub">Documento de campo — equipe</div></div>
       <div style="text-align:right;"><div style="font-size:14px;font-weight:700;">${fmtDate(atrib?.dataProgramada||pg.dataProgramada)}</div><div class="ps-sub">Emissão: ${fmtDateTime(Date.now())}</div></div>
     </div>
     <div class="ps-block">
