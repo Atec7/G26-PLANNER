@@ -500,6 +500,7 @@ function render(){
 
     const anexosHtml = renderOcNdsAnexosHtml();
 
+    resetFotos();
     root.innerHTML = `
       ${anexosHtml}
       <div class="panel section-gap">
@@ -1243,7 +1244,7 @@ function init(){
       atualizaRDOCompletado();
     }
     render();
-  }).catch(()=>{ render(); }).finally(()=>{ if(!isOcndsMode) syncNow(); });
+  }).catch(()=>{ render(); }).finally(()=>{ if(isOcndsMode) syncNowOcNds(); else syncNow(); });
   window.addEventListener('pagehide', ()=>pararPresencaTeam());
   window.addEventListener('beforeunload', ()=>pararPresencaTeam());
   iniciarPresencaTeam();
