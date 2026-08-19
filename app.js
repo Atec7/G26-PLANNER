@@ -21,8 +21,8 @@ const ACCIDENT_REF = rtdb.ref('g26_planner/acidentes');
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
 
 const DEFAULT_DATA = {
-  equipes: [], atividades: [], projetos: [], programacoes: [], ocnds: [], usuarios: [],
-  customFields: { equipes: [], atividades: [], projetos: [], programacoes: [] },
+  equipes: [], atividades: [], projetos: [], programacoes: [], ocnds: [], podaProgramacoes: [], usuarios: [],
+  customFields: { equipes: [], atividades: [], projetos: [], programacoes: [], podaProgramacoes: [] },
   seq: 1, rev: 0
 };
 function mergeData(raw){
@@ -209,11 +209,17 @@ const TELAS = [
   { id:'equipes',         label:'Equipes' },
   { id:'atividades',      label:'Atividades' },
   { id:'projetos',        label:'Projetos' },
+  { id:'projetos-cadastro', label:'Cadastro de Projetos' },
   { id:'osepoda',         label:'OSE/PODA' },
+  { id:'ose',             label:'OSE' },
+  { id:'poda',            label:'PODA' },
+  { id:'poda-programacoes', label:'PODA - Programações' },
+  { id:'poda-rdo',        label:'PODA - RDO' },
   { id:'ocnds',           label:'OC/NDS' },
   { id:'avanco',          label:'Avanço' },
   { id:'programacoes',    label:'Programações' },
-  { id:'RDO',             label:'RDO' },
+  { id:'rdo-projetos',   label:'RDO' },
+  { id:'rdo-ocnds',      label:'RDO Ocorrências' },
   { id:'historico',       label:'Histórico' },
   { id:'admin',           label:'Administração' },
 ];
@@ -254,12 +260,21 @@ const NAV_ITEMS = [
   { id:'equipes',     label:'Equipes',       sub:'Cadastro de equipes de campo', icon:'users' },
   { id:'atividades',  label:'Atividades',    sub:'Cadastro de códigos e valores unitários', icon:'list' },
   { id:'projetos',    label:'Projetos',      sub:'Cadastro de projetos', icon:'folder', children:[
+    { id:'projetos-cadastro', label:'Cadastro',   sub:'Cadastro de projetos', icon:'folder' },
     { id:'avanco',      label:'Avanço',        sub:'Progresso físico e financeiro', icon:'trend' },
     { id:'programacoes',label:'Programações',  sub:'Agenda, fluxo e reprogramação', icon:'calendar' },
+    { id:'rdo-projetos',label:'RDO',           sub:'Relatório de execução das equipes', icon:'clipboard' },
   ]},
-  { id:'osepoda',     label:'OSE/PODA',      sub:'Atividade não programada e programação comercial', icon:'tree' },
-  { id:'ocnds',       label:'OC/NDS',        sub:'Atividade não programada e programação comercial', icon:'siren' },
-  { id:'RDO',         label:'RDO',           sub:'Execução das equipes em campo', icon:'clipboard' },
+  { id:'osepoda',     label:'OSE/PODA',      sub:'Atividade não programada e programação comercial', icon:'tree', children:[
+    { id:'ose',          label:'OSE',             sub:'Atividade não programada', icon:'tree' },
+    { id:'poda',         label:'PODA',            sub:'Programação e controle de poda', icon:'tree', children:[
+      { id:'poda-programacoes', label:'Programações', sub:'Agenda e fluxo de poda', icon:'calendar' },
+      { id:'poda-rdo',          label:'RDO',          sub:'Relatório de execução de poda', icon:'clipboard' },
+    ]},
+  ]},
+  { id:'ocnds',       label:'OC/NDS',        sub:'Atividade não programada e programação comercial', icon:'siren', children:[
+    { id:'rdo-ocnds',   label:'RDO Ocorrências', sub:'Ocorrências OC/NDS concluídas', icon:'clipboard' },
+  ]},
   { id:'historico',   label:'Histórico',     sub:'Linha do tempo de todas as alterações', icon:'clock' },
   { id:'admin',       label:'Administração', sub:'Campos personalizados de cada módulo', icon:'gear' },
 ];
@@ -299,39 +314,54 @@ const ICONS = {
 function icon(name,size=16){ return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`; }
 
     const navExpanded = {};
+    function isViewActive(item){
+      if(currentView===item.id) return true;
+      if(item.children) return item.children.some(c=> isViewActive(c));
+      return false;
+    }
+    function renderNavItem(it){
+      if(!telaPodeVer(it.id)){
+        if(!it.children) return '';
+        const visChildren = it.children.filter(c=> telaPodeVer(c.id));
+        if(!visChildren.length) return '';
+      }
+      const isActive = isViewActive(it);
+      if(isActive && it.children && it.children.some(c=> c.id===currentView)) navExpanded[it.id] = true;
+      const expanded = !!navExpanded[it.id];
+      const chevron = it.children ? `<span class="nav-chevron ${expanded?'open':''}">${icon('chevR',14)}</span>` : '';
+      const mainBtn = `<button class="nav-item ${isActive?'active':''}" data-view="${it.id}" ${it.children?'data-has-children="1"':''}>${icon(it.icon)}<span>${it.label}</span>${chevron}</button>`;
+      if(!it.children) return mainBtn;
+      const subBtns = it.children.map(c=> renderNavItem(c)).join('');
+      return mainBtn + `<div class="nav-sub-wrap ${expanded?'open':''}">${subBtns}</div>`;
+    }
     function renderNav(){
       const nav = document.getElementById('nav');
+      function hasVisibleChild(it){
+        if(!it.children) return telaPodeVer(it.id);
+        return it.children.some(c=> hasVisibleChild(c));
+      }
       const items = NAV_ITEMS.filter(it=>{
         if(it.id==='admin') return CURRENT_USER && CURRENT_USER.role==='administrador';
-        if(it.children){
-          const visChildren = it.children.filter(c=> telaPodeVer(c.id));
-          if(!visChildren.length) return false;
-        }
-        return telaPodeVer(it.id);
+        return hasVisibleChild(it);
       });
       const alertTotal = alertaCount();
       nav.innerHTML = items.map((it,i) => {
         const badge = it.id==='alertas' && alertTotal>0 ? `<span class="nav-badge">${alertTotal}</span>` : '';
         const sep = i===items.length-1 ? '<div class="nav-sep"></div>' : '';
-        const isActive = currentView===it.id || (it.children && it.children.some(c=>c.id===currentView));
-        if(isActive) navExpanded[it.id] = true;
-        const expanded = !!navExpanded[it.id];
-        const chevron = it.children ? `<span class="nav-chevron ${expanded?'open':''}">${icon('chevR',14)}</span>` : '';
-        const mainBtn = `<button class="nav-item ${isActive?'active':''}" data-view="${it.id}" ${it.children?'data-has-children="1"':''}>${icon(it.icon)}<span>${it.label}</span>${badge}${chevron}</button>`;
-        if(!it.children) return sep + mainBtn;
-        const subBtns = it.children.map(c=> `<button class="nav-item nav-sub ${currentView===c.id?'active':''}" data-view="${c.id}">${icon(c.icon)}<span>${c.label}</span></button>`).join('');
-        return sep + mainBtn + `<div class="nav-sub-wrap ${expanded?'open':''}">${subBtns}</div>`;
+        return sep + renderNavItem(it);
       }).join('');
       nav.querySelectorAll('[data-has-children]').forEach(btn=>{
         btn.addEventListener('click', (e)=>{
           e.preventDefault();
           e.stopPropagation();
           const wrap = btn.nextElementSibling;
-          if(!wrap || !wrap.classList.contains('nav-sub-wrap')) return;
-          const view = btn.dataset.view;
-          navExpanded[view] = !navExpanded[view];
-          wrap.classList.toggle('open', navExpanded[view]);
-          btn.querySelector('.nav-chevron').classList.toggle('open', navExpanded[view]);
+          if(wrap && wrap.classList.contains('nav-sub-wrap')){
+            const view = btn.dataset.view;
+            navExpanded[view] = !navExpanded[view];
+            wrap.classList.toggle('open', navExpanded[view]);
+            btn.querySelector('.nav-chevron').classList.toggle('open', navExpanded[view]);
+          }
+          setView(btn.dataset.view);
         });
       });
       nav.querySelectorAll('.nav-item[data-view]:not([data-has-children])').forEach(btn=>{
@@ -342,10 +372,15 @@ function setView(view){
   currentView = view;
   document.getElementById('sidebar').classList.remove('open');
   let meta = NAV_ITEMS.find(i=>i.id===view);
-  if(!meta && view.startsWith('medição-')){
-    meta = NAV_ITEMS.find(i=>i.id==='medição');
-    const child = meta?.children?.find(c=>c.id===view);
-    if(child){ meta = { ...meta, label: child.label, sub: child.sub }; }
+  if(!meta){
+    function findInChildren(items){
+      for(const it of items){
+        if(it.id===view) return it;
+        if(it.children){ const found = findInChildren(it.children); if(found) return found; }
+      }
+      return null;
+    }
+    meta = findInChildren(NAV_ITEMS);
   }
   if(!meta) meta = { label:view, sub:'' };
   document.getElementById('page-title').textContent = meta.label;
@@ -362,7 +397,9 @@ function renderTopbarActions(){
     equipes: ()=>actionBtn('Nova equipe', ()=>openEquipeModal()),
     atividades: ()=>actionBtn('Nova atividade', ()=>openAtividadeModal()),
     projetos: ()=>actionBtn('Novo projeto', ()=>openProjetoModal()),
+    'projetos-cadastro': ()=>actionBtn('Novo projeto', ()=>openProjetoModal()),
     programacoes: ()=>actionBtn('Nova programação', ()=>openProgramacaoModal()),
+    'poda-programacoes': ()=>actionBtn('Nova programação', ()=>openPodaProgramacaoModal()),
   } : {});
   const dangerMap = (podeEditar()? {
     atividades: ()=>btnDanger('Limpar todas', limparTodasAtividades),
@@ -372,6 +409,7 @@ function renderTopbarActions(){
     atividades: ()=>btnSecondary('Excel', exportAtividadesCSV),
     projetos: ()=>btnSecondary('Excel', exportProjetosCSV),
     programacoes: ()=>btnSecondary('Excel', exportProgramacoesCSV),
+    'poda-programacoes': ()=>btnSecondary('Excel', exportPodaProgramacoesCSV),
     avanco: ()=>btnSecondary('Excel', exportAvancoCSV),
     historico: ()=>btnSecondary('Excel', exportHistoricoCSV),
     alertas: ()=>btnSecondary('Excel', exportAlertasCSV),
@@ -706,6 +744,15 @@ function exportProgramacoesCSV(){
     programacoesFiltradas().map(x=>{
       const p=x.atribuicao, pr=findProjeto(x.programacao.projetoId), eq=findEquipe(p.equipeId);
       return [fmtDate(p.dataProgramada), pr?.nome||'-', pr?.setor||'', pr?.coordenacao||'', x.programacao.ciclo||'', eqtlLabel(eq), prtnLabel(eq), atividadesResumo(p.atividades), fmtMoney(valorProgramadoAtrib(p)), p.status];
+    }));
+}
+function exportPodaProgramacoesCSV(){
+  exportCSV('poda_programacoes.csv',
+    ['ID','Data','OSI','Subestação','Qtd. Anomalia','Tipo Rede','Chave','ASI','Status Doc.','ID-SIPROG','OSE','Equipe','Atividades','Status','Observações'],
+    podaProgramacoesVisiveis().map(p=>{
+      const eq = findEquipe(p.equipeId);
+      const ativs = (p.atividades||[]).map(a=>{ const at=findAtividade(a.atividadeId); return `${at?.codigo||'?'} ×${a.quantidadePrevista??'—'}`; }).join(', ');
+      return [podaProgLabel(p), fmtDate(p.dataProgramacao), p.osi||'', p.subestacao||'', p.qtdAnomalia||'', p.tipoRede||'', p.chave||'', p.asi||'', p.statusDocumentacao||'', p.idSiprog||'', p.ose||'', equipeLabel(eq), ativs, p.status||'', p.observacoes||''];
     }));
 }
 function exportAvancoCSV(){
@@ -3580,15 +3627,330 @@ function renderContent(){
     currentView = 'dashboard';
     renderNav();
   }
-  const map = { dashboard: renderDashboard, alertas: renderAlertas, 'medição': renderMedição, 'medição-projetos': renderMediçãoProjetos, 'medição-oc': renderMediçãoOC, 'medição-ndsose': renderMediçãoNDSOSE, 'medição-poda': renderMediçãoPoda, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, osepoda: renderOsePoda, ocnds: renderOcNds, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin, RDO: renderProgramacoesConcluidas };
+  const map = { dashboard: renderDashboard, alertas: renderAlertas, 'medição': renderMedição, 'medição-projetos': renderMediçãoProjetos, 'medição-oc': renderMediçãoOC, 'medição-ndsose': renderMediçãoNDSOSE, 'medição-poda': renderMediçãoPoda, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, 'projetos-cadastro': renderProjetos, osepoda: renderOsePoda, ose: renderOse, poda: renderPoda, 'poda-programacoes': renderPodaProgramacoes, 'poda-rdo': renderPodaRdo, ocnds: renderOcNds, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin, 'rdo-projetos': renderRdoProjetos, 'rdo-ocnds': renderRdoOcNds };
   (map[currentView]||renderDashboard)();
 }
 
 /* =========================================================
    VIEW: OSE/PODA e OC/NDS (em desenvolvimento)
 ========================================================= */
-function renderOsePoda(){
-  renderModuloEmDesenvolvimento('OSE/PODA');
+function renderOsePoda(){ renderOse(); }
+function renderOse(){
+  renderModuloEmDesenvolvimento('OSE');
+}
+function renderPoda(){
+  renderModuloEmDesenvolvimento('PODA');
+}
+
+/* --- Poda helpers --- */
+const STATUS_DOC_OPCOES = ['Confirmado','Em elaboração','Elaborado','Validado'];
+const TIPO_REDE_OPCOES = ['MT','BT'];
+const STATUS_PODA = ['Programado','Em Execução','Concluído','Reprogramado','Cancelado'];
+function podaProgLabel(p){
+  return p.gid || ('PODA-'+String(p.id).padStart(7,'0'));
+}
+function findPodaProg(id){ return (DB.podaProgramacoes||[]).find(p=>p.id===Number(id)); }
+function podaProgramacoesVisiveis(){
+  return DB.podaProgramacoes||[];
+}
+
+/* --- renderPodaProgramacoes --- */
+function renderPodaProgramacoes(){
+  const el = document.getElementById('content');
+  if(!DB.equipes.length){
+    el.innerHTML = emptyState('Cadastre equipes primeiro', 'A programação de poda requer ao menos uma equipe.');
+    return;
+  }
+  const list = podaProgramacoesVisiveis();
+  el.innerHTML = `
+    <div class="panel" style="padding:14px 16px;margin-bottom:16px;">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <input type="search" id="poda-f-busca" placeholder="Buscar por OSI, subestação, equipe, status..." style="flex:1;min-width:200px;">
+        <select id="poda-f-status"><option value="">Todos os status</option>${STATUS_PODA.map(s=>`<option>${s}</option>`).join('')}</select>
+        <input type="date" id="poda-f-de">
+        <span style="color:var(--muted);font-size:12px;">até</span>
+        <input type="date" id="poda-f-ate">
+        <button class="btn btn-sm" id="poda-f-aplicar">${icon('grid',13)} Filtrar</button>
+        <button class="btn btn-sm btn-ghost" id="poda-f-limpar">Limpar</button>
+      </div>
+    </div>
+    <div id="poda-area"></div>`;
+  const area = document.getElementById('poda-area');
+  if(!list.length){
+    area.innerHTML = emptyState('Nenhuma programação de poda', 'Clique em "Nova programação" para criar a primeira.');
+    return;
+  }
+  const norm = s=> String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const fBusca = document.getElementById('poda-f-busca');
+  const fStatus = document.getElementById('poda-f-status');
+  const fDe = document.getElementById('poda-f-de');
+  const fAte = document.getElementById('poda-f-ate');
+  function aplicarFiltros(){
+    const q = norm(fBusca.value.trim());
+    const st = fStatus.value;
+    const de = fDe.value;
+    const ate = fAte.value;
+    area.querySelectorAll('tr[data-poda-id]').forEach(tr=>{
+      const p = findPodaProg(Number(tr.dataset.podaId));
+      if(!p){ tr.style.display='none'; return; }
+      const eq = findEquipe(p.equipeId);
+      const hay = norm([p.osi, p.subestacao, p.tipoRede, p.chave, p.status, p.statusDocumentacao, podaProgLabel(p), equipeLabel(eq), eq?.supervisor, fmtDate(p.dataProgramacao), p.observacoes].join(' '));
+      const okBusca = !q || hay.includes(q);
+      const okStatus = !st || p.status===st;
+      const okDe = !de || (p.dataProgramacao||'') >= de;
+      const okAte = !ate || (p.dataProgramacao||'') <= ate;
+      tr.style.display = (okBusca && okStatus && okDe && okAte) ? '' : 'none';
+    });
+  }
+  fBusca.addEventListener('input', aplicarFiltros);
+  fStatus.addEventListener('change', aplicarFiltros);
+  document.getElementById('poda-f-aplicar').addEventListener('click', aplicarFiltros);
+  document.getElementById('poda-f-limpar').addEventListener('click', ()=>{ fBusca.value=''; fStatus.value=''; fDe.value=''; fAte.value=''; aplicarFiltros(); });
+
+  area.innerHTML = `<div class="panel"><div class="table-scroll"><table>
+    <thead><tr><th>ID</th><th>Data</th><th>OSI</th><th>Subestação</th><th>Tipo</th><th>Equipe</th><th>Status Doc.</th><th>Atividades</th><th>Status</th><th></th></tr></thead>
+    <tbody>${list.map(p=>{
+      const eq = findEquipe(p.equipeId);
+      const late = p.dataProgramacao < todayISO() && !['Concluído','Cancelado'].includes(p.status);
+      const ativResumo = (p.atividades||[]).map(a=>{ const at=findAtividade(a.atividadeId); return `${esc(at?.codigo||'?')} ×${a.quantidadePrevista??'—'}`; }).join(', ');
+      return `<tr data-poda-id="${p.id}">
+        <td class="mono" style="white-space:nowrap;">${podaProgLabel(p)}</td>
+        <td class="mono">${fmtDate(p.dataProgramacao)} ${late?'<div class="blink-red" style="font-size:10.5px;">VENCIDA</div>':''}</td>
+        <td>${esc(p.osi||'—')}</td>
+        <td>${esc(p.subestacao||'—')}</td>
+        <td><span class="badge" style="color:${p.tipoRede==='MT'?'var(--blue)':'var(--accent)'};background:${p.tipoRede==='MT'?'rgba(78,140,235,.14)':'rgba(224,164,88,.14)'};">${esc(p.tipoRede||'—')}</span></td>
+        <td>${esc(equipeLabel(eq))}<div class="admin-field-meta">${esc(eq?.supervisor||'')}</div></td>
+        <td><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${esc(p.statusDocumentacao||'—')}</span></td>
+        <td style="font-size:12px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${ativResumo||'—'}</td>
+        <td>${statusBadge(p.status, late)}</td>
+        <td><div class="row-actions">
+          <button class="icon-btn" title="Editar" data-poda-edit="${p.id}">${icon('edit',14)}</button>
+          <button class="icon-btn" title="Excluir" data-poda-del="${p.id}">${icon('trash',14)}</button>
+        </div></td>
+      </tr>`;
+    }).join('')}</tbody></table></div></div>`;
+
+  area.querySelectorAll('[data-poda-edit]').forEach(b=>b.addEventListener('click', ()=> openPodaProgramacaoModal(Number(b.dataset.podaEdit))));
+  area.querySelectorAll('[data-poda-del]').forEach(b=>b.addEventListener('click', ()=>{
+    const p = findPodaProg(Number(b.dataset.podaDel));
+    if(!p) return;
+    if(!confirm('Excluir a programação de poda '+podaProgLabel(p)+'?')) return;
+    DB.podaProgramacoes = DB.podaProgramacoes.filter(x=>x.id!==p.id);
+    saveData(); renderContent(); toast('Programação excluída.');
+  }));
+}
+
+/* --- openPodaProgramacaoModal --- */
+function openPodaProgramacaoModal(id){
+  if(!requerEscrita()) return;
+  const pg = id ? findPodaProg(id) : null;
+  let atribs = pg ? pg.atribuicoes.map(a=>({ equipeId:String(a.equipeId), atividades: a.atividades.map(x=>({atividadeId:String(x.atividadeId), quantidadePrevista:x.quantidadePrevista??''})) })) : [{ equipeId:'', atividades:[{atividadeId:'',quantidadePrevista:''}] }];
+  let anexos = pg ? (pg.anexos||[]).map(a=>({...a})) : [];
+  let anexosEnviando = false;
+  let localAddr = pg?.local||'';
+  let localLat = pg?.localLat??null;
+  let localLng = pg?.localLng??null;
+
+  function atribBlockHtml(a,i){
+    const searchId = `poda-act-search-${i}`;
+    return `<div class="atrib-block" data-idx="${i}">
+      <div class="atrib-head">
+        <select class="atrib-equipe" data-idx="${i}"><option value="">Selecione a equipe…</option>${DB.equipes.filter(e=>e.ativo!==false).map(e=>`<option value="${e.id}" ${String(a.equipeId)===String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' · '+esc(e.encarregado):''}</option>`).join('')}</select>
+        ${atribs.length>1? `<button type="button" class="icon-btn atrib-remove" data-idx="${i}">${icon('trash',14)}</button>`:''}
+      </div>
+      <div class="field" style="margin-bottom:8px;">
+        <label for="${searchId}">${icon('search',14)} Buscar atividade (código ou descrição)</label>
+        <input type="search" id="${searchId}" placeholder="Filtrar atividades…" style="width:100%;">
+      </div>
+      <div class="atrib-activities">${a.atividades.map((at,j)=>activityRowHtml(a,i,at,j)).join('')}</div>
+      <button type="button" class="btn btn-sm btn-ghost atrib-add-activity" data-idx="${i}">${icon('plus',13)} Adicionar atividade</button>
+    </div>`;
+  }
+  function activityRowHtml(a,i,at,j){
+    return `<div class="activity-row" data-idx="${i}" data-jdx="${j}">
+      <select class="act-select" data-idx="${i}" data-jdx="${j}"><option value="">Atividade…</option>${atividadesOrdenadas().map(x=>`<option value="${x.id}" ${String(at.atividadeId)===String(x.id)?'selected':''}>${isFavorita(x.id)?'★ ':''}${esc(x.codigo)} · ${esc(x.descricao)}</option>`).join('')}</select>
+      <input type="number" step="0.01" min="0" class="act-qty" data-idx="${i}" data-jdx="${j}" placeholder="Qtd." value="${at.quantidadePrevista??''}">
+      ${a.atividades.length>1? `<button type="button" class="icon-btn act-remove" data-idx="${i}" data-jdx="${j}">${icon('close',13)}</button>`:''}
+    </div>`;
+  }
+  function renderAtribsHtml(){ return atribs.map((a,i)=>atribBlockHtml(a,i)).join(''); }
+
+  const bodyHtml = `
+    <div class="field-row">
+      <div class="field"><label>OSI (Referência) <span class="req">*</span></label><input type="text" name="osi" value="${esc(pg?.osi||'')}" required placeholder="Ex.: OSI-12345"></div>
+      <div class="field"><label>Subestação</label><input type="text" name="subestacao" value="${esc(pg?.subestacao||'')}" placeholder="Nome da subestação"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Qtd. Anomalia</label><input type="number" step="1" min="0" name="qtdAnomalia" value="${pg?.qtdAnomalia||''}" placeholder="0"></div>
+      <div class="field"><label>Tipo Rede</label><select name="tipoRede"><option value="">Selecione…</option>${TIPO_REDE_OPCOES.map(v=>`<option ${pg?.tipoRede===v?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div class="field"><label>ASI</label><input type="number" step="1" min="0" name="asi" value="${pg?.asi||''}" placeholder="0"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Chave</label><input type="text" name="chave" value="${esc(pg?.chave||'')}" placeholder="Código da chave"></div>
+      <div class="field"><label>ID-SIPROG</label><input type="number" step="1" min="0" name="idSiprog" value="${pg?.idSiprog||''}" placeholder="0"></div>
+      <div class="field"><label>OSE</label><input type="number" step="1" min="0" name="ose" value="${pg?.ose||''}" placeholder="0"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Data Programação <span class="req">*</span></label><input type="date" name="dataProgramacao" required value="${pg?.dataProgramacao||todayISO()}"></div>
+      <div class="field"><label>Status Documentação</label><select name="statusDocumentacao"><option value="">Selecione…</option>${STATUS_DOC_OPCOES.map(v=>`<option ${pg?.statusDocumentacao===v?'selected':''}>${v}</option>`).join('')}</select></div>
+    </div>
+    <div class="field"><label>Observações</label><textarea name="observacoes" rows="2" placeholder="Observações da programação de poda">${esc(pg?.observacoes||'')}</textarea></div>
+    <div class="field"><label>Local / endereço de execução</label>
+      <input type="text" name="local" id="poda-local" value="${esc(pg?.local||'')}" placeholder="Digite o endereço...">
+      <div id="poda-local-tools"></div>
+    </div>
+    <div class="field"><label>Anexos</label>
+      <input type="file" id="poda-anexos-input" accept="image/*" multiple>
+      <div class="field-hint">💡 Imagens para a equipe visualizar (croqui, localização, detalhe do serviço).</div>
+      <div id="poda-anexos-preview">${anexosGridHtml(anexos, true)}</div>
+      <div id="poda-anexos-progress" style="display:none;margin-top:8px;">
+        <div id="poda-anexos-progress-text" style="font-size:11px;color:var(--muted);margin-bottom:4px;">Enviando…</div>
+        <div style="height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden;"><div id="poda-anexos-progress-fill" style="height:100%;width:0%;background:var(--accent);transition:width .2s;"></div></div>
+      </div>
+    </div>
+    <div class="field"><label>Equipes e atividades <span class="req">*</span></label>
+      <div id="atribs-container">${renderAtribsHtml()}</div>
+      <button type="button" class="btn btn-sm" id="add-atrib-btn" style="margin-top:6px;align-self:flex-start;">${icon('plus',13)} Adicionar equipe</button>
+    </div>`;
+
+  openModal({
+    title: pg? 'Editar programação de poda' : 'Nova programação de poda', bodyHtml, extraWide: true, submitLabel: pg? 'Salvar alterações':'Programar',
+    onMount:(root)=>{
+      function refreshContainer(){
+        document.getElementById('atribs-container').innerHTML = renderAtribsHtml(); bindDynamic();
+      }
+      function bindDynamic(){
+        root.querySelectorAll('.atrib-equipe').forEach(s=>s.addEventListener('change', e=>{ atribs[e.target.dataset.idx].equipeId = e.target.value; }));
+        root.querySelectorAll('.atrib-remove').forEach(b=>b.addEventListener('click', e=>{ atribs.splice(Number(e.currentTarget.dataset.idx),1); refreshContainer(); }));
+        root.querySelectorAll('.atrib-add-activity').forEach(b=>b.addEventListener('click', e=>{ atribs[Number(e.currentTarget.dataset.idx)].atividades.push({atividadeId:'',quantidadePrevista:''}); refreshContainer(); }));
+        root.querySelectorAll('.act-select').forEach(s=>s.addEventListener('change', e=>{ atribs[e.target.dataset.idx].atividades[e.target.dataset.jdx].atividadeId = e.target.value; }));
+        root.querySelectorAll('.act-qty').forEach(s=>s.addEventListener('input', e=>{ atribs[e.target.dataset.idx].atividades[e.target.dataset.jdx].quantidadePrevista = e.target.value; }));
+        root.querySelectorAll('.act-remove').forEach(b=>b.addEventListener('click', e=>{ const i=Number(e.currentTarget.dataset.idx), j=Number(e.currentTarget.dataset.jdx); atribs[i].atividades.splice(j,1); refreshContainer(); }));
+        root.querySelectorAll('input[type="search"][id^="poda-act-search-"]').forEach(input=>{
+          const idx = input.id.replace('poda-act-search-','');
+          input.addEventListener('input', ()=>{
+            const term = input.value.toLowerCase();
+            root.querySelectorAll(`.act-select[data-idx="${idx}"]`).forEach(sel=>{
+              const selected = sel.value;
+              Array.from(sel.options).forEach(opt=>{
+                if(opt.value==='') return;
+                opt.style.display = opt.textContent.toLowerCase().includes(term) ? '' : 'none';
+              });
+              if(selected && !Array.from(sel.options).find(o=>o.value===selected && o.style.display!=='none')) sel.value = '';
+            });
+          });
+        });
+      }
+      bindDynamic();
+      document.getElementById('add-atrib-btn').addEventListener('click', ()=>{ atribs.push({equipeId:'',atividades:[{atividadeId:'',quantidadePrevista:''}]}); refreshContainer(); });
+
+      const anexosPreview = root.querySelector('#poda-anexos-preview');
+      const anexosInput = root.querySelector('#poda-anexos-input');
+      const anexosProgress = root.querySelector('#poda-anexos-progress');
+      const anexosProgressText = root.querySelector('#poda-anexos-progress-text');
+      const anexosProgressFill = root.querySelector('#poda-anexos-progress-fill');
+      function paintAnexos(){
+        anexosPreview.innerHTML = anexosGridHtml(anexos, true);
+        anexosPreview.querySelectorAll('.anexo-remove').forEach(b=>b.addEventListener('click', ()=>{
+          anexos.splice(Number(b.dataset.i),1); paintAnexos();
+        }));
+      }
+      anexosInput.addEventListener('change', async ()=>{
+        const files = Array.from(anexosInput.files||[]);
+        if(!files.length) return;
+        const sobra = Math.max(0, 8 - anexos.length);
+        const fila = files.slice(0, sobra);
+        if(files.length > sobra) toast('Máximo de 8 anexos.', 'error');
+        if(!fila.length){ anexosInput.value=''; return; }
+        anexosInput.disabled = true;
+        anexosEnviando = true;
+        const total = fila.length;
+        let feitos = 0;
+        const atualizar = ()=>{
+          anexosProgressFill.style.width = Math.round(feitos/total*100)+'%';
+          anexosProgressText.textContent = total>1? `Enviando ${Math.min(feitos+1,total)} de ${total}…` : 'Enviando…';
+        };
+        anexosProgress.style.display = 'block';
+        paintAnexos();
+        atualizar();
+        await Promise.all(fila.map(async (f)=>{
+          let url = '';
+          try{
+            const blob = await comprimirImagem(f);
+            url = await uploadToImgbb(blob);
+          }catch(e){ toast('Falha ao enviar '+esc(f.name)+' ('+e.message+').', 'error'); }
+          if(url) anexos.push({ nome: f.name||('anexo-'+Date.now()), url, ts: Date.now() });
+          feitos++; atualizar(); paintAnexos();
+        }));
+        anexosEnviando = false;
+        anexosProgress.style.display = 'none';
+        anexosInput.disabled = false; anexosInput.value='';
+        paintAnexos();
+      });
+      paintAnexos();
+
+      const localInput = root.querySelector('#poda-local');
+      const localTools = root.querySelector('#poda-local-tools');
+      function paintLocalTools(){
+        if(!localAddr){ localTools.innerHTML=''; return; }
+        localTools.innerHTML = `<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+          <a href="${esc(mapsLinkByAddress(localAddr))}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;color:var(--blue);font-weight:600;font-size:12.5px;">${icon('pin',13)} Abrir no Google Maps</a>
+        </div>`;
+      }
+      let localDeb = null;
+      localInput.addEventListener('input', ()=>{
+        localAddr = localInput.value.trim();
+        clearTimeout(localDeb);
+        localDeb = setTimeout(paintLocalTools, 500);
+      });
+      paintLocalTools();
+    },
+    onSubmit:(fd)=>{
+      if(anexosEnviando){ toast('Aguarde o envio das imagens.', 'error'); return false; }
+      const osi = fd.get('osi').trim();
+      if(!osi){ toast('Informe a OSI (Referência).', 'error'); return false; }
+      const dataProgramacao = fd.get('dataProgramacao');
+      if(!dataProgramacao){ toast('Informe a data de programação.', 'error'); return false; }
+      if(!atribs.length || atribs.some(a=>!a.equipeId)){ toast('Selecione a equipe em todos os blocos.', 'error'); return false; }
+      for(const a of atribs){ if(!a.atividades.length || a.atividades.some(x=>!x.atividadeId)){ toast('Selecione a atividade em todas as linhas.', 'error'); return false; } }
+      const observacoes = String(fd.get('observacoes')||'').trim();
+      const local = String(fd.get('local')||'').trim()||localAddr||'';
+      const base = {
+        osi, subestacao: fd.get('subestacao').trim(), qtdAnomalia: Number(fd.get('qtdAnomalia'))||0,
+        tipoRede: fd.get('tipoRede'), chave: fd.get('chave').trim(), asi: Number(fd.get('asi'))||0,
+        dataProgramacao, statusDocumentacao: fd.get('statusDocumentacao'),
+        idSiprog: Number(fd.get('idSiprog'))||0, ose: Number(fd.get('ose'))||0,
+        observacoes, local, localLat: local? localLat : null, localLng: local? localLng : null, anexos: anexos.map(a=>({...a})),
+        atividades: atribs.map(a=>({
+          equipeId: Number(a.equipeId),
+          atividades: a.atividades.map(x=>({atividadeId:Number(x.atividadeId), quantidadePrevista: x.quantidadePrevista?parseFloat(x.quantidadePrevista):null, quantidadeExecutada:null}))
+        }))
+      };
+      if(pg){
+        Object.assign(pg, base);
+        pg.atribuicoes = base.atividades.map((a,i)=>{
+          const existing = pg.atribuicoes.find(x=>x.equipeId===a.equipeId);
+          if(existing){ existing.atividades = a.atividades; return existing; }
+          return { id: nextId(), equipeId:a.equipeId, dataProgramada:dataProgramacao, status:'Programado', atividades:a.atividades, historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Atribuição criada'}] };
+        });
+        toast('Programação de poda atualizada.');
+      } else {
+        const novo = { id: nextId(), gid: null, ...base,
+          status: 'Programado',
+          atribuicoes: base.atividades.map(a=>({ id: nextId(), equipeId:a.equipeId, dataProgramada:dataProgramacao, status:'Programado', atividades:a.atividades, historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Programação criada'}] }))
+        };
+        DB.podaProgramacoes.push(novo);
+        toast('Programação de poda criada.');
+      }
+      saveData(); renderContent(); renderBanner();
+    }
+  });
+}
+
+/* --- renderPodaRdo (placeholder) --- */
+function renderPodaRdo(){
+  const el = document.getElementById('content');
+  el.innerHTML = emptyState('RDO de PODA', 'Os relatórios de execução de poda aparecerão aqui quando as equipes completarem o RDO.');
 }
 function renderOcNds(){
   const el = document.getElementById('content');
@@ -4841,11 +5203,10 @@ function rdoStatusBadge(status){
   return `<span class="badge" style="color:${cor};background:${bg};">${esc(s)}</span>`;
 }
 
-function renderProgramacoesConcluidas(){
+function renderRdoProjetos(){
   const el = document.getElementById('content');
   let registros = flatAtribuicoes().filter(rdoTemExecucao);
 
-  // Ordena: mais recentes primeiro pela data programada
   registros.sort((a,b)=> String(b.atribuicao.dataProgramada||'').localeCompare(String(a.atribuicao.dataProgramada||'')));
 
   const stats = (()=>{
@@ -4963,7 +5324,6 @@ function renderProgramacoesConcluidas(){
 
   el.innerHTML = `<div class="section-gap">${stats}${filters}${tabela}</div>`;
 
-  // Filtros
   const fProj = document.getElementById('rdo-f-projeto');
   const fEq = document.getElementById('rdo-f-equipe');
   const fSt = document.getElementById('rdo-f-status');
@@ -5003,22 +5363,28 @@ function renderProgramacoesConcluidas(){
     aplicar();
   });
 
-  // Linha abre detalhe
   document.querySelectorAll('tr[data-prog]').forEach(tr=>{
     tr.addEventListener('click', ()=> openRDOModal(Number(tr.dataset.prog), Number(tr.dataset.atrib)));
   });
 
-  // Exportar Excel
   document.getElementById('rdo-export').addEventListener('click', ()=> exportRDOExcel(registros));
-  // Imprimir
   document.getElementById('rdo-print').addEventListener('click', ()=> printRDOReport(registros));
+}
 
-  // Seção OC/NDS concluídas
+function renderRdoOcNds(){
+  const el = document.getElementById('content');
   const ocndsConcluidas = (DB.ocnds||[]).filter(x=>x.status==='Concluída').sort((a,b)=> String(b.data||'').localeCompare(String(a.data||'')));
-  if(ocndsConcluidas.length){
-    const ocndsSection = document.createElement('div');
-    ocndsSection.innerHTML = `
-      <div class="panel" style="padding:0;overflow:hidden;margin-top:24px;">
+
+  if(!ocndsConcluidas.length){
+    el.innerHTML = `<div class="section-gap"><div class="panel"><div class="empty-state">${icon('check',36)}<h3 style="margin-bottom:6px;">Nenhuma ocorrência OC/NDS concluída</h3><p>Quando as equipes concluiram uma ocorrência OC/NDS, os dados aparecerão aqui.</p><button class="btn btn-primary" id="rdo-oc-back" style="margin-top:16px;">Voltar ao Painel</button></div></div></div>`;
+    const b = document.getElementById('rdo-oc-back');
+    if(b) b.addEventListener('click', ()=> setView('dashboard'));
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="section-gap">
+      <div class="panel" style="padding:0;overflow:hidden;">
         <div class="panel-head" style="padding:14px 16px;">
           <div><h3>Ocorrências OC/NDS Concluídas</h3><div class="admin-field-meta">${ocndsConcluidas.length} ocorrência(s) concluída(s) e registrada(s) no RDO.</div></div>
         </div>
@@ -5064,13 +5430,12 @@ function renderProgramacoesConcluidas(){
             </tbody>
           </table>
         </div>
-      </div>`;
-    el.querySelector('.section-gap').appendChild(ocndsSection);
+      </div>
+    </div>`;
 
-    ocndsSection.querySelectorAll('tr[data-ocnds-rdo]').forEach(tr=>{
-      tr.addEventListener('click', ()=> openOcNdsDetalhe(Number(tr.dataset.ocndsRdo)));
-    });
-  }
+  el.querySelectorAll('tr[data-ocnds-rdo]').forEach(tr=>{
+    tr.addEventListener('click', ()=> openOcNdsDetalhe(Number(tr.dataset.ocndsRdo)));
+  });
 }
 
 function openRDOModal(progId, attribId){
