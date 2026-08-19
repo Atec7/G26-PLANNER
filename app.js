@@ -4008,15 +4008,12 @@ function openOcNdsDetalhe(id){
 
       ${(x.atividades||[]).some(a=>a.fotos)? `
       <div class="dtl-section">
-        <div class="dtl-section-head"><h4>Fotos das atividades</h4><span class="badge-prefix">${(x.atividades||[]).reduce((n,a)=>n+(a.fotos?a.fotos.split(';;').filter(Boolean).length:0),0)} foto(s)</span></div>
-        <div style="padding:12px;display:flex;flex-wrap:wrap;gap:8px;">
-          ${(x.atividades||[]).map(a=>{
-            if(!a.fotos) return '';
-            return a.fotos.split(';;').filter(Boolean).map((url,i)=>{
-              const act = (DB.atividades||[]).find(at=>at.id===a.atividadeId);
-              return `<div class="anexo-thumb" role="button" tabindex="0" title="${esc(act?.nome||'Atividade')}"><img src="${esc(url)}" alt="foto"><div class="anexo-meta">${esc(act?.nome||'')}</div></div>`;
-            }).join('');
-          }).join('')}
+        <div class="dtl-section-head"><h4>Fotos das atividades</h4><span class="mono">${(x.atividades||[]).reduce((n,a)=>n+(a.fotos?a.fotos.split(';;').filter(Boolean).length:0),0)} foto(s)</span></div>
+        <div style="padding:12px;display:flex;gap:8px;flex-wrap:wrap;">
+          ${(()=>{
+            const todasFotos = (x.atividades||[]).flatMap(a=>String(a.fotos||'').split(';;').filter(Boolean));
+            return todasFotos.map((url,fi)=>`<div class="dtl-exec-foto" data-fotos='${esc(JSON.stringify(todasFotos))}' data-idx="${fi}" style="width:80px;height:80px;border-radius:8px;overflow:hidden;border:1px solid var(--border);cursor:zoom-in;flex-shrink:0;"><img src="${esc(url)}" alt="Foto ${fi+1}" style="width:100%;height:100%;object-fit:cover;"></div>`).join('');
+          })()}
         </div>
       </div>` : ''}
 
@@ -4059,6 +4056,11 @@ function openOcNdsDetalhe(id){
       root.querySelectorAll('[data-ocnds-edit-detail]').forEach(btn=>{
         btn.addEventListener('click', ()=>{
           openOcNdsModal(Number(btn.dataset.ocndsEditDetail));
+        });
+      });
+      root.querySelectorAll('.dtl-exec-foto').forEach(div=>{
+        div.addEventListener('click', ()=>{
+          try{ openLightbox(JSON.parse(div.dataset.fotos), Number(div.dataset.idx)); }catch(e){}
         });
       });
     }
