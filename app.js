@@ -4006,6 +4006,20 @@ function openOcNdsDetalhe(id){
 
       ${x.observacaoEquipe? `<div class="dtl-section"><div class="dtl-section-head"><h4>Observação da equipe</h4></div><div style="padding:12px;white-space:pre-wrap;">${esc(x.observacaoEquipe)}</div></div>` : ''}
 
+      ${(x.atividades||[]).some(a=>a.fotos)? `
+      <div class="dtl-section">
+        <div class="dtl-section-head"><h4>Fotos das atividades</h4><span class="badge-prefix">${(x.atividades||[]).reduce((n,a)=>n+(a.fotos?a.fotos.split(';;').filter(Boolean).length:0),0)} foto(s)</span></div>
+        <div style="padding:12px;display:flex;flex-wrap:wrap;gap:8px;">
+          ${(x.atividades||[]).map(a=>{
+            if(!a.fotos) return '';
+            return a.fotos.split(';;').filter(Boolean).map((url,i)=>{
+              const act = (DB.atividades||[]).find(at=>at.id===a.atividadeId);
+              return `<div class="anexo-thumb" role="button" tabindex="0" title="${esc(act?.nome||'Atividade')}"><img src="${esc(url)}" alt="foto"><div class="anexo-meta">${esc(act?.nome||'')}</div></div>`;
+            }).join('');
+          }).join('')}
+        </div>
+      </div>` : ''}
+
       ${(x.rdoRespostas&&Object.keys(x.rdoRespostas).length)? `
       <div class="dtl-section">
         <div class="dtl-section-head"><h4>Questionário RDO respondido</h4></div>
