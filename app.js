@@ -3364,6 +3364,18 @@ function docAnexosHtml(prog){
     <div class="ps-sign"><strong>Assinatura do encarregado:</strong> <span class="ps-line"></span></div>
   </div>`;
 }
+function docAnexosHtmlGeneric(prog, labelFn){
+  const anexos = prog.anexos||[];
+  if(!anexos.length) return '';
+  return `
+  <div class="ps-block" style="page-break-before:always;break-before:page;">
+    <div class="ps-block-head">Anexos do programador — ${labelFn(prog)}</div>
+    <div class="ps-anexos">
+      ${anexos.map(a=>`<figure class="ps-anexo"><img src="${esc(anexoSrc(a))}" alt="${esc(a.nome||'anexo')}"><figcaption>${esc(a.nome||'')}</figcaption></figure>`).join('')}
+    </div>
+    <div class="ps-sign"><strong>Assinatura do encarregado:</strong> <span class="ps-line"></span></div>
+  </div>`;
+}
 function buildDocData(data, list){
   return `
     <div class="ps-head">
@@ -4314,8 +4326,9 @@ function buildOseDocProgramacao(prog){
         <div style="font-size:11px;color:#333;"><strong>Escaneie para abrir no Google Maps</strong><br>${esc(mapsLinkByCoords(prog.localLat,prog.localLng))}</div>
       </div>
     </div>`:''}
-    <div style="margin-top:8px;font-size:10.5px;color:#000;border-top:1px solid #444;padding-top:6px;">Assinatura do fiscal / responsável: <span class="ps-line"></span> &nbsp;&nbsp; Data: ____/____/____</div>
-  `;
+<div style="margin-top:8px;font-size:10.5px;color:#000;border-top:1px solid #444;padding-top:6px;">Assinatura do fiscal / responsável: <span class="ps-line"></span> &nbsp;&nbsp; Data: ____/____/____</div>
+${docAnexosHtmlGeneric(prog, oseProgLabel)}
+`;
 }
 function openOseDocProgramacao(pgId){
   const prog = findOseProg(Number(pgId));
@@ -5565,13 +5578,14 @@ function buildPodaDocProgramacao(prog){
         <div style="font-size:11px;color:#333;"><strong>Escaneie para abrir no Google Maps</strong><br>${esc(mapsLinkByCoords(prog.localLat,prog.localLng))}</div>
       </div>
     </div>`:''}
-    <div style="margin-top:8px;font-size:10.5px;color:#000;border-top:1px solid #444;padding-top:6px;">Assinatura do fiscal / responsável: <span class="ps-line"></span> &nbsp;&nbsp; Data: ____/____/____</div>
-  `;
+<div style="margin-top:8px;font-size:10.5px;color:#000;border-top:1px solid #444;padding-top:6px;">Assinatura do fiscal / responsável: <span class="ps-line"></span> &nbsp;&nbsp; Data: ____/____/____</div>
+${docAnexosHtmlGeneric(prog, podaProgLabel)}
+`;
 }
 function openPodaDocProgramacao(pgId){
-  const prog = findPodaProg(Number(pgId));
-  if(!prog) return;
-  printDocumento(buildPodaDocProgramacao(prog));
+const prog = findPodaProg(Number(pgId));
+if(!prog) return;
+printDocumento(buildPodaDocProgramacao(prog));
 }
 function openPodaDocDataModal(){
   const body = `
