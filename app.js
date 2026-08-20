@@ -21,8 +21,8 @@ const ACCIDENT_REF = rtdb.ref('g26_planner/acidentes');
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
 
 const DEFAULT_DATA = {
-  equipes: [], atividades: [], projetos: [], programacoes: [], ocnds: [], podaProgramacoes: [], usuarios: [],
-  customFields: { equipes: [], atividades: [], projetos: [], programacoes: [], podaProgramacoes: [] },
+  equipes: [], atividades: [], projetos: [], programacoes: [], ocnds: [], podaProgramacoes: [], oseProgramacoes: [], usuarios: [],
+  customFields: { equipes: [], atividades: [], projetos: [], programacoes: [], podaProgramacoes: [], oseProgramacoes: [] },
   seq: 1, rev: 0
 };
 function mergeData(raw){
@@ -212,6 +212,8 @@ const TELAS = [
   { id:'projetos-cadastro', label:'Cadastro de Projetos' },
   { id:'osepoda',         label:'OSE/PODA' },
   { id:'ose',             label:'OSE' },
+  { id:'ose-programacoes', label:'OSE - Programações' },
+  { id:'ose-rdo',         label:'OSE - RDO' },
   { id:'poda',            label:'PODA' },
   { id:'poda-programacoes', label:'PODA - Programações' },
   { id:'poda-rdo',        label:'PODA - RDO' },
@@ -266,7 +268,10 @@ const NAV_ITEMS = [
     { id:'rdo-projetos',label:'RDO',           sub:'Relatório de execução das equipes', icon:'clipboard' },
   ]},
   { id:'osepoda',     label:'OSE/PODA',      sub:'Atividade não programada e programação comercial', icon:'tree', children:[
-    { id:'ose',          label:'OSE',             sub:'Atividade não programada', icon:'tree' },
+    { id:'ose',          label:'OSE',             sub:'Atividade não programada', icon:'tree', children:[
+      { id:'ose-programacoes', label:'Programações', sub:'Agenda e fluxo de OSE', icon:'calendar' },
+      { id:'ose-rdo',          label:'RDO',          sub:'Relatório de execução de OSE', icon:'clipboard' },
+    ]},
     { id:'poda',         label:'PODA',            sub:'Programação e controle de poda', icon:'tree', children:[
       { id:'poda-programacoes', label:'Programações', sub:'Agenda e fluxo de poda', icon:'calendar' },
       { id:'poda-rdo',          label:'RDO',          sub:'Relatório de execução de poda', icon:'clipboard' },
@@ -400,6 +405,7 @@ function renderTopbarActions(){
     'projetos-cadastro': ()=>actionBtn('Novo projeto', ()=>openProjetoModal()),
     programacoes: ()=>actionBtn('Nova programação', ()=>openProgramacaoModal()),
     'poda-programacoes': ()=>actionBtn('Nova programação', ()=>openPodaProgramacaoModal()),
+    'ose-programacoes': ()=>actionBtn('Nova programação', ()=>openOseProgramacaoModal()),
   } : {});
   const dangerMap = (podeEditar()? {
     atividades: ()=>btnDanger('Limpar todas', limparTodasAtividades),
@@ -417,6 +423,7 @@ function renderTopbarActions(){
   const docMap = {
     programacoes: ()=>btnSecondary('Documento de campo', openDocumentoDataModal),
     'poda-programacoes': ()=>btnSecondary('Documento de campo', openPodaDocDataModal),
+    'ose-programacoes': ()=>btnSecondary('Documento de campo', openOseDocDataModal),
   };
   const importMap = (podeEditar()? {
     atividades: ()=>btnSecondary('Importar em massa', openImportAtividadesModal),
@@ -1007,7 +1014,8 @@ function flatAtribuicoes(){
 function pendingList(){
   const proj = flatAtribuicoes().filter(x=> isLate(x.atribuicao)).map(x=>({...x, _tipo:'projeto'}));
   const poda = flatPodaAtribuicoes().filter(x=> isLate(x.atribuicao)).map(x=>({...x, _tipo:'poda'}));
-  return proj.concat(poda);
+  const ose = flatOseAtribuicoes().filter(x=> isLate(x.atribuicao)).map(x=>({...x, _tipo:'ose'}));
+  return proj.concat(poda, ose);
 }
 function alertaCount(){
   const hoje = todayISO();
@@ -1093,6 +1101,8 @@ function checkPendingConfirmations(force){
   const item = list[0];
   if(item._tipo==='poda'){
     openPodaConfirmacaoModal(item.programacao, item.atribuicao, ()=>{ renderBanner(); checkPendingConfirmations(); });
+  } else if(item._tipo==='ose'){
+    openOseConfirmacaoModal(item.programacao, item.atribuicao, ()=>{ renderBanner(); checkPendingConfirmations(); });
   } else {
     openConfirmacaoModal(item.programacao, item.atribuicao, ()=>{ renderBanner(); checkPendingConfirmations(); });
   }
@@ -3729,20 +3739,1268 @@ function renderContent(){
     currentView = 'dashboard';
     renderNav();
   }
-  const map = { dashboard: renderDashboard, alertas: renderAlertas, 'medição': renderMedição, 'medição-projetos': renderMediçãoProjetos, 'medição-oc': renderMediçãoOC, 'medição-ndsose': renderMediçãoNDSOSE, 'medição-poda': renderMediçãoPoda, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, 'projetos-cadastro': renderProjetos, osepoda: renderOsePoda, ose: renderOse, poda: renderPoda, 'poda-programacoes': renderPodaProgramacoes, 'poda-rdo': renderPodaRdo, ocnds: renderOcNds, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin, 'rdo-projetos': renderRdoProjetos, 'rdo-ocnds': renderRdoOcNds };
+  const map = { dashboard: renderDashboard, alertas: renderAlertas, 'medição': renderMedição, 'medição-projetos': renderMediçãoProjetos, 'medição-oc': renderMediçãoOC, 'medição-ndsose': renderMediçãoNDSOSE, 'medição-poda': renderMediçãoPoda, equipes: renderEquipes, atividades: renderAtividades, projetos: renderProjetos, 'projetos-cadastro': renderProjetos, osepoda: renderOsePoda, ose: renderOse, 'ose-programacoes': renderOseProgramacoes, 'ose-rdo': renderOseRdo, poda: renderPoda, 'poda-programacoes': renderPodaProgramacoes, 'poda-rdo': renderPodaRdo, ocnds: renderOcNds, avanco: renderAvanco, programacoes: renderProgramacoes, historico: renderHistorico, admin: renderAdmin, 'rdo-projetos': renderRdoProjetos, 'rdo-ocnds': renderRdoOcNds };
   (map[currentView]||renderDashboard)();
 }
 
 /* =========================================================
    VIEW: OSE/PODA e OC/NDS (em desenvolvimento)
 ========================================================= */
-function renderOsePoda(){ renderOse(); }
-function renderOse(){
-  renderModuloEmDesenvolvimento('OSE');
+/* =========================================================
+   OSE — Obras Semi-Especiais (modelado a partir do PODA)
+   Arquivo parcial: collado no final de app.js (antes do SEED)
+   Armazena em DB.oseProgramacoes[]
+   ========================================================= */
+
+/* --- Ose helpers --- */
+const STATUS_OSE = ['Programado','Em Execução','Concluído','Reprogramado','Cancelado'];
+const TIPO_INTERVENCAO_OPCOES = ['Aéreo','Subterrâneo','Misto'];
+let oseFilters = (()=>{ const r=monthRangeISO(); return { busca:'', equipe:'', status:'', dataDe:r.de, dataAte:r.ate, modo:'lista', calView:'mes', calDay:todayISO() }; })();
+let oseCalRef = new Date();
+function oseProgLabel(p){ return p.gid || ('OSE-'+String(p.id).padStart(7,'0')); }
+function findOseProg(id){ return (DB.oseProgramacoes||[]).find(p=>p.id===Number(id)); }
+function oseProgramacoesVisiveis(){ return DB.oseProgramacoes||[]; }
+function flatOseAtribuicoes(){
+  const out=[];
+  (DB.oseProgramacoes||[]).forEach(pg=>{ (pg.atribuicoes||[]).forEach(at=> out.push({ programacao: pg, atribuicao: at })); });
+  return out;
 }
-function renderPoda(){
-  renderModuloEmDesenvolvimento('PODA');
+function oseAtribGlobal(atribId){
+  for(const pg of (DB.oseProgramacoes||[])){ const f=(pg.atribuicoes||[]).find(a=>a.id===Number(atribId)); if(f) return {programacao:pg,atribuicao:f}; }
+  return null;
 }
+function oseProgDaAtrib(atribId){
+  return (DB.oseProgramacoes||[]).find(pg=> (pg.atribuicoes||[]).some(a=>a.id===Number(atribId)));
+}
+function oseProgramacoesFiltradas(){
+  const norm = s=> String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const q = norm(oseFilters.busca);
+  const st = oseFilters.status;
+  const eqId = oseFilters.equipe;
+  const de = oseFilters.dataDe;
+  const ate = oseFilters.dataAte;
+  return flatOseAtribuicoes().filter(x=>{
+    const p = x.programacao, a = x.atribuicao;
+    const eq = findEquipe(a.equipeId);
+    if(st && a.status!==st) return false;
+    if(eqId && String(a.equipeId)!==String(eqId)) return false;
+    if(de && (a.dataProgramada||p.dataProgramacao||'') < de) return false;
+    if(ate && (a.dataProgramada||p.dataProgramacao||'') > ate) return false;
+    if(q){
+      const hay = norm([p.municipio,p.subestacao,p.tipoIntervencao,p.status,p.statusDocumentacao,oseProgLabel(p),equipeLabel(eq),eq?.supervisor,fmtDate(a.dataProgramada||p.dataProgramacao),p.observacoes].join(' '));
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+function osePedirMotivoStatus(atribId, novoStatus, onOk){
+  if(!requerEscrita()) return;
+  const r = oseAtribGlobal(atribId);
+  if(!r || r.atribuicao.status===novoStatus) return;
+  const de = r.atribuicao.status;
+  const eq = findEquipe(r.atribuicao.equipeId);
+  const body = `
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">Alterar status de <strong>${de}</strong> para <strong>${novoStatus}</strong>${eq? ' — '+esc(equipeLabel(eq)):''}</div>
+    <div class="field"><label>Motivo <span class="req">*</span></label><input type="text" name="motivo" required maxlength="200" placeholder="Descreva o motivo desta alteração de status"></div>
+    <div class="field"><label>Observações</label><textarea name="obs" rows="2" placeholder="Detalhes opcionais"></textarea></div>`;
+  openModal({
+    title:'Motivo da alteração de status', bodyHtml: body, submitLabel:'Alterar status',
+    onSubmit:(fd)=>{
+      const motivo = String(fd.get('motivo')||'').trim();
+      const obs = String(fd.get('obs')||'').trim();
+      if(!motivo){ toast('Informe o motivo da alteração.', 'error'); return false; }
+      r.atribuicao.status = novoStatus;
+      r.atribuicao.historico = r.atribuicao.historico||[];
+      r.atribuicao.historico.push({...currentAutor(), ts:Date.now(), tipo:'status', de, para:novoStatus, motivo, obs: obs||null});
+      registrarEvento('status','atribuicao',r.atribuicao.id, oseProgLabel(r.programacao)+' · '+equipeLabel(findEquipe(r.atribuicao.equipeId)), de+' → '+novoStatus+' · '+motivo+(obs? ' · '+obs:''));
+      saveData(); renderContent(); renderBanner(); toast('Status alterado para '+novoStatus+'.');
+      onOk && onOk();
+    }
+  });
+}
+function openOseReprogramarConfirmacao(atribId, novaDataPrefill){
+  if(!requerEscrita()) return;
+  const r = oseAtribGlobal(atribId);
+  if(!r) return;
+  const atrib = r.atribuicao;
+  if(['Concluído','Cancelado'].includes(atrib.status)){ toast('Não é possível reprogramar um item concluído ou cancelado.', 'error'); return; }
+  const eq = findEquipe(atrib.equipeId);
+  const body = `
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:4px;">Equipe ${equipeLabel(eq)}</div>
+    <div class="field"><label>Data atual</label><input type="text" value="${fmtDate(atrib.dataProgramada)}" disabled></div>
+    <div class="field"><label>Nova data <span class="req">*</span></label><input type="date" name="novaData" required value="${novaDataPrefill||atrib.dataProgramada}"></div>
+    <div class="field"><label>Motivo da reprogramação <span class="req">*</span></label><select name="motivo" required><option value="">Selecione…</option>${MOTIVOS_REPROG.map(m=>`<option>${m}</option>`).join('')}</select></div>
+    <div class="field"><label>Observações <span class="req">*</span></label><textarea name="obs" required placeholder="Descreva o motivo e as observações da reprogramação"></textarea></div>`;
+  openModal({
+    title:'Reprogramar programação OSE', bodyHtml: body, submitLabel:'Confirmar reprogramação',
+    onSubmit:(fd)=>{
+      const novaData = fd.get('novaData'); const motivo = fd.get('motivo'); const obs = fd.get('obs').trim();
+      if(!motivo){ toast('Selecione o motivo da reprogramação.', 'error'); return false; }
+      if(!obs){ toast('Informe a observação da reprogramação.', 'error'); return false; }
+      const dataAntiga = atrib.dataProgramada;
+      atrib.dataProgramada = novaData; atrib.status = 'Reprogramado';
+      atrib.historico = atrib.historico||[];
+      atrib.historico.push({...currentAutor(), ts:Date.now(), tipo:'reprogramacao', de:dataAntiga, para:novaData, motivo, obs});
+      registrarEvento('reprogramacao','atribuicao',atrib.id, oseProgLabel(r.programacao)+' · '+equipeLabel(findEquipe(atrib.equipeId)), fmtDate(dataAntiga)+' → '+fmtDate(novaData)+' · '+motivo+(obs? ' · '+obs:''));
+      saveData(); renderContent(); renderBanner(); toast('Programação reprogramada.');
+    }
+  });
+}
+
+/* --- renderOseProgramacoes --- */
+function renderOseProgramacoes(){
+  const el = document.getElementById('content');
+  if(!DB.equipes.length){
+    el.innerHTML = emptyState('Cadastre equipes primeiro', 'A programação OSE requer ao menos uma equipe.');
+    return;
+  }
+  const list = oseProgramacoesFiltradas();
+  el.innerHTML = `
+    <div class="panel-head" style="padding:0;margin-bottom:16px;border:none;">
+      <div class="filters">
+        <input type="search" id="ose-f-busca" placeholder="Buscar município, subestação, equipe..." style="flex:1;min-width:180px;" value="${esc(oseFilters.busca)}">
+        <select id="ose-f-equipe"><option value="">Todas as equipes</option>${(DB.equipes||[]).filter(e=>e.ativo!==false).map(e=>`<option value="${e.id}" ${oseFilters.equipe==String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' — '+esc(e.encarregado):''}</option>`).join('')}</select>
+        <select id="ose-f-status"><option value="">Todos os status</option>${STATUS_OSE.map(s=>`<option ${oseFilters.status===s?'selected':''}>${s}</option>`).join('')}</select>
+        <input type="date" id="ose-f-de" value="${oseFilters.dataDe}" title="Data inicial">
+        <span style="color:var(--muted);font-size:12px;">até</span>
+        <input type="date" id="ose-f-ate" value="${oseFilters.dataAte}" title="Data final">
+        <button class="btn btn-sm" id="ose-f-mes-atual" title="Filtrar pelo mês vigente">${icon('calendar',12)} Mês atual</button>
+        <button class="btn btn-sm btn-ghost" id="ose-f-limpar" title="Limpar filtros">Limpar</button>
+      </div>
+      <div class="tabs">
+        <button class="tab ${oseFilters.modo==='lista'?'active':''}" data-modo="lista">Lista</button>
+        <button class="tab ${oseFilters.modo==='fluxo'?'active':''}" data-modo="fluxo">Fluxo</button>
+        <button class="tab ${oseFilters.modo==='calendario'?'active':''}" data-modo="calendario">Calendário</button>
+      </div>
+    </div>
+    <div id="ose-area"></div>`;
+  document.getElementById('ose-f-busca').addEventListener('input', e=>{ oseFilters.busca=e.target.value; renderContent(); });
+  document.getElementById('ose-f-equipe').addEventListener('change', e=>{ oseFilters.equipe=e.target.value; renderContent(); });
+  document.getElementById('ose-f-status').addEventListener('change', e=>{ oseFilters.status=e.target.value; renderContent(); });
+  document.getElementById('ose-f-de').addEventListener('change', e=>{ oseFilters.dataDe=e.target.value; renderContent(); });
+  document.getElementById('ose-f-ate').addEventListener('change', e=>{ oseFilters.dataAte=e.target.value; renderContent(); });
+  document.getElementById('ose-f-mes-atual').addEventListener('click', ()=>{ const r=monthRangeISO(); oseFilters.dataDe=r.de; oseFilters.dataAte=r.ate; renderContent(); });
+  document.getElementById('ose-f-limpar').addEventListener('click', ()=>{ oseFilters.busca=''; oseFilters.equipe=''; oseFilters.status=''; oseFilters.dataDe=''; oseFilters.dataAte=''; renderContent(); });
+  el.querySelectorAll('.tab').forEach(t=>t.addEventListener('click', ()=>{oseFilters.modo=t.dataset.modo; renderContent();}));
+
+  const area = document.getElementById('ose-area');
+  if(oseFilters.modo==='calendario'){ renderOseCalendarioInto(area, list); return; }
+  if(!list.length){
+    area.innerHTML = flatOseAtribuicoes().length
+      ? emptyState('Nenhuma programação encontrada', 'Ajuste os filtros para ver as programações.')
+      : emptyState('Nenhuma programação OSE', 'Clique em "Nova programação" para criar a primeira.');
+    return;
+  }
+  if(oseFilters.modo==='lista') renderOseListaInto(area, list); else renderOseFluxoInto(area, list);
+}
+
+function renderOseListaInto(area, list){
+  area.innerHTML = `<div class="panel"><div class="table-scroll"><table>
+    <thead><tr><th>ID</th><th>Data</th><th>Município</th><th>Subestação</th><th>Tipo</th><th>Equipe</th><th>Status Doc.</th><th>Atividades</th><th>Status</th><th></th></tr></thead>
+    <tbody>${list.map(x=>{
+      const p=x.programacao, a=x.atribuicao, eq=findEquipe(a.equipeId);
+      const late = a.dataProgramada < todayISO() && !['Concluído','Cancelado'].includes(a.status);
+      const ativResumo = (a.atividades||[]).map(at=>{ const atd=findAtividade(at.atividadeId); return `${esc(atd?.codigo||'?')} ×${at.quantidadePrevista??'—'}`; }).join(', ');
+      return `<tr style="cursor:pointer;" data-ose-open="${a.id}">
+        <td class="mono" style="white-space:nowrap;">${oseProgLabel(p)}</td>
+        <td class="mono">${fmtDate(a.dataProgramada)} ${late?'<div class="blink-red" style="font-size:10.5px;">VENCIDA</div>':''}</td>
+        <td>${esc(p.municipio||'—')}</td>
+        <td>${esc(p.subestacao||'—')}</td>
+        <td><span class="badge" style="color:${p.tipoIntervencao==='Aéreo'?'var(--blue)':p.tipoIntervencao==='Subterrâneo'?'var(--accent)':'var(--purple)'};background:${p.tipoIntervencao==='Aéreo'?'rgba(78,140,235,.14)':p.tipoIntervencao==='Subterrâneo'?'rgba(224,164,88,.14)':'rgba(180,140,224,.14)'};">${esc(p.tipoIntervencao||'—')}</span></td>
+        <td><span class="badge-prefix">${eqtlLabel(eq)}</span></td>
+        <td><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${esc(p.statusDocumentacao||'—')}</span></td>
+        <td style="font-size:12px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${ativResumo||'—'}</td>
+        <td>${statusBadge(a.status, late)}</td>
+        <td><div class="row-actions">
+          <button class="icon-btn" title="WhatsApp" data-ose-whats="${p.id}">${icon('whatsapp',14)}</button>
+          <button class="icon-btn" title="Documento" data-ose-doc="${p.id}">${icon('print',14)}</button>
+          <button class="icon-btn" title="Histórico" data-ose-hist="${a.id}">${icon('history',14)}</button>
+          <button class="icon-btn" title="Reprogramar" data-ose-reprog="${a.id}">${icon('reprog',14)}</button>
+          <button class="icon-btn" title="Editar" data-ose-edit="${p.id}">${icon('edit',14)}</button>
+          <button class="icon-btn" title="Excluir" data-ose-del="${p.id}">${icon('trash',14)}</button>
+        </div></td>
+      </tr>`;
+    }).join('')}</tbody></table></div></div>`;
+  bindOseRowActions(area);
+}
+
+function bindOseRowActions(area){
+  area.querySelectorAll('[data-ose-open]').forEach(c=>c.addEventListener('click', (e)=>{ if(e.target.closest('.row-actions')) return; openOseDetalhe(c.dataset.oseOpen); }));
+  area.querySelectorAll('[data-ose-whats]').forEach(b=>b.addEventListener('click', ()=>encaminharOseWhats(b.dataset.oseWhats)));
+  area.querySelectorAll('[data-ose-doc]').forEach(b=>b.addEventListener('click', ()=>openOseDocProgramacao(b.dataset.oseDoc)));
+  area.querySelectorAll('[data-ose-hist]').forEach(b=>b.addEventListener('click', ()=>openOseHistoricoModal(b.dataset.oseHist)));
+  area.querySelectorAll('[data-ose-reprog]').forEach(b=>b.addEventListener('click', ()=>openOseReprogramarConfirmacao(b.dataset.oseReprog)));
+  area.querySelectorAll('[data-ose-edit]').forEach(b=>b.addEventListener('click', ()=>openOseProgramacaoModal(Number(b.dataset.oseEdit))));
+  area.querySelectorAll('[data-ose-del]').forEach(b=>b.addEventListener('click', ()=>{
+    const p = findOseProg(Number(b.dataset.oseDel));
+    if(!p) return;
+    if(!confirm('Excluir a programação OSE '+oseProgLabel(p)+'?')) return;
+    registrarEvento('exclusao','programacao',p.id,oseProgLabel(p),'Programação OSE excluída');
+    DB.oseProgramacoes = DB.oseProgramacoes.filter(x=>x.id!==p.id);
+    saveData(); renderContent(); toast('Programação excluída.');
+  }));
+}
+
+/* --- OSE Kanban (Fluxo) --- */
+function renderOseFluxoInto(area, list){
+  const cols = STATUS_OSE.map(status=>{
+    const items = list.filter(x=>x.atribuicao.status===status);
+    const c = STATUS_COLOR[status]||'var(--muted)';
+    return `<div class="kanban-col" style="--col-c:${c}" data-drop-status="${status}">
+      <div class="kanban-col-head"><h4>${status}</h4><span class="count">${items.length}</span></div>
+      <div class="kanban-cards">${items.map(x=>{
+        const p=x.programacao, a=x.atribuicao, eq=findEquipe(a.equipeId);
+        const late = a.dataProgramada < todayISO() && !['Concluído','Cancelado'].includes(a.status);
+        return `<div class="kcard ${late?'pending':''}" draggable="true" data-atrib="${a.id}" data-open-ose="${a.id}">
+          <div class="kc-code ${late?'blink-red':''}">${late?'VENCIDA · ':''}${equipeLabel(eq)}</div>
+          <div class="kc-title">${esc(p.municipio||'—')} · ${esc(p.subestacao||'—')}</div>
+          <div class="kc-meta"><span>${esc(p.tipoIntervencao||'—')} · ${esc(p.statusDocumentacao||'—')}</span></div>
+          <div class="kc-meta"><span>${fmtDate(a.dataProgramada)}</span><span class="mono" style="color:var(--accent);">${oseProgLabel(p)}</span></div>
+        </div>`;
+      }).join('') || `<div style="padding:14px;color:var(--muted-2);font-size:11.5px;">Vazio</div>`}</div>
+    </div>`;
+  }).join('');
+  area.innerHTML = renderOseKanbanStrip() + `<div class="kanban">${cols}</div>`;
+  bindOseKanbanDrag(area);
+}
+
+function renderOseKanbanStrip(){
+  const days = [];
+  const start = todayISO();
+  for(let i=0;i<28;i++) days.push(shiftISO(start, i));
+  return `<div class="kanban-strip">
+    <div class="ks-title">${icon('reprog',13)} <strong>Reprogramar arrastando:</strong> arraste um card sobre uma data para reprogramar.</div>
+    <div class="ks-days">${days.map(iso=>{
+      const d = new Date(iso+'T12:00:00');
+      const dow = d.toLocaleDateString('pt-BR',{weekday:'short'}).replace('.','');
+      return `<div class="ks-day ${iso===todayISO()?'today':''}" data-date="${iso}" title="Reprogramar para ${fmtDate(iso)}"><span class="ks-dow">${dow}</span><span class="ks-num">${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}</span></div>`;
+    }).join('')}</div>
+  </div>`;
+}
+
+function bindOseKanbanDrag(area){
+  let dragId = null;
+  area.querySelectorAll('.kcard[draggable]').forEach(card=>{
+    card.addEventListener('dragstart', e=>{
+      dragId = card.dataset.atrib; card.classList.add('dragging');
+      try{ e.dataTransfer.setData('text/plain', String(card.dataset.atrib)); e.dataTransfer.effectAllowed='move'; }catch(err){}
+    });
+    card.addEventListener('dragend', ()=>{ card.classList.remove('dragging'); });
+  });
+  area.querySelectorAll('.kanban-col').forEach(col=>{
+    col.addEventListener('dragover', e=>{ e.preventDefault(); col.classList.add('drag-over'); });
+    col.addEventListener('dragleave', ()=>{ col.classList.remove('drag-over'); });
+    col.addEventListener('drop', e=>{
+      e.preventDefault(); col.classList.remove('drag-over');
+      const id = Number(e.dataTransfer?.getData('text/plain') || dragId);
+      if(id) osePedirMotivoStatus(id, col.dataset.dropStatus);
+    });
+  });
+  area.querySelectorAll('.ks-day').forEach(day=>{
+    day.addEventListener('dragover', e=>{ e.preventDefault(); day.classList.add('drag-over'); });
+    day.addEventListener('dragleave', ()=>{ day.classList.remove('drag-over'); });
+    day.addEventListener('drop', e=>{
+      e.preventDefault(); day.classList.remove('drag-over');
+      const id = Number(e.dataTransfer?.getData('text/plain') || dragId);
+      if(id) openOseReprogramarConfirmacao(id, day.dataset.date);
+    });
+  });
+  area.querySelectorAll('[data-open-ose]').forEach(c=>c.addEventListener('click', ()=>openOseDetalhe(c.dataset.openOse)));
+}
+
+/* --- OSE Calendário --- */
+function renderOseCalendarioInto(area, list){
+  const subTabs = `
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+      <div class="tabs">
+        <button class="tab ${oseFilters.calView==='mes'?'active':''}" data-cal-view="mes">Mês (externa)</button>
+        <button class="tab ${oseFilters.calView==='dia'?'active':''}" data-cal-view="dia">Dia (interna)</button>
+      </div>
+      ${oseFilters.calView==='dia'? `<div style="display:flex;align-items:center;gap:8px;">
+        <button class="icon-btn" id="ose-day-prev">${icon('chevL',16)}</button>
+        <span class="mono" style="color:var(--text);font-weight:700;">${fmtDate(oseFilters.calDay)}</span>
+        <button class="icon-btn" id="ose-day-next">${icon('chevR',16)}</button>
+      </div>`:''}
+      <span style="font-size:12px;color:var(--muted);">${list.length} programação(ões)</span>
+    </div>`;
+  const bindCalTabs = ()=>{
+    area.querySelectorAll('.tab[data-cal-view]').forEach(b=>b.addEventListener('click', ()=>{ oseFilters.calView=b.dataset.calView; renderContent(); }));
+  };
+  if(oseFilters.calView==='dia'){
+    const dayList = list.filter(x=>(x.atribuicao.dataProgramada||x.programacao.dataProgramacao)===oseFilters.calDay);
+    area.innerHTML = subTabs + (dayList.length? renderOseDayList(dayList) : `<div class="panel"><div class="empty-state">${icon('empty',34)}<p>Nenhuma programação em ${fmtDate(oseFilters.calDay)}.</p></div></div>`);
+    bindCalTabs();
+    const pv=area.querySelector('#ose-day-prev'), nx=area.querySelector('#ose-day-next');
+    if(pv) pv.addEventListener('click', ()=>{ oseFilters.calDay=shiftISO(oseFilters.calDay,-1); renderContent(); });
+    if(nx) nx.addEventListener('click', ()=>{ oseFilters.calDay=shiftISO(oseFilters.calDay,1); renderContent(); });
+    area.querySelectorAll('[data-open-ose]').forEach(c=>c.addEventListener('click', ()=>openOseDetalhe(c.dataset.openOse)));
+    area.querySelectorAll('[data-ose-doc]').forEach(c=>c.addEventListener('click', ()=>openOseDocProgramacao(c.dataset.oseDoc)));
+    return;
+  }
+  const year = oseCalRef.getFullYear(), month = oseCalRef.getMonth();
+  const first = new Date(year, month, 1);
+  const startDow = first.getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const monthName = oseCalRef.toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
+  const byDate = {};
+  list.forEach(x=>{
+    const d = x.atribuicao.dataProgramada||x.programacao.dataProgramacao;
+    (byDate[d] = byDate[d]||[]).push(x);
+  });
+  let cells = '';
+  for(let i=0;i<startDow;i++) cells += `<div class="cal-cell out"></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const iso = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const items = byDate[iso]||[];
+    const isToday = iso===todayISO();
+    cells += `<div class="cal-cell ${isToday?'today':''}">
+      <div class="cal-daynum" data-day-view="${iso}" style="cursor:pointer;" title="Ver dia">${d} ${items.length?`<span style="color:var(--accent);">· ${items.length}</span>`:''}</div>
+      ${items.slice(0,3).map(x=>{
+        const eq=findEquipe(x.atribuicao.equipeId); const late=x.atribuicao.dataProgramada < todayISO() && !['Concluído','Cancelado'].includes(x.atribuicao.status); const c=STATUS_COLOR[x.atribuicao.status]||'var(--muted)';
+        return `<div class="cal-chip ${late?'blink-red':''}" style="color:${late?'var(--red)':c};border-color:${late?'var(--red)':'var(--border)'}" data-open-ose="${x.atribuicao.id}">${equipeLabel(eq)}</div>`;
+      }).join('')}
+      ${items.length>3? `<div style="font-size:10px;color:var(--accent);cursor:pointer;" data-day-view="${iso}">+${items.length-3} mais</div>`:''}
+    </div>`;
+  }
+  const dows = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  area.innerHTML = `
+    ${subTabs}
+    <div class="panel" style="padding:16px;">
+      <div class="cal-nav">
+        <button class="icon-btn" id="ose-cal-prev">${icon('chevL',16)}</button>
+        <h3 style="text-transform:capitalize;">${monthName}</h3>
+        <button class="icon-btn" id="ose-cal-next">${icon('chevR',16)}</button>
+      </div>
+      <div class="cal-grid">${dows.map(d=>`<div class="cal-dow">${d}</div>`).join('')}${cells}</div>
+    </div>`;
+  bindCalTabs();
+  document.getElementById('ose-cal-prev').addEventListener('click', ()=>{ oseCalRef = new Date(year, month-1, 1); renderContent(); });
+  document.getElementById('ose-cal-next').addEventListener('click', ()=>{ oseCalRef = new Date(year, month+1, 1); renderContent(); });
+  area.querySelectorAll('[data-day-view]').forEach(c=>c.addEventListener('click', ()=>{ oseFilters.calDay=c.dataset.dayView; oseFilters.calView='dia'; renderContent(); }));
+  area.querySelectorAll('[data-open-ose]').forEach(c=>c.addEventListener('click', ()=>openOseDetalhe(c.dataset.openOse)));
+}
+
+function renderOseDayList(dayList){
+  return `<div style="display:flex;flex-direction:column;gap:14px;">${dayList.map(x=>{
+    const p=x.programacao, a=x.atribuicao, eq=findEquipe(a.equipeId);
+    const late = a.dataProgramada < todayISO() && !['Concluído','Cancelado'].includes(a.status);
+    const ativResumo = (a.atividades||[]).map(at=>{ const atd=findAtividade(at.atividadeId); return `${esc(atd?.codigo||'?')} ×${at.quantidadePrevista??'—'}`; }).join(', ');
+    return `<div class="panel">
+      <div class="panel-head">
+        <div><h3>${esc(p.municipio||'—')} · ${esc(p.subestacao||'—')}</h3><div class="admin-field-meta">${oseProgLabel(p)} · ${equipeLabel(eq)} · ${fmtDate(a.dataProgramada)}</div></div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${statusBadge(a.status, late)}</div>
+      </div>
+      <div style="padding:12px 16px;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${ativResumo||'Sem atividades'}</div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-sm" data-ose-doc="${p.id}">${icon('print',13)} Imprimir</button>
+          <button class="btn btn-sm" data-open-ose="${a.id}">${icon('calendar',13)} Ver detalhe</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+/* --- OSE Detalhe Modal --- */
+function oseDetalheHtml(programacao, atrib, comAcoes=true){
+  const eq = findEquipe(atrib.equipeId);
+  const late = atrib.dataProgramada < todayISO() && !['Concluído','Cancelado'].includes(atrib.status);
+  const rows = (atrib.atividades||[]).map(a=>{
+    const at = findAtividade(a.atividadeId);
+    return { at, prev: a.quantidadePrevista||0, exec: a.quantidadeExecutada!=null? a.quantidadeExecutada : null };
+  });
+  return `
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div class="dtl-header">
+        <div style="min-width:0;">
+          <div class="dtl-code">${esc(programacao.municipio||'—')} · ${esc(programacao.subestacao||'—')} · ${esc(programacao.tipoIntervencao||'')}</div>
+          <div class="dtl-title">${oseProgLabel(programacao)}</div>
+          <div class="dtl-meta"><span>${icon('calendar',12)} ${fmtDate(atrib.dataProgramada)}</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">${statusBadge(atrib.status, late)}</div>
+      </div>
+
+      <div class="dtl-grid">
+        <div class="dtl-tile"><div class="dtl-tile-lbl">Equipe</div><div class="dtl-tile-val"><span class="badge-prefix">${equipeLabel(eq)}</span></div></div>
+        <div class="dtl-tile"><div class="dtl-tile-lbl">Data programada</div><div class="dtl-tile-val mono">${fmtDate(atrib.dataProgramada)}</div>${late? `<div class="blink-red" style="font-size:11px;color:var(--red);margin-top:4px;">VENCIDA</div>`:''}</div>
+        <div class="dtl-tile"><div class="dtl-tile-lbl">Encarregado</div><div class="dtl-tile-val">${esc(eq?.encarregado||'—')}</div></div>
+        <div class="dtl-tile"><div class="dtl-tile-lbl">Status</div><div class="dtl-tile-val">${statusBadge(atrib.status, late)}</div></div>
+        <div class="dtl-tile"><div class="dtl-tile-lbl">Status Doc.</div><div class="dtl-tile-val"><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${esc(programacao.statusDocumentacao||'—')}</span></div></div>
+        <div class="dtl-tile"><div class="dtl-tile-lbl">Tipo Intervenção</div><div class="dtl-tile-val"><span class="badge" style="color:${programacao.tipoIntervencao==='Aéreo'?'var(--blue)':programacao.tipoIntervencao==='Subterrâneo'?'var(--accent)':'var(--purple)'};background:${programacao.tipoIntervencao==='Aéreo'?'rgba(78,140,235,.14)':programacao.tipoIntervencao==='Subterrâneo'?'rgba(224,164,88,.14)':'rgba(180,140,224,.14)'};">${esc(programacao.tipoIntervencao||'—')}</span></div></div>
+        <div class="dtl-tile"><div class="dtl-tile-lbl">Município</div><div class="dtl-tile-val">${esc(programacao.municipio||'—')}</div></div>
+        <div class="dtl-tile" style="grid-column:1/-1;"><div class="dtl-tile-lbl">Local de execução</div><div class="dtl-tile-val">${programacao.local? esc(programacao.local) : '—'}</div>${(programacao.local||programacao.localLat!=null)? `<div style="margin-top:4px;font-size:11.5px;"><a href="${esc(localMapsHref(programacao.local,programacao.localLat,programacao.localLng))}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600;">${icon('pin',11)} Abrir no Google Maps</a></div>`:''}</div>
+      </div>
+
+      <div class="dtl-section">
+        <div class="dtl-section-head"><h4>Atividades</h4></div>
+        <div class="table-scroll"><table class="min">
+          <thead><tr><th>Código</th><th>Descrição</th><th>Un.</th><th>Prev.</th><th>Exec.</th></tr></thead>
+          <tbody>${rows.map(r=>`<tr>
+            <td class="mono" style="color:var(--accent);font-weight:700;">${esc(r.at?.codigo||'?')}</td>
+            <td>${esc(r.at?.descricao||'')}</td><td>${esc(r.at?.unidade||'')}</td>
+            <td class="mono">${r.prev||'—'}</td>
+            <td class="mono">${r.exec!=null? r.exec:'—'}</td>
+          </tr>`).join('')}
+          </tbody>
+        </table></div>
+      </div>
+
+      ${String(programacao.observacoes||'').trim()? `<div class="dtl-section">
+        <div class="dtl-section-head"><h4>Observações</h4></div>
+        <div style="white-space:pre-wrap;line-height:1.55;padding:12px;">${esc(programacao.observacoes)}</div>
+      </div>`:''}
+
+      ${(programacao.anexos&&programacao.anexos.length)? `<div class="dtl-section">
+        <div class="dtl-section-head"><h4>Anexos do programador</h4><span class="mono">${programacao.anexos.length} imagem(ns)</span></div>
+        ${anexosDisplayHtml(programacao.anexos)}
+      </div>`:''}
+
+      ${(programacao.localLat!=null && programacao.localLng!=null)? `<div class="dtl-section">
+        <div class="dtl-section-head"><h4>Localização no mapa</h4></div>
+        <div style="padding:12px;"><a href="${esc(staticMapUrl(programacao.localLat,programacao.localLng,16,800,450))}" target="_blank" rel="noopener">${localThumbHtml(programacao.local,programacao.localLat,programacao.localLng)}</a></div>
+      </div>`:''}
+
+      ${String(programacao.orientacoesPlanejamento||'').trim()? `<div class="dtl-section">
+        <div class="dtl-section-head"><h4>Orientações do Setor de Planejamento</h4></div>
+        <div style="white-space:pre-wrap;line-height:1.55;">${esc(programacao.orientacoesPlanejamento)}</div>
+      </div>`:''}
+
+      ${comAcoes? `<div class="dtl-actions">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span class="dtl-actions-lbl">Alterar status:</span>
+          ${STATUS_OSE.filter(s=>s!==atrib.status).map(s=>`<button type="button" class="btn btn-sm" data-set-ose-status="${s}">→ ${s}</button>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm" data-whats-ose="${programacao.id}">${icon('whatsapp',13)} WhatsApp</button>
+          <button type="button" class="btn btn-sm" data-edit-ose="${programacao.id}">${icon('edit',13)} Editar</button>
+          <button type="button" class="btn btn-sm" data-doc-ose="${programacao.id}">${icon('print',13)} Documento</button>
+          <button type="button" class="btn btn-sm" data-reprog-ose="${atrib.id}">${icon('reprog',13)} Reprogramar</button>
+          <button type="button" class="btn btn-sm" data-hist-ose="${atrib.id}">${icon('history',13)} Histórico</button>
+        </div>
+      </div>`:''}
+    </div>`;
+}
+
+function openOseDetalhe(atribId){
+  const r = oseAtribGlobal(Number(atribId));
+  if(!r) return;
+  const body = oseDetalheHtml(r.programacao, r.atribuicao);
+  openModal({ title:'Detalhe da programação OSE', bodyHtml: body, submitLabel:'Fechar', wide:true,
+    onMount:(root)=>{
+      root.querySelectorAll('[data-set-ose-status]').forEach(b=>b.addEventListener('click', ()=>{
+        if(!requerEscrita()) return;
+        osePedirMotivoStatus(r.atribuicao.id, b.dataset.setOseStatus);
+      }));
+      root.querySelectorAll('[data-whats-ose]').forEach(b=>b.addEventListener('click', ()=>encaminharOseWhats(b.dataset.whatsOse)));
+      root.querySelectorAll('[data-edit-ose]').forEach(b=>b.addEventListener('click', ()=>{
+        document.getElementById('modal-root').innerHTML='';
+        openOseProgramacaoModal(Number(b.dataset.editOse));
+      }));
+      root.querySelectorAll('[data-doc-ose]').forEach(b=>b.addEventListener('click', ()=>openOseDocProgramacao(b.dataset.docOse)));
+      root.querySelectorAll('[data-reprog-ose]').forEach(b=>b.addEventListener('click', ()=>openOseReprogramarConfirmacao(b.dataset.reprogOse)));
+      root.querySelectorAll('[data-hist-ose]').forEach(b=>b.addEventListener('click', ()=>openOseHistoricoModal(b.dataset.histOse)));
+    },
+    onSubmit:()=>true
+  });
+}
+
+/* --- OSE WhatsApp --- */
+function buildOseWhatsMessage(prog, atrib){
+  const eq = findEquipe(atrib.equipeId);
+  const ativs = (atrib.atividades||[]).map((a,i)=>{
+    const at = findAtividade(a.atividadeId);
+    return `${i+1}. *${at?.codigo||'?'}* · ${at?.descricao||''} — ${a.quantidadePrevista??'—'} ${at?.unidade||''}`;
+  }).join('\n');
+  return [
+    `*G26 New · Programação de OSE*`,
+    ``,
+    `*Programação:* ${oseProgLabel(prog)}`,
+    `*Município:* ${prog.municipio||'—'}  ·  *Subestação:* ${prog.subestacao||'—'}`,
+    `*Tipo Intervenção:* ${prog.tipoIntervencao||'—'}`,
+    `*Data:* ${fmtDate(atrib.dataProgramada)}`,
+    `*Equipe:* ${equipeLabel(eq)}`,
+    ``,
+    ...localWhatsLine(prog.local, prog.localLat, prog.localLng),
+    ``,
+    `*Atividades programadas:*`,
+    ativs||'—',
+    ``,
+    `*Supervisor:* ${eq?.supervisor||'—'}`,
+    `*Encarregado:* ${eq?.encarregado||'—'}  ·  *Motorista:* ${eq?.motorista||'—'}`,
+    ``,
+    `*Acesso da equipe (QR):*`,
+    equipePageUrl(prog.id),
+    ``,
+    `_Caso tenha problemas técnicos, entre em contato:_`,
+    `https://wa.me/${WHATS_SUPORTE}`
+  ].join('\n');
+}
+
+function encaminharOseWhats(progId){
+  const prog = findOseProg(Number(progId));
+  if(!prog) return;
+  const teams = (prog.atribuicoes||[]).filter(a=>a.status!=='Cancelado');
+  if(!teams.length) return;
+  const semWhats = [];
+  let enviadas = 0;
+  teams.forEach(atrib=>{
+    const eq = findEquipe(atrib.equipeId);
+    if(!eq?.whatsapp || !phoneDigits(eq.whatsapp)){ semWhats.push(equipeLabel(eq)); return; }
+    window.open(waLink(eq.whatsapp, buildOseWhatsMessage(prog, atrib)), '_blank');
+    enviadas++;
+  });
+  if(semWhats.length){
+    toast('Sem WhatsApp cadastrado para: '+semWhats.join(', ')+'. Edite a equipe e informe o número.', 'error');
+  }else{
+    toast(enviadas>1? `Mensagem encaminhada para ${enviadas} equipes.` : 'Mensagem encaminhada para a equipe.');
+  }
+  registrarEvento('compartilhamento','programacao',prog.id,oseProgLabel(prog), 'Encaminhado via WhatsApp para '+(enviadas>0? enviadas+' equipe(s)':'nenhuma equipe')+(semWhats.length? ' · sem WhatsApp: '+semWhats.join(', '):''));
+}
+
+/* --- OSE Documento de Campo --- */
+function oseDocAtribuicaoHtml(prog, atrib){
+  const eq = findEquipe(atrib.equipeId);
+  const rows = (atrib.atividades||[]).map((a,idx)=>{
+    const at = findAtividade(a.atividadeId);
+    return `<tr>
+      <td style="text-align:center;">${idx+1}</td>
+      <td class="mono" style="font-weight:700;">${esc(at?.codigo||'?')}</td>
+      <td>${esc(at?.descricao||'')}</td>
+      <td style="text-align:center;">${esc(at?.unidade||'')}</td>
+      <td style="text-align:center;">${a.quantidadePrevista??'—'}</td>
+      <td style="height:22px;"></td>
+    </tr>`;
+  }).join('');
+  return `
+  <div class="ps-block">
+    <div class="ps-block-head">
+      <div>${oseProgLabel(prog)} — ${esc(prog.municipio||'Município')} — ${equipeLabel(eq)} — ${fmtDate(atrib.dataProgramada)}</div>
+      ${(prog.localLat!=null&&prog.localLng!=null)? `<div class="ps-qr">${qrSvgHtml(mapsLinkByCoords(prog.localLat,prog.localLng), 3)}<div class="ps-qr-cap">Escaneie para ver no mapa</div></div>`:''}
+    </div>
+    <table class="ps-info">
+      <tr><th>Supervisor</th><td>${esc(eq?.supervisor||'—')}</td><th>Encarregado</th><td>${esc(eq?.encarregado||'—')}</td></tr>
+      <tr><th>Motorista</th><td>${esc(eq?.motorista||'—')}</td><th>Eletricistas</th><td>${esc((eq?.eletricistas||[]).filter(Boolean).join(', ')||'—')}</td></tr>
+      ${prog.local? `<tr><th>Local de execução</th><td colspan="3"><strong>${esc(prog.local)}</strong>${(prog.localLat!=null&&prog.localLng!=null)? ` — <a href="${esc(mapsLinkByCoords(prog.localLat,prog.localLng))}">${esc(mapsLinkByCoords(prog.localLat,prog.localLng))}</a>`:''}</td></tr>`:''}
+    </table>
+    <table>
+      <thead><tr><th style="width:26px;">#</th><th>Código</th><th>Descrição</th><th style="width:40px;">Un.</th><th style="width:52px;">Qtd prev.</th><th style="width:64px;">Qtd exec.</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="ps-check"><div><strong>Executou?</strong> &nbsp;☐ SIM &nbsp;☐ NÃO &nbsp;☐ PARCIAL</div><div><strong>Data da execução:</strong> ____/____/____</div></div>
+    <div class="ps-sign"><strong>Observações do campo:</strong><div class="ps-obs"></div></div>
+    <div class="ps-sign"><strong>Assinatura do encarregado:</strong> <span class="ps-line"></span></div>
+  </div>`;
+}
+function buildOseDocProgramacao(prog){
+  return `
+    <div class="ps-head">
+      <div><h1>G26 New · Programação OSE</h1><div class="ps-sub">Documento de campo — programação</div></div>
+      <div style="text-align:right;"><div style="font-size:14px;font-weight:700;">${fmtDate(prog.dataProgramacao)}</div><div class="ps-sub">Emissão: ${fmtDateTime(Date.now())}</div></div>
+    </div>
+    <table class="ps-info">
+      <tr><th>Programação</th><td><strong>${oseProgLabel(prog)}</strong></td><th>Emissão</th><td>${fmtDateTime(Date.now())}</td></tr>
+      <tr><th>Município</th><td>${esc(prog.municipio||'—')}</td><th>Subestação</th><td>${esc(prog.subestacao||'—')}</td></tr>
+      <tr><th>Tipo Intervenção</th><td>${esc(prog.tipoIntervencao||'—')}</td><th>Status Doc.</th><td>${esc(prog.statusDocumentacao||'—')}</td></tr>
+      ${prog.observacoes? `<tr><th>Observações</th><td colspan="3">${esc(prog.observacoes)}</td></tr>`:''}
+      ${String(prog.orientacoesPlanejamento||'').trim()? `<tr><th>Orientações do Setor de Planejamento</th><td colspan="3">${esc(prog.orientacoesPlanejamento)}</td></tr>`:''}
+      ${prog.local? `<tr><th>Local de execução</th><td colspan="3"><strong>${esc(prog.local)}</strong>${(prog.localLat!=null&&prog.localLng!=null)? ` — <a href="${esc(mapsLinkByCoords(prog.localLat,prog.localLng))}">${esc(mapsLinkByCoords(prog.localLat,prog.localLng))}</a>`:(prog.local? ` — <a href="${esc(mapsLinkByAddress(prog.local))}">${esc(mapsLinkByAddress(prog.local))}</a>`:'')}</td></tr>`:''}
+    </table>
+    ${(prog.atribuicoes||[]).map(at=> oseDocAtribuicaoHtml(prog, at)).join('')}
+    ${(prog.localLat!=null&&prog.localLng!=null)? `<div class="ps-block" style="page-break-before:auto;break-before:auto;margin-top:8px;">
+      <div class="ps-block-head">Localização no mapa — ${oseProgLabel(prog)}</div>
+      ${staticMapImgTag(prog.localLat,prog.localLng,16,720,420, 'Mapa: '+(prog.local||''), 'width:100%;max-width:620px;border:1px solid #999;border-radius:4px;')}
+      <div style="margin-top:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div class="ps-qr-box">${qrSvgHtml(mapsLinkByCoords(prog.localLat,prog.localLng), 4)}</div>
+        <div style="font-size:11px;color:#333;"><strong>Escaneie para abrir no Google Maps</strong><br>${esc(mapsLinkByCoords(prog.localLat,prog.localLng))}</div>
+      </div>
+    </div>`:''}
+    <div style="margin-top:8px;font-size:10.5px;color:#000;border-top:1px solid #444;padding-top:6px;">Assinatura do fiscal / responsável: <span class="ps-line"></span> &nbsp;&nbsp; Data: ____/____/____</div>
+  `;
+}
+function openOseDocProgramacao(pgId){
+  const prog = findOseProg(Number(pgId));
+  if(!prog) return;
+  printDocumento(buildOseDocProgramacao(prog));
+}
+function openOseDocDataModal(){
+  const body = `
+    <div class="field"><label>Data <span class="req">*</span></label><input type="date" name="data" required value="${todayISO()}"></div>
+    <div class="field-hint">Gera um documento de campo com todas as equipes OSE programadas nesta data.</div>`;
+  openModal({
+    title:'Documento de campo OSE — por data', bodyHtml:body, submitLabel:'Gerar e imprimir',
+    onSubmit:(fd)=>{
+      const data = fd.get('data');
+      if(!data){ toast('Informe a data.', 'error'); return false; }
+      const list = flatOseAtribuicoes().filter(x=> (x.atribuicao.dataProgramada||x.programacao.dataProgramacao)===data && x.atribuicao.status!=='Cancelado');
+      if(!list.length){ toast('Nenhuma programação OSE nesta data.', 'error'); return false; }
+      const html = `
+        <div class="ps-head">
+          <div><h1>G26 New · Programação OSE</h1><div class="ps-sub">Documento de campo — ${fmtDate(data)}</div></div>
+          <div style="text-align:right;"><div style="font-size:14px;font-weight:700;">${fmtDate(data)}</div><div class="ps-sub">${list.length} equipe(s) programada(s)</div></div>
+        </div>
+        ${list.map(x=> oseDocAtribuicaoHtml(x.programacao, x.atribuicao)).join('')}
+        <div style="margin-top:8px;font-size:10.5px;color:#000;border-top:1px solid #444;padding-top:6px;">Assinatura do fiscal / responsável: <span class="ps-line"></span> &nbsp;&nbsp; Data: ____/____/____</div>`;
+      printDocumento(html);
+    }
+  });
+}
+
+/* --- OSE Histórico --- */
+function openOseHistoricoModal(atribId){
+  const r = oseAtribGlobal(Number(atribId));
+  if(!r) return;
+  const events = [...(r.atribuicao.historico||[])].sort((a,b)=>b.ts-a.ts);
+  if(!events.length){
+    openModal({ title:'Histórico', bodyHtml:'<div style="padding:24px;color:var(--muted-2);font-size:12.5px;">Sem eventos registrados.</div>', submitLabel:'Fechar', onSubmit:()=>true, wide:true });
+    return;
+  }
+  const html = `<div class="timeline">${events.map(h=>{
+    let dotColor='var(--muted)', title='';
+    if(h.tipo==='criacao'){ dotColor='var(--blue)'; title='Programação criada'; }
+    else if(h.tipo==='status'){ dotColor=STATUS_COLOR[h.para]||'var(--muted)'; title=`Status alterado: ${h.de} → ${h.para}`; }
+    else if(h.tipo==='reprogramacao'){ dotColor='var(--purple)'; title=`Reprogramada: ${fmtDate(h.de)} → ${fmtDate(h.para)}`; }
+    else { title=h.tipo||'Evento'; }
+    return `<div class="tl-item" style="--dot-c:${dotColor}"><div class="tl-title">${title}</div><div class="tl-meta">${fmtDateTime(h.ts)} · <strong style="color:var(--muted);">${autor(h)}</strong></div>${h.motivo? `<div class="tl-motivo"><strong>Motivo:</strong> ${esc(h.motivo)}${h.obs? ' — '+esc(h.obs):''}</div>`:''}</div>`;
+  }).join('')}</div>`;
+  openModal({ title:'Histórico — '+oseProgLabel(r.programacao), bodyHtml:html, submitLabel:'Fechar', onSubmit:()=>true, wide:true });
+}
+
+/* --- openOseProgramacaoModal --- */
+function openOseProgramacaoModal(id){
+  if(!requerEscrita()) return;
+  const pg = id ? findOseProg(id) : null;
+  let atribs = pg ? pg.atribuicoes.map(a=>({ equipeId:String(a.equipeId), atividades: a.atividades.map(x=>({atividadeId:String(x.atividadeId), quantidadePrevista:x.quantidadePrevista??''})) })) : [{ equipeId:'', atividades:[{atividadeId:'',quantidadePrevista:''}] }];
+  let anexos = pg ? (pg.anexos||[]).map(a=>({...a})) : [];
+  let anexosEnviando = false;
+  let localAddr = pg?.local||'';
+  let localLat = pg?.localLat??null;
+  let localLng = pg?.localLng??null;
+
+  function atribBlockHtml(a,i){
+    const searchId = `ose-act-search-${i}`;
+    return `<div class="atrib-block" data-idx="${i}">
+      <div class="atrib-head">
+        <select class="atrib-equipe" data-idx="${i}"><option value="">Selecione a equipe…</option>${DB.equipes.filter(e=>e.ativo!==false).map(e=>`<option value="${e.id}" ${String(a.equipeId)===String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' · '+esc(e.encarregado):''}</option>`).join('')}</select>
+        ${atribs.length>1? `<button type="button" class="icon-btn atrib-remove" data-idx="${i}">${icon('trash',14)}</button>`:''}
+      </div>
+      <div class="atrib-meta-live" data-idx="${i}"></div>
+      <div class="field" style="margin-bottom:8px;">
+        <label for="${searchId}">${icon('search',14)} Buscar atividade (código ou descrição)</label>
+        <input type="search" id="${searchId}" placeholder="Filtrar atividades…" style="width:100%;">
+      </div>
+      <div class="atrib-activities">${a.atividades.map((at,j)=>activityRowHtml(a,i,at,j)).join('')}</div>
+      <button type="button" class="btn btn-sm btn-ghost atrib-add-activity" data-idx="${i}">${icon('plus',13)} Adicionar atividade</button>
+    </div>`;
+  }
+  function activityRowHtml(a,i,at,j){
+    return `<div class="activity-row" data-idx="${i}" data-jdx="${j}">
+      <select class="act-select" data-idx="${i}" data-jdx="${j}"><option value="">Atividade…</option>${atividadesOrdenadas().map(x=>`<option value="${x.id}" ${String(at.atividadeId)===String(x.id)?'selected':''}>${isFavorita(x.id)?'★ ':''}${esc(x.codigo)} · ${esc(x.descricao)}</option>`).join('')}</select>
+      <input type="number" step="0.01" min="0" class="act-qty" data-idx="${i}" data-jdx="${j}" placeholder="Qtd." value="${at.quantidadePrevista??''}">
+      ${a.atividades.length>1? `<button type="button" class="icon-btn act-remove" data-idx="${i}" data-jdx="${j}">${icon('close',13)}</button>`:''}
+    </div>`;
+  }
+  function renderAtribsHtml(){ return atribs.map((a,i)=>atribBlockHtml(a,i)).join(''); }
+
+  const bodyHtml = `
+    <div class="field-row">
+      <div class="field"><label>Município <span class="req">*</span></label><input type="text" name="municipio" value="${esc(pg?.municipio||'')}" required placeholder="Nome do município"></div>
+      <div class="field"><label>Subestação</label><input type="text" name="subestacao" value="${esc(pg?.subestacao||'')}" placeholder="Nome da subestação"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Tipo de Intervenção</label><select name="tipoIntervencao"><option value="">Selecione…</option>${TIPO_INTERVENCAO_OPCOES.map(v=>`<option ${pg?.tipoIntervencao===v?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div class="field"><label>Status Documentação</label><select name="statusDocumentacao"><option value="">Selecione…</option>${STATUS_DOC_OPCOES.map(v=>`<option ${pg?.statusDocumentacao===v?'selected':''}>${v}</option>`).join('')}</select></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Data início <span class="req">*</span></label><input type="date" name="dataProgramacao" required value="${pg?.dataProgramacao||todayISO()}"></div>
+      <div class="field"><label>Data fim (opcional)</label><input type="date" name="dataFim" value="${pg?.dataProgramacao||''}"><div class="field-hint">Se preenchido, cria uma programação para cada dia no intervalo. Deixe vazio para criar apenas 1.</div></div>
+    </div>
+    <div class="field"><label>Observações</label><textarea name="observacoes" rows="2" placeholder="Observações da programação OSE">${esc(pg?.observacoes||'')}</textarea></div>
+    <div class="field"><label>Local / endereço de execução</label>
+      <input type="text" name="local" id="ose-local" value="${esc(pg?.local||'')}" placeholder="Digite o endereço...">
+      <div class="field-hint">Enquanto digita, geramos o link do Google Maps. Marque o ponto exato no mapa interativo.</div>
+      <div id="ose-local-tools"></div>
+      <div id="ose-map-wrap" style="display:none;margin-top:8px;">
+        <div id="ose-local-map" style="height:460px;width:100%;border-radius:10px;overflow:hidden;border:1px solid var(--border-soft);"></div>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm btn-primary" id="ose-map-confirm">Confirmar local no mapa</button>
+          <button type="button" class="btn btn-sm btn-ghost" id="ose-map-cancel">Fechar mapa</button>
+        </div>
+      </div>
+    </div>
+    <div class="field"><label>Anexos</label>
+      <input type="file" id="ose-anexos-input" accept="image/*" multiple>
+      <div class="field-hint">Imagens para a equipe visualizar (croqui, localização, detalhe do serviço).</div>
+      <div id="ose-anexos-preview">${anexosGridHtml(anexos, true)}</div>
+      <div id="ose-anexos-progress" style="display:none;margin-top:8px;">
+        <div id="ose-anexos-progress-text" style="font-size:11px;color:var(--muted);margin-bottom:4px;">Enviando…</div>
+        <div style="height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden;"><div id="ose-anexos-progress-fill" style="height:100%;width:0%;background:var(--accent);transition:width .2s;"></div></div>
+      </div>
+    </div>
+    <div class="field"><label>Orientações do Setor de Planejamento</label>
+      <textarea name="orientacoesPlanejamento" rows="3" placeholder="Orientação de execução, restrições, pontos de atenção para a equipe...">${esc(pg?.orientacoesPlanejamento||'')}</textarea>
+    </div>
+    ${renderCustomFieldsInputs('programacoes', pg)}
+    <div class="field"><label>Equipes e atividades <span class="req">*</span></label>
+      <div id="atribs-container">${renderAtribsHtml()}</div>
+      <button type="button" class="btn btn-sm" id="add-atrib-btn" style="margin-top:6px;align-self:flex-start;">${icon('plus',13)} Adicionar equipe</button>
+    </div>`;
+
+  openModal({
+    title: pg? 'Editar programação OSE' : 'Nova programação OSE', bodyHtml, extraWide: true, submitLabel: pg? 'Salvar alterações':'Programar',
+    onMount:(root)=>{
+      function refreshContainer(){
+        document.getElementById('atribs-container').innerHTML = renderAtribsHtml(); bindDynamic();
+      }
+      function bindDynamic(){
+        root.querySelectorAll('.atrib-equipe').forEach(s=>s.addEventListener('change', e=>{ atribs[e.target.dataset.idx].equipeId = e.target.value; atualizarMetaIndicadores(); }));
+        root.querySelectorAll('.atrib-remove').forEach(b=>b.addEventListener('click', e=>{ atribs.splice(Number(e.currentTarget.dataset.idx),1); refreshContainer(); }));
+        root.querySelectorAll('.atrib-add-activity').forEach(b=>b.addEventListener('click', e=>{ atribs[Number(e.currentTarget.dataset.idx)].atividades.push({atividadeId:'',quantidadePrevista:''}); refreshContainer(); }));
+        root.querySelectorAll('.act-select').forEach(s=>s.addEventListener('change', e=>{ atribs[e.target.dataset.idx].atividades[e.target.dataset.jdx].atividadeId = e.target.value; atualizarMetaIndicadores(); }));
+        root.querySelectorAll('.act-qty').forEach(s=>s.addEventListener('input', e=>{ atribs[e.target.dataset.idx].atividades[e.target.dataset.jdx].quantidadePrevista = e.target.value; atualizarMetaIndicadores(); }));
+        root.querySelectorAll('.act-remove').forEach(b=>b.addEventListener('click', e=>{ const i=Number(e.currentTarget.dataset.idx), j=Number(e.currentTarget.dataset.jdx); atribs[i].atividades.splice(j,1); refreshContainer(); }));
+        root.querySelectorAll('input[type="search"][id^="ose-act-search-"]').forEach(input=>{
+          const idx = input.id.replace('ose-act-search-','');
+          input.addEventListener('input', ()=>{
+            const term = input.value.toLowerCase();
+            root.querySelectorAll(`.act-select[data-idx="${idx}"]`).forEach(sel=>{
+              const selected = sel.value;
+              Array.from(sel.options).forEach(opt=>{
+                if(opt.value==='') return;
+                opt.style.display = opt.textContent.toLowerCase().includes(term) ? '' : 'none';
+              });
+              if(selected && !Array.from(sel.options).find(o=>o.value===selected && o.style.display!=='none')) sel.value = '';
+            });
+          });
+        });
+        atualizarMetaIndicadores();
+      }
+      function atualizarMetaIndicadores(){
+        root.querySelectorAll('.atrib-meta-live').forEach(el=>{
+          const i = Number(el.dataset.idx);
+          const a = atribs[i];
+          const eq = a && a.equipeId? findEquipe(a.equipeId) : null;
+          const meta = metaDiaria(eq);
+          const total = (a?.atividades||[]).reduce((s,at)=>{
+            const atDef = at.atividadeId? findAtividade(at.atividadeId) : null;
+            return s + (parseFloat(at.quantidadePrevista)||0) * (atDef?.valorUnitario||0);
+          },0);
+          if(!eq){ el.innerHTML=''; return; }
+          if(!meta){
+            el.innerHTML = `<div class="atrib-meta-wrap"><span style="font-size:11px;color:var(--muted);">Programação total: <strong>${fmtMoney(total)}</strong> (meta diária não definida para esta equipe)</span></div>`;
+            return;
+          }
+          const pct = Math.round(total/meta*100);
+          const cor = pct>=100? 'var(--green)' : pct>=50? 'var(--accent)' : 'var(--red)';
+          el.innerHTML = `<div class="atrib-meta-wrap">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+              <strong style="font-size:11px;letter-spacing:.02em;">PROGRAMAÇÃO EM <span style="color:${cor};">${pct}%</span> DA META DA EQUIPE</strong>
+              <span style="font-size:11px;color:var(--muted);">${fmtMoney(total)} de ${fmtMoney(meta)}</span>
+            </div>
+            <div class="atrib-meta-bar"><div style="width:${Math.min(100,pct)}%;background:${cor};"></div></div>
+          </div>`;
+        });
+      }
+      bindDynamic();
+      document.getElementById('add-atrib-btn').addEventListener('click', ()=>{ atribs.push({equipeId:'',atividades:[{atividadeId:'',quantidadePrevista:''}]}); refreshContainer(); });
+
+      const anexosPreview = root.querySelector('#ose-anexos-preview');
+      const anexosInput = root.querySelector('#ose-anexos-input');
+      const anexosProgress = root.querySelector('#ose-anexos-progress');
+      const anexosProgressText = root.querySelector('#ose-anexos-progress-text');
+      const anexosProgressFill = root.querySelector('#ose-anexos-progress-fill');
+      function paintAnexos(){
+        anexosPreview.innerHTML = anexosGridHtml(anexos, true);
+        anexosPreview.querySelectorAll('.anexo-remove').forEach(b=>b.addEventListener('click', ()=>{
+          anexos.splice(Number(b.dataset.i),1); paintAnexos();
+        }));
+      }
+      anexosInput.addEventListener('change', async ()=>{
+        const files = Array.from(anexosInput.files||[]);
+        if(!files.length) return;
+        const sobra = Math.max(0, 8 - anexos.length);
+        const fila = files.slice(0, sobra);
+        if(files.length > sobra) toast('Máximo de 8 anexos.', 'error');
+        if(!fila.length){ anexosInput.value=''; return; }
+        anexosInput.disabled = true;
+        anexosEnviando = true;
+        const total = fila.length;
+        let feitos = 0;
+        const atualizar = ()=>{
+          anexosProgressFill.style.width = Math.round(feitos/total*100)+'%';
+          anexosProgressText.textContent = total>1? `Enviando ${Math.min(feitos+1,total)} de ${total}…` : 'Enviando…';
+        };
+        anexosProgress.style.display = 'block';
+        paintAnexos();
+        atualizar();
+        await Promise.all(fila.map(async (f)=>{
+          let url = '';
+          try{
+            const blob = await comprimirImagem(f);
+            url = await uploadToImgbb(blob);
+          }catch(e){ toast('Falha ao enviar '+esc(f.name)+' ('+e.message+').', 'error'); }
+          if(url) anexos.push({ nome: f.name||('anexo-'+Date.now()), url, ts: Date.now() });
+          feitos++; atualizar(); paintAnexos();
+        }));
+        anexosEnviando = false;
+        anexosProgress.style.display = 'none';
+        anexosInput.disabled = false; anexosInput.value='';
+        paintAnexos();
+      });
+      paintAnexos();
+
+      const localInput = root.querySelector('#ose-local');
+      const localTools = root.querySelector('#ose-local-tools');
+      const mapWrap = root.querySelector('#ose-map-wrap');
+      let leafletMap = null;
+      function paintLocalTools(){
+        if(!localAddr){ localTools.innerHTML=''; return; }
+        localTools.innerHTML = `<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+          <a href="${esc(mapsLinkByAddress(localAddr))}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;color:var(--blue);font-weight:600;font-size:12.5px;">${icon('pin',13)} Abrir no Google Maps</a>
+          <button type="button" class="btn btn-sm" id="ose-open-map" style="font-size:12px;">${icon('pin',13)} Marcar no mapa</button>
+        </div>`;
+        const openMapBtn = localTools.querySelector('#ose-open-map');
+        if(openMapBtn) openMapBtn.addEventListener('click', ()=> showLeafletMap());
+      }
+      async function showLeafletMap(){
+        mapWrap.style.display = 'block';
+        try{
+          const L = await loadLeaflet();
+          const center = localLat!=null && localLng!=null ? [localLat, localLng] : [-17.85, -49.25];
+          if(leafletMap){ leafletMap.remove(); leafletMap=null; }
+          leafletMap = L.map('ose-local-map').setView(center, localLat!=null? 16 : 12);
+          L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:19, attribution:'Esri' }).addTo(leafletMap);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, opacity:0.5 }).addTo(leafletMap);
+          let marker = localLat!=null && localLng!=null ? L.marker(center).addTo(leafletMap) : null;
+          leafletMap.on('click', (e)=>{
+            if(marker) leafletMap.removeLayer(marker);
+            marker = L.marker(e.latlng).addTo(leafletMap);
+          });
+          setTimeout(()=> leafletMap.invalidateSize(), 200);
+          root.querySelector('#ose-map-confirm').onclick = async ()=>{
+            if(!marker){ toast('Clique no mapa para marcar um ponto.', 'error'); return; }
+            const ll = marker.getLatLng();
+            localLat = ll.lat; localLng = ll.lng;
+            const rev = await geoapifyReverse(localLat, localLng);
+            if(rev){ localAddr = rev; localInput.value = rev; }
+            mapWrap.style.display = 'none';
+            paintLocalTools();
+            toast('Local confirmado no mapa.');
+          };
+          root.querySelector('#ose-map-cancel').onclick = ()=>{ mapWrap.style.display = 'none'; };
+        }catch(e){ toast('Falha ao carregar o mapa: '+e.message, 'error'); mapWrap.style.display='none'; }
+      }
+      let localDeb = null;
+      localInput.addEventListener('input', ()=>{
+        localAddr = localInput.value.trim();
+        clearTimeout(localDeb);
+        localDeb = setTimeout(paintLocalTools, 500);
+      });
+      paintLocalTools();
+    },
+    onSubmit:(fd)=>{
+      if(anexosEnviando){ toast('Aguarde o envio das imagens.', 'error'); return false; }
+      const municipio = fd.get('municipio').trim();
+      if(!municipio){ toast('Informe o município.', 'error'); return false; }
+      const dataProgramacao = fd.get('dataProgramacao');
+      if(!dataProgramacao){ toast('Informe a data de programação.', 'error'); return false; }
+      if(!atribs.length || atribs.some(a=>!a.equipeId)){ toast('Selecione a equipe em todos os blocos.', 'error'); return false; }
+      for(const a of atribs){ if(!a.atividades.length || a.atividades.some(x=>!x.atividadeId)){ toast('Selecione a atividade em todas as linhas.', 'error'); return false; } }
+      const observacoes = String(fd.get('observacoes')||'').trim();
+      const orientacoesPlanejamento = String(fd.get('orientacoesPlanejamento')||'').trim();
+      const local = String(fd.get('local')||'').trim()||localAddr||'';
+      const custom = {};
+      (DB.customFields.programacoes||[]).forEach(f=>{ const v=fd.get('cf_'+f.id); if(v!=null) custom[f.id]=v; });
+      const base = {
+        municipio, subestacao: fd.get('subestacao').trim(),
+        tipoIntervencao: fd.get('tipoIntervencao'),
+        dataProgramacao, statusDocumentacao: fd.get('statusDocumentacao'),
+        observacoes, orientacoesPlanejamento, custom,
+        local, localLat: local? localLat : null, localLng: local? localLng : null, anexos: anexos.map(a=>({...a})),
+        atividades: atribs.map(a=>({
+          equipeId: Number(a.equipeId),
+          atividades: a.atividades.map(x=>({atividadeId:Number(x.atividadeId), quantidadePrevista: x.quantidadePrevista?parseFloat(x.quantidadePrevista):null, quantidadeExecutada:null}))
+        }))
+      };
+      const dataFim = fd.get('dataFim');
+      const datas = (dataFim && dataFim !== dataProgramacao) ? gerarDatasIntervalo(dataProgramacao, dataFim).slice(0,31) : [dataProgramacao];
+      if(pg){
+        Object.assign(pg, base);
+        pg.atribuicoes = base.atividades.map((a,i)=>{
+          const existing = pg.atribuicoes.find(x=>x.equipeId===a.equipeId);
+          if(existing){ existing.atividades = a.atividades; return existing; }
+          return { id: nextId(), equipeId:a.equipeId, dataProgramada:dataProgramacao, status:'Programado', atividades:a.atividades, historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Atribuição criada'}] };
+        });
+        pg.atribuicoes.forEach(at=>{ at.dataProgramada = dataProgramacao; });
+        registrarEvento('edicao','programacao',pg.id,oseProgLabel(pg), (pg.atribuicoes||[]).length+' equipe(s), '+pg.atribuicoes.reduce((s,a)=>s+(a.atividades?.length||0),0)+' atividade(s)');
+        toast('Programação OSE atualizada.');
+      } else {
+        if(datas.length > 1){
+          let count = 0;
+          for(const dt of datas){
+            const novo = { id: nextId(), gid: null, ...base, dataProgramacao: dt,
+              status: 'Programado',
+              atribuicoes: base.atividades.map(a=>({ id: nextId(), equipeId:a.equipeId, dataProgramada:dt, status:'Programado', atividades:a.atividades.map(x=>({...x})), historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Programação criada'}] }))
+            };
+            DB.oseProgramacoes.push(novo);
+            count++;
+          }
+          toast(count+' programações OSE criadas no intervalo.');
+          registrarEvento('criacao','programacao',DB.oseProgramacoes[DB.oseProgramacoes.length-1].id,oseProgLabel(DB.oseProgramacoes[DB.oseProgramacoes.length-1]), count+' programação(ões) OSE');
+        } else {
+          const novo = { id: nextId(), gid: null, ...base,
+            status: 'Programado',
+            atribuicoes: base.atividades.map(a=>({ id: nextId(), equipeId:a.equipeId, dataProgramada:dataProgramacao, status:'Programado', atividades:a.atividades, historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Programação criada'}] }))
+          };
+          DB.oseProgramacoes.push(novo);
+          toast('Programação OSE criada.');
+          registrarEvento('criacao','programacao',novo.id,oseProgLabel(novo), novo.atribuicoes.length+' equipe(s), '+novo.atribuicoes.reduce((s,a)=>s+a.atividades.length,0)+' atividade(s)');
+        }
+      }
+      saveData(); renderContent(); renderBanner();
+    }
+  });
+}
+
+/* --- renderOseRdo --- */
+function renderOseRdo(){
+  const el = document.getElementById('content');
+  let registros = flatOseAtribuicoes().filter(rdoTemExecucao);
+  registros.sort((a,b)=> String(b.atribuicao.dataProgramada||'').localeCompare(String(a.atribuicao.dataProgramada||'')));
+
+  const stats = (()=>{
+    const total = registros.length;
+    const concluidos = registros.filter(x=>x.atribuicao.status==='Concluído').length;
+    const totalExec = registros.reduce((s,x)=> s+rdoResumo(x).exec, 0);
+    const mediaPct = total? Math.round(registros.reduce((s,x)=> s+rdoResumo(x).pct,0)/total) : 0;
+    const imped = registros.filter(x=> rdoImpedimentos(x.atribuicao).length>0).length;
+    return `
+      <div class="grid-stats">
+        <div class="stat-card"><div class="lbl">Registros de execução</div><div class="val">${total}</div></div>
+        <div class="stat-card" style="--accent-c:var(--green);"><div class="lbl">Concluídas</div><div class="val">${concluidos}</div></div>
+        <div class="stat-card" style="--accent-c:var(--blue);"><div class="lbl">Qtd. executada</div><div class="val">${fmtNum(totalExec)}</div></div>
+        <div class="stat-card" style="--accent-c:var(--accent);"><div class="lbl">Conclusão média</div><div class="val">${mediaPct}<small>%</small></div></div>
+        <div class="stat-card" style="--accent-c:var(--red);"><div class="lbl">Com impedimentos</div><div class="val">${imped}</div></div>
+      </div>`;
+  })();
+
+  const equipes = [...new Set(registros.map(x=>x.atribuicao.equipeId))].map(id=> findEquipe(id)).filter(Boolean);
+
+  const filters = `
+    <div class="panel" style="padding:14px 16px;margin-bottom:16px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+        <input type="search" id="ose-rdo-f-busca" placeholder="Buscar por município, equipe, data, status..." style="flex:1;">
+        <button class="btn btn-sm" id="ose-rdo-f-busca-aplicar">${icon('search',13)} Buscar</button>
+      </div>
+      <div class="filters">
+        <label style="font-weight:600;">Equipe</label>
+        <select id="ose-rdo-f-equipe"><option value="">Todas</option>${equipes.map(e=>`<option value="${e.id}">${esc(equipeLabel(e))}</option>`).join('')}</select>
+        <label style="font-weight:600;">Status</label>
+        <select id="ose-rdo-f-status"><option value="">Todos</option>${STATUS_OSE.map(s=>`<option>${s}</option>`).join('')}</select>
+        <label style="font-weight:600;">De</label>
+        <input type="date" id="ose-rdo-f-de">
+        <label style="font-weight:600;">Até</label>
+        <input type="date" id="ose-rdo-f-ate">
+        <button class="btn btn-sm" id="ose-rdo-f-aplicar">${icon('grid',13)} Filtrar</button>
+        <button class="btn btn-sm btn-ghost" id="ose-rdo-f-limpar">Limpar</button>
+      </div>
+    </div>`;
+
+  const tabela = `
+    <div class="panel" style="padding:0;overflow:hidden;">
+      <div class="panel-head" style="padding:14px 16px;">
+        <div><h3>Execuções OSE</h3><div class="admin-field-meta">Dados de execução OSE registrados pelas equipes.</div></div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="data-table" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:1100px;">
+          <thead>
+            <tr>
+              <th style="width:30px;">#</th>
+              <th>Programação</th>
+              <th>Município</th>
+              <th>Equipe</th>
+              <th style="text-align:center;">Data</th>
+              <th style="text-align:center;">Status</th>
+              <th style="text-align:center;">Clima</th>
+              <th style="text-align:center;">Impedimentos</th>
+              <th style="text-align:center;">Prev.</th>
+              <th style="text-align:center;">Exec.</th>
+              <th style="text-align:center;width:110px;">Progresso</th>
+              <th style="width:40px;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${registros.map((x,i)=>{
+              const eq = findEquipe(x.atribuicao.equipeId);
+              const res = rdoResumo(x);
+              const imped = rdoImpedimentos(x.atribuicao);
+              return `
+                <tr data-ose-prog="${x.programacao.id}" data-ose-atrib="${x.atribuicao.id}" style="cursor:pointer;" title="Ver detalhes">
+                  <td style="text-align:center;color:var(--muted-2);">${i+1}</td>
+                  <td><strong>${oseProgLabel(x.programacao)}</strong></td>
+                  <td class="mono">${esc(x.programacao.municipio||'—')}</td>
+                  <td>${esc(equipeLabel(eq))}<div class="admin-field-meta">${esc(eq?.supervisor||'')}</div></td>
+                  <td style="text-align:center;" class="mono">${fmtDate(x.atribuicao.dataProgramada)}</td>
+                  <td style="text-align:center;">${rdoStatusBadge(x.atribuicao.status)}</td>
+                  <td style="text-align:center;">${esc(x.atribuicao.rdoCondicoes||'—')}</td>
+                  <td style="text-align:center;">${imped.length? `<span class="badge" style="color:var(--red);background:rgba(224,97,91,.12);">${imped.length}</span>` : '—'}</td>
+                  <td style="text-align:center;" class="mono">${fmtNum(res.prev)}</td>
+                  <td style="text-align:center;" class="mono"><strong>${fmtNum(res.exec)}</strong></td>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <div style="flex:1;height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${Math.min(100,res.pct)}%;background:${res.pct>=100?'var(--green)':res.pct>=50?'var(--accent)':'var(--red)'};border-radius:3px;"></div></div>
+                      <span class="mono" style="font-size:11px;min-width:34px;text-align:right;">${res.pct}%</span>
+                    </div>
+                  </td>
+                  <td style="text-align:center;">${icon('search',13)}</td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+  if(!registros.length){
+    el.innerHTML = `<div class="section-gap">${stats}<div class="panel"><div class="empty-state">${icon('check',36)}<h3 style="margin-bottom:6px;">Nenhuma execução OSE registrada</h3><p>Quando as equipes responderem o RDO de OSE, os dados de execução aparecerão aqui.</p></div></div></div>`;
+    return;
+  }
+
+  el.innerHTML = `<div class="section-gap">${stats}${filters}${tabela}</div>`;
+
+  const fEq = document.getElementById('ose-rdo-f-equipe');
+  const fSt = document.getElementById('ose-rdo-f-status');
+  const fDe = document.getElementById('ose-rdo-f-de');
+  const fAte = document.getElementById('ose-rdo-f-ate');
+  const fBusca = document.getElementById('ose-rdo-f-busca');
+  const norm = s=> String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const aplicar = ()=>{
+    const q = norm(fBusca.value.trim());
+    registros.forEach(x=>{
+      const eq = findEquipe(x.atribuicao.equipeId);
+      const okEq = !fEq.value || String(x.atribuicao.equipeId)===String(fEq.value);
+      const okSt = !fSt.value || x.atribuicao.status===fSt.value;
+      const data = x.atribuicao.dataProgramada||'';
+      const okDe = !fDe.value || data >= fDe.value;
+      const okAte = !fAte.value || data <= fAte.value;
+      const hay = norm([
+        oseProgLabel(x.programacao), x.programacao.municipio, x.programacao.subestacao,
+        equipeLabel(eq), eq?.supervisor, data, x.atribuicao.status,
+        rdoImpedimentos(x.atribuicao).join(' '),
+        String(x.programacao.id), String(x.atribuicao.id)
+      ].join(' '));
+      const okBusca = !q || hay.indexOf(q)!==-1;
+      const tr = document.querySelector(`tr[data-ose-prog="${x.programacao.id}"][data-ose-atrib="${x.atribuicao.id}"]`);
+      if(tr) tr.style.display = (okEq&&okSt&&okDe&&okAte&&okBusca)? '' : 'none';
+    });
+  };
+  fBusca.addEventListener('input', aplicar);
+  document.getElementById('ose-rdo-f-busca-aplicar').addEventListener('click', aplicar);
+  document.getElementById('ose-rdo-f-aplicar').addEventListener('click', aplicar);
+  document.getElementById('ose-rdo-f-limpar').addEventListener('click', ()=>{
+    fEq.value=''; fSt.value=''; fDe.value=''; fAte.value=''; fBusca.value=''; aplicar();
+  });
+
+  document.querySelectorAll('tr[data-ose-prog]').forEach(tr=>{
+    tr.addEventListener('click', ()=> openOseRDOModal(Number(tr.dataset.oseProg), Number(tr.dataset.oseAtrib)));
+  });
+}
+
+function openOseRDOModal(progId, attribId){
+  const x = flatOseAtribuicoes().find(y=> y.programacao.id===progId && y.atribuicao.id===attribId);
+  if(!x) return;
+  const eq = findEquipe(x.atribuicao.equipeId);
+  const rdo = x.atribuicao.rdoRespostas||{};
+  const res = rdoResumo(x);
+  const imped = rdoImpedimentos(x.atribuicao);
+  const horarios = RDO_HORARIOS.map(h=> `
+    <tr><td style="font-weight:600;padding:5px 12px 5px 0;white-space:nowrap;">${h.label}</td>
+    <td style="padding:5px 10px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao[h.k]||'—'}</td></tr>`).join('');
+
+  const body = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+      <div>
+        <h4 style="margin-bottom:8px;">Programação ${oseProgLabel(x.programacao)}</h4>
+        <p class="admin-field-meta" style="margin:2px 0;">Município: ${esc(x.programacao.municipio||'—')}</p>
+        <p class="admin-field-meta" style="margin:2px 0;">Subestação: ${esc(x.programacao.subestacao||'—')}</p>
+        <p class="admin-field-meta" style="margin:2px 0;">Tipo Intervenção: ${esc(x.programacao.tipoIntervencao||'—')}</p>
+        <p class="admin-field-meta" style="margin:2px 0;">Data: ${fmtDate(x.atribuicao.dataProgramada)}</p>
+        <div style="margin-top:8px;">${rdoStatusBadge(x.atribuicao.status)}</div>
+      </div>
+      <div>
+        <h4 style="margin-bottom:8px;">Equipe</h4>
+        <p class="admin-field-meta" style="margin:2px 0;"><strong>${esc(equipeLabel(eq))}</strong></p>
+        <p class="admin-field-meta" style="margin:2px 0;">Supervisor: ${esc(eq?.supervisor||'—')}</p>
+        <p class="admin-field-meta" style="margin:2px 0;">Encarregado: ${esc(eq?.encarregado||'—')}</p>
+        <p class="admin-field-meta" style="margin:2px 0;">Motorista: ${esc(eq?.motorista||'—')}</p>
+      </div>
+    </div>
+    ${(x.programacao.anexos&&x.programacao.anexos.length)? `<div style="margin-bottom:20px;">
+      <h4 style="margin-bottom:8px;">Anexos do programador</h4>
+      ${anexosDisplayHtml(x.programacao.anexos)}
+    </div>`:''}
+    <div style="margin-bottom:20px;">
+      <h4 style="margin-bottom:8px;">Horários do RDO</h4>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">${horarios}</table>
+    </div>
+    <div style="margin-bottom:20px;">
+      <h4 style="margin-bottom:8px;">KM do Veículo</h4>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        ${RDO_KM.map(h=> `
+          <tr><td style="font-weight:600;padding:5px 12px 5px 0;white-space:nowrap;">${h.label}</td>
+          <td style="padding:5px 10px;border:1px solid var(--border);border-radius:4px;">${x.atribuicao[h.k]||'—'}</td></tr>`).join('')}
+      </table>
+    </div>
+    <div style="margin-bottom:20px;">
+      <h4 style="margin-bottom:8px;">Condições do RDO</h4>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        ${RDO_QUESTIONS.map(q=>`
+          <tr><td style="font-weight:600;padding:3px 12px 3px 0;">${q.label}</td>
+          <td style="padding:3px 10px;">${String(rdo[q.id]||'')||'—'}</td></tr>`).join('')}
+      </table>
+      ${imped.length? `<div style="margin-top:10px;">${imped.map(i=>`<span class="badge" style="color:var(--red);background:rgba(224,97,91,.12);margin-right:4px;">${esc(i)}</span>`).join('')}</div>`:''}
+    </div>
+    <div style="margin-bottom:20px;">
+      <h4 style="margin-bottom:8px;">Atividades e quantidades executadas</h4>
+      <div style="display:flex;gap:14px;margin-bottom:12px;">
+        <span class="badge-prefix">Prev. ${fmtNum(res.prev)}</span>
+        <span class="badge-prefix alt">Exec. ${fmtNum(res.exec)}</span>
+        <span class="badge-prefix" style="color:${res.pct>=100?'var(--green)':res.pct>=50?'var(--accent)':'var(--red)'};">${res.pct}%</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr><th style="text-align:left;padding:4px 6px;">#</th><th style="text-align:left;">Código</th><th style="text-align:left;">Descrição</th><th style="text-align:center;">Un.</th><th style="text-align:center;">Prev.</th><th style="text-align:center;">Exec.</th><th style="text-align:center;">%</th></tr></thead>
+        <tbody>
+          ${(x.atribuicao.atividades||[]).map((a,idx)=>{
+            const at = findAtividade(a.atividadeId);
+            const p = parseFloat(a.quantidadePrevista)||0;
+            const e = a.quantidadeExecutada==null? null : parseFloat(a.quantidadeExecutada);
+            const pct = p? Math.round((e||0)/p*100) : 0;
+            return `<tr style="border-top:1px solid var(--border-soft);">
+              <td style="padding:4px 6px;color:var(--muted-2);">${idx+1}</td>
+              <td class="mono" style="padding:4px 6px;">${esc(at?.codigo||'?')}</td>
+              <td style="padding:4px 6px;">${esc(at?.descricao||'')}</td>
+              <td style="text-align:center;">${esc(at?.unidade||'')}</td>
+              <td style="text-align:center;" class="mono">${p? fmtNum(p):'—'}</td>
+              <td style="text-align:center;" class="mono"><strong>${e!=null? fmtNum(e):'—'}</strong></td>
+              <td style="text-align:center;color:${pct>=100?'var(--green)':pct>=50?'var(--accent)':'var(--red)'};font-weight:700;">${p? pct+'%':'—'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-bottom:20px;">
+      <h4 style="margin-bottom:8px;">Observação da execução</h4>
+      <p style="font-size:13px;">${esc(x.atribuicao.observacao)||'—'}</p>
+    </div>
+    <div class="admin-field-meta">Confirmado pela equipe em <strong>${rdoConfData(x)}</strong></div>`;
+
+  openModal({ title:'RDO OSE — Detalhes da execução', bodyHtml: body, submitLabel:'Fechar', wide:true });
+}
+
+/* --- OSE Confirmação de Execução (bloqueante) --- */
+function openOseConfirmacaoModal(prog, atrib, onResolved){
+  const root = document.getElementById('modal-root');
+  const eq = findEquipe(atrib.equipeId);
+
+  function activitiesSummaryHtml(){
+    return (atrib.atividades||[]).map(a=>{ const at=findAtividade(a.atividadeId); return `${esc(at?.codigo||'')} · ${esc(at?.descricao||'')} <span style="color:var(--muted-2);">(${a.quantidadePrevista??'-'} previsto)</span>`; }).join('<br>');
+  }
+
+  function renderStep(step){
+    let inner='';
+    if(step==='question'){
+      inner = `
+        <div class="modal-body">
+          <div style="font-size:12.5px;color:var(--muted);">Programação OSE vencida — equipe <strong>${equipeLabel(eq)}</strong> — data prevista ${fmtDate(atrib.dataProgramada)}</div>
+          <div style="margin:10px 0;font-size:13px;line-height:1.7;">${activitiesSummaryHtml()}</div>
+          <div class="confirm-question">A PROGRAMAÇÃO FOI EXECUTADA?</div>
+        </div>
+        <div class="modal-foot" style="justify-content:center;gap:14px;">
+          <button type="button" class="btn btn-ghost" id="pc-visualizar">${icon('search',14)} VISUALIZAR</button>
+          <button type="button" class="btn btn-danger-solid" id="pc-nao">NÃO</button>
+          <button type="button" class="btn btn-primary" id="pc-sim">SIM</button>
+        </div>`;
+    } else if(step==='visualizar'){
+      const detalheHtml = oseDetalheHtml(prog, atrib, false);
+      inner = `
+        <div class="modal-body">
+          <div class="confirm-banner">${icon('alert',15)} Confira os dados e o retorno da equipe antes de responder.</div>
+          ${detalheHtml}
+        </div>
+        <div class="modal-foot"><button type="button" class="btn btn-ghost" id="pc-back-visualizar">← Voltar à pergunta</button></div>`;
+    } else if(step==='sim'){
+      inner = `
+        <div class="modal-body">
+          <div style="font-size:12.5px;color:var(--muted);">Confirme as quantidades executadas por <strong>${equipeLabel(eq)}</strong>. Você pode manter os valores previstos ou editar antes de concluir.</div>
+          ${(atrib.atividades||[]).map((a,idx)=>{ const at=findAtividade(a.atividadeId);
+            return `<div class="field"><label>${esc(at?.codigo||'')} · ${esc(at?.descricao||'')}</label><input type="number" step="0.01" class="exec-qty" data-idx="${idx}" value="${a.quantidadeExecutada ?? a.quantidadePrevista ?? ''}"></div>`;
+          }).join('')}
+          <div class="field"><label>Motivo da conclusão <span class="req">*</span></label><input type="text" id="psim-motivo" maxlength="200" placeholder="Ex.: OSE executada conforme programado"></div>
+        </div>
+        <div class="modal-foot"><button type="button" class="btn btn-ghost" id="pc-back-sim">← Voltar</button><button type="button" class="btn btn-primary" id="pc-concluir">Manter/editar e concluir</button></div>`;
+    } else if(step==='nao'){
+      inner = `
+        <div class="modal-body">
+          <div class="field"><label>Motivo <span class="req">*</span></label><select id="pnao-motivo"><option value="">Selecione…</option>${MOTIVOS_REPROG.map(m=>`<option>${m}</option>`).join('')}</select></div>
+          <div class="field"><label>Observações</label><textarea id="pnao-obs" placeholder="Detalhes sobre o não cumprimento"></textarea></div>
+          <div class="field"><label>Nova data <span class="req">*</span></label><input type="date" id="pnao-data" value="${atrib.dataProgramada}"></div>
+        </div>
+        <div class="modal-foot"><button type="button" class="btn btn-ghost" id="pc-back-nao">← Voltar</button><button type="button" class="btn btn-primary" id="pc-reprogramar">Reprogramar</button></div>`;
+    }
+    root.innerHTML = `<div class="modal-overlay" id="modal-overlay-conf"><div class="modal" style="${step==='visualizar'?'max-width:820px;':''}"><div class="modal-head"><h3>Confirmação de execução — OSE</h3></div>${inner}</div></div>`;
+    bind(step);
+  }
+  function bind(step){
+    if(step==='question'){
+      document.getElementById('pc-visualizar').addEventListener('click', ()=>renderStep('visualizar'));
+      document.getElementById('pc-sim').addEventListener('click', ()=>renderStep('sim'));
+      document.getElementById('pc-nao').addEventListener('click', ()=>renderStep('nao'));
+    } else if(step==='visualizar'){
+      document.getElementById('pc-back-visualizar').addEventListener('click', ()=>renderStep('question'));
+    } else if(step==='sim'){
+      document.getElementById('pc-back-sim').addEventListener('click', ()=>renderStep('question'));
+      document.getElementById('pc-concluir').addEventListener('click', ()=>{
+        const motivo = document.getElementById('psim-motivo').value.trim();
+        if(!motivo){ toast('Informe o motivo da conclusão.', 'error'); return; }
+        document.querySelectorAll('.exec-qty').forEach(inp=>{ atrib.atividades[Number(inp.dataset.idx)].quantidadeExecutada = parseFloat(inp.value)||0; });
+        const de = atrib.status;
+        atrib.status='Concluído';
+        atrib.historico = atrib.historico||[];
+        atrib.historico.push({...currentAutor(), ts:Date.now(), tipo:'confirmacao', de, para:'Concluído', motivo});
+        registrarEvento('confirmacao','programacao',prog.id,oseProgLabel(prog),'Execução confirmada — '+motivo);
+        saveData(); root.innerHTML=''; toast('Programação OSE concluída.'); renderContent(); onResolved && onResolved();
+      });
+    } else if(step==='nao'){
+      document.getElementById('pc-back-nao').addEventListener('click', ()=>renderStep('question'));
+      document.getElementById('pc-reprogramar').addEventListener('click', ()=>{
+        const motivo = document.getElementById('pnao-motivo').value;
+        const obs = document.getElementById('pnao-obs').value.trim();
+        const novaData = document.getElementById('pnao-data').value;
+        if(!motivo || !novaData){ toast('Preencha motivo e nova data.', 'error'); return; }
+        const dataAntiga = atrib.dataProgramada;
+        atrib.dataProgramada = novaData;
+        atrib.status = 'Reprogramado';
+        atrib.historico = atrib.historico||[];
+        atrib.historico.push({...currentAutor(), ts:Date.now(), tipo:'reprogramacao', de:dataAntiga, para:novaData, motivo, obs});
+        registrarEvento('reprogramacao','atribuicao',atrib.id,oseProgLabel(prog)+' · '+equipeLabel(findEquipe(atrib.equipeId)),fmtDate(dataAntiga)+' → '+fmtDate(novaData)+' · '+motivo+(obs? ' · '+obs:''));
+        saveData(); root.innerHTML=''; toast('Programação OSE reprogramada.'); renderContent(); onResolved && onResolved();
+      });
+    }
+  }
+  renderStep('question');
+}
+
+/* --- Export OSE CSV --- */
+function exportOseProgramacoesCSV(){
+  exportCSV('ose_programacoes.csv',
+    ['ID','Data','Município','Subestação','Tipo Intervenção','Status Doc.','Equipe','Atividades','Status','Observações'],
+    oseProgramacoesVisiveis().map(p=>{
+      const eq = findEquipe(p.equipeId);
+      const ativs = (p.atividades||[]).map(a=>{ const at=findAtividade(a.atividadeId); return `${at?.codigo||'?'} ×${a.quantidadePrevista??'—'}`; }).join(', ');
+      return [oseProgLabel(p), fmtDate(p.dataProgramacao), p.municipio||'', p.subestacao||'', p.tipoIntervencao||'', p.statusDocumentacao||'', equipeLabel(eq), ativs, p.status||'', p.observacoes||''];
+    }));
+}
+function renderOsePoda(){ setView('ose-programacoes'); }
+function renderOse(){ setView('ose-programacoes'); }
+function renderPoda(){ setView('poda-programacoes'); }
 
 /* --- Poda helpers --- */
 const STATUS_DOC_OPCOES = ['Confirmado','Em elaboração','Elaborado','Validado'];
