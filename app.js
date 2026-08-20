@@ -3754,7 +3754,7 @@ function renderContent(){
 
 /* --- Ose helpers --- */
 const STATUS_OSE = ['Programado','Em Execução','Concluído','Reprogramado','Cancelado'];
-const TIPO_INTERVENCAO_OPCOES = ['Aéreo','Subterrâneo','Misto'];
+const TIPO_INTERVENCAO_OPCOES = ['MT','BT'];
 let oseFilters = (()=>{ const r=monthRangeISO(); return { busca:'', equipe:'', status:'', dataDe:r.de, dataAte:r.ate, modo:'lista', calView:'mes', calDay:todayISO() }; })();
 let oseCalRef = new Date();
 function oseProgLabel(p){ return p.gid || ('OSE-'+String(p.id).padStart(7,'0')); }
