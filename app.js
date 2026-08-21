@@ -2623,6 +2623,10 @@ function openAtribDetalhe(atribId){
     <div class="field-row">
       <div class="field" style="flex:1;"><label>Ciclo recebido carteira <span class="req">*</span></label><input type="text" name="ciclo" class="ciclo-input" id="pg-ciclo" required maxlength="13" value="${esc(pg?.ciclo||'')}" placeholder="CICLO-XX/XXXX"><div class="field-hint">💡 Preenchido automaticamente do projeto; pode ser ajustado.</div></div>
     </div>
+    <div class="field-row">
+      <div class="field"><label>Nº SI</label><input type="text" name="numeroSI" value="${esc(pg?.numeroSI||'')}" placeholder="Opcional"></div>
+      <div class="field"><label>Status SI</label><select name="statusSI"><option value="">Selecione…</option>${['FALTA ELABORAR','ELABORADO','APROVADO','CONFIRMADO','CANCELADO'].map(v=>`<option ${pg?.statusSI===v?'selected':''}>${v}</option>`).join('')}</select><div class="field-hint">💡 Obrigatório quando o Nº SI for informado.</div></div>
+    </div>
     <div class="field"><label>Observações gerais</label><textarea name="observacoes">${esc(pg?.observacoes||'')}</textarea></div>
     <div class="field">
       <label>Local / endereço de execução</label>
@@ -2893,13 +2897,17 @@ function openAtribDetalhe(atribId){
       if(datas.length > 31){ toast('O intervalo não pode ultrapassar 31 dias.', 'error'); return false; }
       const projetoId = Number(fd.get('projetoId')); const observacoes = fd.get('observacoes').trim();
       const orientacoesPlanejamento = String(fd.get('orientacoesPlanejamento')||'').trim();
+      const numeroSI = String(fd.get('numeroSI')||'').trim();
+      let statusSI = String(fd.get('statusSI')||'');
+      if(numeroSI && !statusSI){ toast('Informe o Status SI — obrigatório quando o Nº SI é preenchido.', 'error'); return false; }
+      if(!numeroSI) statusSI = '';
       const custom = parseCustomFieldsFromForm('programacoes', fd);
       const local = String(fd.get('local')||'').trim()||localAddr||'';
       const locLat = local? localLat : null;
       const locLng = local? localLng : null;
       if(pg){
         const dataBaseAntiga = pg.dataProgramada;
-        pg.projetoId = projetoId; pg.dataProgramada = dataInicio; pg.ciclo = ciclo; pg.observacoes = observacoes; pg.orientacoesPlanejamento = orientacoesPlanejamento; pg.custom = custom; pg.anexos = anexos; pg.local = local; pg.localLat = locLat; pg.localLng = locLng;
+        pg.projetoId = projetoId; pg.dataProgramada = dataInicio; pg.ciclo = ciclo; pg.observacoes = observacoes; pg.orientacoesPlanejamento = orientacoesPlanejamento; pg.custom = custom; pg.anexos = anexos; pg.local = local; pg.localLat = locLat; pg.localLng = locLng; pg.numeroSI = numeroSI; pg.statusSI = statusSI;
         const oldAtribs = pg.atribuicoes;
         pg.atribuicoes = atribs.map(a=>{
           const existing = oldAtribs.find(old => String(old.equipeId)===String(a.equipeId));
@@ -2913,7 +2921,7 @@ function openAtribDetalhe(atribId){
         const grupoId = 'GRP-'+Date.now()+'-'+Math.random().toString(36).slice(2,7);
         let count = 0;
         for(const dt of datas){
-          const novaProg = { id: nextId(), gid: novoGid(), grupoId, projetoId, dataProgramada: dt, ciclo, observacoes, orientacoesPlanejamento, custom, anexos: anexos.map(a=>({...a})), local, localLat: locLat, localLng: locLng,
+          const novaProg = { id: nextId(), gid: novoGid(), grupoId, projetoId, dataProgramada: dt, ciclo, numeroSI, statusSI, observacoes, orientacoesPlanejamento, custom, anexos: anexos.map(a=>({...a})), local, localLat: locLat, localLng: locLng,
             atribuicoes: atribs.map(a=> ({ id: nextId(), equipeId:Number(a.equipeId), dataProgramada: dt, status:'Programado',
               atividades: a.atividades.map(x=>({atividadeId:Number(x.atividadeId), quantidadePrevista:x.quantidadePrevista?parseFloat(x.quantidadePrevista):null, quantidadeExecutada:null})),
               historico:[{...currentAutor(), ts:Date.now(),tipo:'criacao',de:null,para:'Programado',motivo:'Programação criada'}] })) };
@@ -4409,7 +4417,7 @@ function openOseHistoricoModal(atribId){
 function openOseProgramacaoModal(id){
   if(!requerEscrita()) return;
   const pg = id ? findOseProg(id) : null;
-  let atribs = pg ? pg.atribuicoes.map(a=>({ equipeId:String(a.equipeId), atividades: a.atividades.map(x=>({atividadeId:String(x.atividadeId), quantidadePrevista:x.quantidadePrevista??''})) })) : [{ equipeId:'', atividades:[{atividadeId:'',quantidadePrevista:''}] }];
+  let atribs = pg ? pg.atribuicoes.map(a=>({ equipeId:String(a.equipeId), atividades: a.atividades.map(x=>({atividadeId:String(x.atividadeId), quantidadePrevista:x.quantidadePrevista??'', qtdAnomalia:x.qtdAnomalia??''})) })) : [{ equipeId:'', atividades:[{atividadeId:'',quantidadePrevista:'',qtdAnomalia:''}] }];
   let anexos = pg ? (pg.anexos||[]).map(a=>({...a})) : [];
   let anexosEnviando = false;
   let localAddr = pg?.local||'';
@@ -4436,6 +4444,7 @@ function openOseProgramacaoModal(id){
     return `<div class="activity-row" data-idx="${i}" data-jdx="${j}">
       <select class="act-select" data-idx="${i}" data-jdx="${j}"><option value="">Atividade…</option>${atividadesOrdenadas().map(x=>`<option value="${x.id}" ${String(at.atividadeId)===String(x.id)?'selected':''}>${isFavorita(x.id)?'★ ':''}${esc(x.codigo)} · ${esc(x.descricao)}</option>`).join('')}</select>
       <input type="number" step="0.01" min="0" class="act-qty" data-idx="${i}" data-jdx="${j}" placeholder="Qtd." value="${at.quantidadePrevista??''}">
+      <input type="number" step="1" min="0" class="act-anom" data-idx="${i}" data-jdx="${j}" placeholder="Anom." title="Quantidade de anomalias programadas" style="max-width:90px;" value="${at.qtdAnomalia??''}">
       ${a.atividades.length>1? `<button type="button" class="icon-btn act-remove" data-idx="${i}" data-jdx="${j}">${icon('close',13)}</button>`:''}
     </div>`;
   }
@@ -4494,9 +4503,10 @@ function openOseProgramacaoModal(id){
       function bindDynamic(){
         root.querySelectorAll('.atrib-equipe').forEach(s=>s.addEventListener('change', e=>{ atribs[e.target.dataset.idx].equipeId = e.target.value; atualizarMetaIndicadores(); }));
         root.querySelectorAll('.atrib-remove').forEach(b=>b.addEventListener('click', e=>{ atribs.splice(Number(e.currentTarget.dataset.idx),1); refreshContainer(); }));
-        root.querySelectorAll('.atrib-add-activity').forEach(b=>b.addEventListener('click', e=>{ atribs[Number(e.currentTarget.dataset.idx)].atividades.push({atividadeId:'',quantidadePrevista:''}); refreshContainer(); }));
+        root.querySelectorAll('.atrib-add-activity').forEach(b=>b.addEventListener('click', e=>{ atribs[Number(e.currentTarget.dataset.idx)].atividades.push({atividadeId:'',quantidadePrevista:'',qtdAnomalia:''}); refreshContainer(); }));
         root.querySelectorAll('.act-select').forEach(s=>s.addEventListener('change', e=>{ atribs[e.target.dataset.idx].atividades[e.target.dataset.jdx].atividadeId = e.target.value; atualizarMetaIndicadores(); }));
         root.querySelectorAll('.act-qty').forEach(s=>s.addEventListener('input', e=>{ atribs[e.target.dataset.idx].atividades[e.target.dataset.jdx].quantidadePrevista = e.target.value; atualizarMetaIndicadores(); }));
+        root.querySelectorAll('.act-anom').forEach(s=>s.addEventListener('input', e=>{ atribs[e.target.dataset.idx].atividades[e.target.dataset.jdx].qtdAnomalia = e.target.value; }));
         root.querySelectorAll('.act-remove').forEach(b=>b.addEventListener('click', e=>{ const i=Number(e.currentTarget.dataset.idx), j=Number(e.currentTarget.dataset.jdx); atribs[i].atividades.splice(j,1); refreshContainer(); }));
         root.querySelectorAll('input[type="search"][id^="ose-act-search-"]').forEach(input=>{
           const idx = input.id.replace('ose-act-search-','');
@@ -4541,7 +4551,7 @@ function openOseProgramacaoModal(id){
         });
       }
       bindDynamic();
-      document.getElementById('add-atrib-btn').addEventListener('click', ()=>{ atribs.push({equipeId:'',atividades:[{atividadeId:'',quantidadePrevista:''}]}); refreshContainer(); });
+      document.getElementById('add-atrib-btn').addEventListener('click', ()=>{ atribs.push({equipeId:'',atividades:[{atividadeId:'',quantidadePrevista:'',qtdAnomalia:''}]}); refreshContainer(); });
 
       const anexosPreview = root.querySelector('#ose-anexos-preview');
       const anexosInput = root.querySelector('#ose-anexos-input');
@@ -4658,7 +4668,7 @@ function openOseProgramacaoModal(id){
         local, localLat: local? localLat : null, localLng: local? localLng : null, anexos: anexos.map(a=>({...a})),
         atividades: atribs.map(a=>({
           equipeId: Number(a.equipeId),
-          atividades: a.atividades.map(x=>({atividadeId:Number(x.atividadeId), quantidadePrevista: x.quantidadePrevista?parseFloat(x.quantidadePrevista):null, quantidadeExecutada:null}))
+          atividades: a.atividades.map(x=>({atividadeId:Number(x.atividadeId), quantidadePrevista: x.quantidadePrevista?parseFloat(x.quantidadePrevista):null, qtdAnomalia: x.qtdAnomalia? parseFloat(x.qtdAnomalia): null, quantidadeExecutada:null}))
         }))
       };
       const dataFim = fd.get('dataFim');
@@ -4916,7 +4926,7 @@ function openOseRDOModal(progId, attribId){
         <span class="badge-prefix" style="color:${res.pct>=100?'var(--green)':res.pct>=50?'var(--accent)':'var(--red)'};">${res.pct}%</span>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <thead><tr><th style="text-align:left;padding:4px 6px;">#</th><th style="text-align:left;">Código</th><th style="text-align:left;">Descrição</th><th style="text-align:center;">Un.</th><th style="text-align:center;">Prev.</th><th style="text-align:center;">Exec.</th><th style="text-align:center;">%</th><th style="text-align:center;">Fotos</th></tr></thead>
+        <thead><tr><th style="text-align:left;padding:4px 6px;">#</th><th style="text-align:left;">Código</th><th style="text-align:left;">Descrição</th><th style="text-align:center;">Un.</th><th style="text-align:center;">Prev.</th><th style="text-align:center;">Exec.</th><th style="text-align:center;">%</th><th style="text-align:center;" title="Anomalias programadas → executadas">Anom.</th><th style="text-align:center;">Fotos</th></tr></thead>
         <tbody>
           ${(x.atribuicao.atividades||[]).map((a,idx)=>{
             const at = findAtividade(a.atividadeId);
@@ -4932,6 +4942,7 @@ function openOseRDOModal(progId, attribId){
               <td style="text-align:center;" class="mono">${p? fmtNum(p):'—'}</td>
               <td style="text-align:center;" class="mono"><strong>${e!=null? fmtNum(e):'—'}</strong></td>
               <td style="text-align:center;color:${pct>=100?'var(--green)':pct>=50?'var(--accent)':'var(--red)'};font-weight:700;">${p? pct+'%':'—'}</td>
+              <td style="text-align:center;" class="mono">${esc(String(a.qtdAnomalia??'—')+' → '+String(a.qtdAnomaliaExecutada??'—'))}</td>
               <td style="text-align:center;">${fotos.length? `<div class="rdo-fotos" style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">${fotos.map(u=>`<img class="rdo-foto" src="${esc(u)}" alt="foto" title="Ampliar" style="width:36px;height:36px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:zoom-in;">`).join('')}</div>`:'<span style="color:var(--muted-2);">—</span>'}</td>
             </tr>`;
           }).join('')}
@@ -8036,6 +8047,8 @@ function printRDOTipoCompleto(x, tipo){
     const execVal = e!=null? e*vu : 0;
     const fotos = String(a.fotos||'').split(';;').filter(Boolean);
     const fotosHtml = fotos.length? `<div class="fotos">${fotos.map(u=>`<figure><img src="${esc(u)}" alt="Foto da execução da atividade ${idx+1}"><figcaption>Atividade ${at?.codigo||idx+1} — foto ${idx+1}</figcaption></figure>`).join('')}</div>` : '<div style="color:#999;">Sem fotos registradas.</div>';
+    const anomCell = tipo==='ose'? `<td style="border:1px solid #999;padding:4px 8px;text-align:center;">${esc(String(a.qtdAnomalia??'—')+' → '+String(a.qtdAnomaliaExecutada??'—'))}</td>` : '';
+    const nCols = tipo==='ose'? 9 : 8;
     return `<tr>
       <td style="border:1px solid #999;padding:4px 8px;text-align:center;">${idx+1}</td>
       <td style="border:1px solid #999;padding:4px 8px;" class="mono">${esc(at?.codigo||'?')}</td>
@@ -8044,9 +8057,10 @@ function printRDOTipoCompleto(x, tipo){
       <td style="border:1px solid #999;padding:4px 8px;text-align:center;">${pv? fmtNum(pv):'—'}</td>
       <td style="border:1px solid #999;padding:4px 8px;text-align:center;"><strong>${e!=null? fmtNum(e):'—'}</strong></td>
       <td style="border:1px solid #999;padding:4px 8px;text-align:center;font-weight:700;color:${pct>=100?'#1c7d1c':pct>=50?'#b8860b':'#b33'};">${pv? pct+'%':'—'}</td>
+      ${anomCell}
       <td style="border:1px solid #999;padding:4px 8px;text-align:right;">${fmtMoney(execVal)}</td>
-    </tr><tr><td colspan="8" style="border:1px solid #999;padding:8px;background:#fafafa;">${fotosHtml}</td></tr>`;
-  }).join('') || '<tr><td colspan="8" style="border:1px solid #999;padding:4px 8px;">Sem atividades registradas.</td></tr>';
+    </tr><tr><td colspan="${nCols}" style="border:1px solid #999;padding:8px;background:#fafafa;">${fotosHtml}</td></tr>`;
+  }).join('') || `<tr><td colspan="${tipo==='ose'? 9:8}" style="border:1px solid #999;padding:4px 8px;">Sem atividades registradas.</td></tr>`;
   const hist = x.atribuicao.historico||[];
   const histRows = hist.length? hist.slice().reverse().map(h=>`<tr>
       <td style="border:1px solid #999;padding:4px 8px;">${fmtDateTime(h.ts)}</td>
@@ -8142,7 +8156,7 @@ function printRDOTipoCompleto(x, tipo){
     <h2>Atividades executadas</h2>
     <p class="meta">Previsto: ${fmtNum(res.prev)} · Executado: <strong>${fmtNum(res.exec)}</strong> · Percentual: <strong>${res.pct}%</strong></p>
     <table>
-      <thead><tr><th style="text-align:center;">#</th><th>Código</th><th>Descrição</th><th style="text-align:center;">Un.</th><th style="text-align:center;">Prev.</th><th style="text-align:center;">Exec.</th><th style="text-align:center;">%</th><th style="text-align:right;">Valor exec.</th></tr></thead>
+      <thead><tr><th style="text-align:center;">#</th><th>Código</th><th>Descrição</th><th style="text-align:center;">Un.</th><th style="text-align:center;">Prev.</th><th style="text-align:center;">Exec.</th><th style="text-align:center;">%</th>${tipo==='ose'? '<th style="text-align:center;" title="Anomalias programadas → executadas">Anom.</th>':''}<th style="text-align:right;">Valor exec.</th></tr></thead>
       <tbody>${ativRows}</tbody>
     </table>
 
@@ -8216,6 +8230,8 @@ function exportRDOTipo(registros, tipo){
         'Qtd Prevista Atividade': a.quantidadePrevista||'',
         'Qtd Executada Atividade': e!=null? e:'',
         'Percentual Atividade': pv? Math.round((e||0)/pv*100)+'%':'',
+        'Anomalias Programadas': a.qtdAnomalia??'',
+        'Anomalias Executadas': a.qtdAnomaliaExecutada??'',
         'Fotos Atividade': a.fotos||''
       };
     });
