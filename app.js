@@ -2970,6 +2970,18 @@ function equipePageUrl(progId){
   if(base && !base.endsWith('/')) base += '/';
   return base + 'team.html?equipe=' + progId;
 }
+function equipePageUrlPoda(id){
+  let base = location.href.split(/[?#]/)[0];
+  base = base.replace(/[\\/]index\.html$/i, '');
+  if(base && !base.endsWith('/')) base += '/';
+  return base + 'team.html?poda=' + id;
+}
+function equipePageUrlOse(id){
+  let base = location.href.split(/[?#]/)[0];
+  base = base.replace(/[\\/]index\.html$/i, '');
+  if(base && !base.endsWith('/')) base += '/';
+  return base + 'team.html?ose=' + id;
+}
 
 /* ── WHATSAPP ── */
 const WHATS_SUPORTE = '556496151084';
@@ -4241,7 +4253,7 @@ function buildOseWhatsMessage(prog, atrib){
     `*Encarregado:* ${eq?.encarregado||'—'}  ·  *Motorista:* ${eq?.motorista||'—'}`,
     ``,
     `*Acesso da equipe (QR):*`,
-    equipePageUrl(prog.id),
+    equipePageUrlOse(prog.id),
     ``,
     `_Caso tenha problemas técnicos, entre em contato:_`,
     `https://wa.me/${WHATS_SUPORTE}`
@@ -4287,7 +4299,7 @@ function oseDocAtribuicaoHtml(prog, atrib){
   <div class="ps-block">
     <div class="ps-block-head">
       <div>${oseProgLabel(prog)} — ${esc(prog.municipio||'Município')} — ${equipeLabel(eq)} — ${fmtDate(atrib.dataProgramada)}</div>
-      ${(prog.localLat!=null&&prog.localLng!=null)? `<div class="ps-qr">${qrSvgHtml(mapsLinkByCoords(prog.localLat,prog.localLng), 3)}<div class="ps-qr-cap">Escaneie para ver no mapa</div></div>`:''}
+      <div class="ps-qr">${qrSvgHtml(equipePageUrlOse(prog.id), 3)}<div class="ps-qr-cap">Escaneie para acessar a página de serviço</div></div>
     </div>
     <table class="ps-info">
       <tr><th>Supervisor</th><td>${esc(eq?.supervisor||'—')}</td><th>Encarregado</th><td>${esc(eq?.encarregado||'—')}</td></tr>
@@ -4722,22 +4734,27 @@ function renderOseRdo(){
     <div class="panel" style="padding:0;overflow:hidden;">
       <div class="panel-head" style="padding:14px 16px;">
         <div><h3>Execuções OSE</h3><div class="admin-field-meta">Dados de execução OSE registrados pelas equipes.</div></div>
+        <div class="filters" style="gap:6px;">
+          <button class="btn btn-sm" id="ose-rdo-export">${icon('download',13)} Excel</button>
+          <button class="btn btn-sm btn-ghost" id="ose-rdo-print">${icon('print',13)} Imprimir</button>
+        </div>
       </div>
       <div style="overflow-x:auto;">
-        <table class="data-table" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:1100px;">
+        <table class="data-table" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:1200px;">
           <thead>
             <tr>
               <th style="width:30px;">#</th>
               <th>Programação</th>
-              <th>Município</th>
               <th>Equipe</th>
               <th style="text-align:center;">Data</th>
               <th style="text-align:center;">Status</th>
+              <th style="text-align:center;">Horários</th>
               <th style="text-align:center;">Clima</th>
               <th style="text-align:center;">Impedimentos</th>
               <th style="text-align:center;">Prev.</th>
               <th style="text-align:center;">Exec.</th>
               <th style="text-align:center;width:110px;">Progresso</th>
+              <th style="text-align:center;">Confirmação</th>
               <th style="width:40px;"></th>
             </tr>
           </thead>
@@ -4746,14 +4763,15 @@ function renderOseRdo(){
               const eq = findEquipe(x.atribuicao.equipeId);
               const res = rdoResumo(x);
               const imped = rdoImpedimentos(x.atribuicao);
+              const horarios = [x.atribuicao.rdoHorarioChegada, x.atribuicao.rdoHorarioSaidaObra].filter(Boolean).join(' → ')||'—';
               return `
                 <tr data-ose-prog="${x.programacao.id}" data-ose-atrib="${x.atribuicao.id}" style="cursor:pointer;" title="Ver detalhes">
                   <td style="text-align:center;color:var(--muted-2);">${i+1}</td>
-                  <td><strong>${oseProgLabel(x.programacao)}</strong></td>
-                  <td class="mono">${esc(x.programacao.municipio||'—')}</td>
+                  <td><strong>${oseProgLabel(x.programacao)}</strong><div class="admin-field-meta">${esc(x.programacao.municipio||'—')} · ${esc(x.programacao.subestacao||'—')}</div></td>
                   <td>${esc(equipeLabel(eq))}<div class="admin-field-meta">${esc(eq?.supervisor||'')}</div></td>
                   <td style="text-align:center;" class="mono">${fmtDate(x.atribuicao.dataProgramada)}</td>
                   <td style="text-align:center;">${rdoStatusBadge(x.atribuicao.status)}</td>
+                  <td style="text-align:center;" class="mono">${esc(horarios)}</td>
                   <td style="text-align:center;">${esc(x.atribuicao.rdoCondicoes||'—')}</td>
                   <td style="text-align:center;">${imped.length? `<span class="badge" style="color:var(--red);background:rgba(224,97,91,.12);">${imped.length}</span>` : '—'}</td>
                   <td style="text-align:center;" class="mono">${fmtNum(res.prev)}</td>
@@ -4764,6 +4782,7 @@ function renderOseRdo(){
                       <span class="mono" style="font-size:11px;min-width:34px;text-align:right;">${res.pct}%</span>
                     </div>
                   </td>
+                  <td style="text-align:center;" class="mono"><span style="font-size:11px;">${rdoConfData(x)}</span></td>
                   <td style="text-align:center;">${icon('search',13)}</td>
                 </tr>`;
             }).join('')}
@@ -4815,6 +4834,9 @@ function renderOseRdo(){
   document.querySelectorAll('tr[data-ose-prog]').forEach(tr=>{
     tr.addEventListener('click', ()=> openOseRDOModal(Number(tr.dataset.oseProg), Number(tr.dataset.oseAtrib)));
   });
+
+  document.getElementById('ose-rdo-export').addEventListener('click', ()=> exportRDOTipo(registros,'ose'));
+  document.getElementById('ose-rdo-print').addEventListener('click', ()=> printRDOReportTipo(registros,'ose'));
 }
 
 function openOseRDOModal(progId, attribId){
@@ -4879,13 +4901,14 @@ function openOseRDOModal(progId, attribId){
         <span class="badge-prefix" style="color:${res.pct>=100?'var(--green)':res.pct>=50?'var(--accent)':'var(--red)'};">${res.pct}%</span>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <thead><tr><th style="text-align:left;padding:4px 6px;">#</th><th style="text-align:left;">Código</th><th style="text-align:left;">Descrição</th><th style="text-align:center;">Un.</th><th style="text-align:center;">Prev.</th><th style="text-align:center;">Exec.</th><th style="text-align:center;">%</th></tr></thead>
+        <thead><tr><th style="text-align:left;padding:4px 6px;">#</th><th style="text-align:left;">Código</th><th style="text-align:left;">Descrição</th><th style="text-align:center;">Un.</th><th style="text-align:center;">Prev.</th><th style="text-align:center;">Exec.</th><th style="text-align:center;">%</th><th style="text-align:center;">Fotos</th></tr></thead>
         <tbody>
           ${(x.atribuicao.atividades||[]).map((a,idx)=>{
             const at = findAtividade(a.atividadeId);
             const p = parseFloat(a.quantidadePrevista)||0;
             const e = a.quantidadeExecutada==null? null : parseFloat(a.quantidadeExecutada);
             const pct = p? Math.round((e||0)/p*100) : 0;
+            const fotos = String(a.fotos||'').split(';;').filter(Boolean);
             return `<tr style="border-top:1px solid var(--border-soft);">
               <td style="padding:4px 6px;color:var(--muted-2);">${idx+1}</td>
               <td class="mono" style="padding:4px 6px;">${esc(at?.codigo||'?')}</td>
@@ -4894,6 +4917,7 @@ function openOseRDOModal(progId, attribId){
               <td style="text-align:center;" class="mono">${p? fmtNum(p):'—'}</td>
               <td style="text-align:center;" class="mono"><strong>${e!=null? fmtNum(e):'—'}</strong></td>
               <td style="text-align:center;color:${pct>=100?'var(--green)':pct>=50?'var(--accent)':'var(--red)'};font-weight:700;">${p? pct+'%':'—'}</td>
+              <td style="text-align:center;">${fotos.length? `<div class="rdo-fotos" style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">${fotos.map(u=>`<img class="rdo-foto" src="${esc(u)}" alt="foto" title="Ampliar" style="width:36px;height:36px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:zoom-in;">`).join('')}</div>`:'<span style="color:var(--muted-2);">—</span>'}</td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -4905,7 +4929,10 @@ function openOseRDOModal(progId, attribId){
     </div>
     <div class="admin-field-meta">Confirmado pela equipe em <strong>${rdoConfData(x)}</strong></div>`;
 
-  openModal({ title:'RDO OSE — Detalhes da execução', bodyHtml: body, submitLabel:'Fechar', wide:true });
+  openModal({ title:'RDO OSE — Detalhes da execução', bodyHtml: body, submitLabel:'Fechar', wide:true, footerBtns:[
+    { label: icon('edit',14)+' Editar registro', cls:'btn', onClick: ()=> editRdoModal(x, oseProgLabel) },
+    { label: icon('print',14)+' Gerar PDF', cls:'btn', onClick: ()=> printRDOTipoCompleto(x,'ose') }
+  ] });
 }
 
 /* --- OSE Confirmação de Execução (bloqueante) --- */
@@ -5492,7 +5519,7 @@ function buildPodaWhatsMessage(prog, atrib){
     `*Encarregado:* ${eq?.encarregado||'—'}  ·  *Motorista:* ${eq?.motorista||'—'}`,
     ``,
     `*Acesso da equipe (QR):*`,
-    equipePageUrl(prog.id),
+    equipePageUrlPoda(prog.id),
     ``,
     `_Caso tenha problemas técnicos, entre em contato:_`,
     `https://wa.me/${WHATS_SUPORTE}`
@@ -5538,7 +5565,7 @@ function podaDocAtribuicaoHtml(prog, atrib){
   <div class="ps-block">
     <div class="ps-block-head">
       <div>${podaProgLabel(prog)} — ${esc(prog.osi||'OSI')} — ${equipeLabel(eq)} — ${fmtDate(atrib.dataProgramada)}</div>
-      ${(prog.localLat!=null&&prog.localLng!=null)? `<div class="ps-qr">${qrSvgHtml(mapsLinkByCoords(prog.localLat,prog.localLng), 3)}<div class="ps-qr-cap">Escaneie para ver no mapa</div></div>`:''}
+      <div class="ps-qr">${qrSvgHtml(equipePageUrlPoda(prog.id), 3)}<div class="ps-qr-cap">Escaneie para acessar a página de serviço</div></div>
     </div>
     <table class="ps-info">
       <tr><th>Supervisor</th><td>${esc(eq?.supervisor||'—')}</td><th>Encarregado</th><td>${esc(eq?.encarregado||'—')}</td></tr>
@@ -5981,22 +6008,27 @@ function renderPodaRdo(){
     <div class="panel" style="padding:0;overflow:hidden;">
       <div class="panel-head" style="padding:14px 16px;">
         <div><h3>Execuções de PODA</h3><div class="admin-field-meta">Dados de execução de poda registrados pelas equipes.</div></div>
+        <div class="filters" style="gap:6px;">
+          <button class="btn btn-sm" id="poda-rdo-export">${icon('download',13)} Excel</button>
+          <button class="btn btn-sm btn-ghost" id="poda-rdo-print">${icon('print',13)} Imprimir</button>
+        </div>
       </div>
       <div style="overflow-x:auto;">
-        <table class="data-table" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:1100px;">
+        <table class="data-table" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:1200px;">
           <thead>
             <tr>
               <th style="width:30px;">#</th>
               <th>Programação</th>
-              <th>OSI</th>
               <th>Equipe</th>
               <th style="text-align:center;">Data</th>
               <th style="text-align:center;">Status</th>
+              <th style="text-align:center;">Horários</th>
               <th style="text-align:center;">Clima</th>
               <th style="text-align:center;">Impedimentos</th>
               <th style="text-align:center;">Prev.</th>
               <th style="text-align:center;">Exec.</th>
               <th style="text-align:center;width:110px;">Progresso</th>
+              <th style="text-align:center;">Confirmação</th>
               <th style="width:40px;"></th>
             </tr>
           </thead>
@@ -6005,14 +6037,15 @@ function renderPodaRdo(){
               const eq = findEquipe(x.atribuicao.equipeId);
               const res = rdoResumo(x);
               const imped = rdoImpedimentos(x.atribuicao);
+              const horarios = [x.atribuicao.rdoHorarioChegada, x.atribuicao.rdoHorarioSaidaObra].filter(Boolean).join(' → ')||'—';
               return `
                 <tr data-poda-prog="${x.programacao.id}" data-poda-atrib="${x.atribuicao.id}" style="cursor:pointer;" title="Ver detalhes">
                   <td style="text-align:center;color:var(--muted-2);">${i+1}</td>
-                  <td><strong>${podaProgLabel(x.programacao)}</strong></td>
-                  <td class="mono">${esc(x.programacao.osi||'—')}</td>
+                  <td><strong>${podaProgLabel(x.programacao)}</strong><div class="admin-field-meta">OSI ${esc(x.programacao.osi||'—')} · ${esc(x.programacao.subestacao||'—')}</div></td>
                   <td>${esc(equipeLabel(eq))}<div class="admin-field-meta">${esc(eq?.supervisor||'')}</div></td>
                   <td style="text-align:center;" class="mono">${fmtDate(x.atribuicao.dataProgramada)}</td>
                   <td style="text-align:center;">${rdoStatusBadge(x.atribuicao.status)}</td>
+                  <td style="text-align:center;" class="mono">${esc(horarios)}</td>
                   <td style="text-align:center;">${esc(x.atribuicao.rdoCondicoes||'—')}</td>
                   <td style="text-align:center;">${imped.length? `<span class="badge" style="color:var(--red);background:rgba(224,97,91,.12);">${imped.length}</span>` : '—'}</td>
                   <td style="text-align:center;" class="mono">${fmtNum(res.prev)}</td>
@@ -6023,6 +6056,7 @@ function renderPodaRdo(){
                       <span class="mono" style="font-size:11px;min-width:34px;text-align:right;">${res.pct}%</span>
                     </div>
                   </td>
+                  <td style="text-align:center;" class="mono"><span style="font-size:11px;">${rdoConfData(x)}</span></td>
                   <td style="text-align:center;">${icon('search',13)}</td>
                 </tr>`;
             }).join('')}
@@ -6074,6 +6108,9 @@ function renderPodaRdo(){
   document.querySelectorAll('tr[data-poda-prog]').forEach(tr=>{
     tr.addEventListener('click', ()=> openPodaRDOModal(Number(tr.dataset.podaProg), Number(tr.dataset.podaAtrib)));
   });
+
+  document.getElementById('poda-rdo-export').addEventListener('click', ()=> exportRDOTipo(registros,'poda'));
+  document.getElementById('poda-rdo-print').addEventListener('click', ()=> printRDOReportTipo(registros,'poda'));
 }
 
 function openPodaRDOModal(progId, attribId){
@@ -6138,13 +6175,14 @@ function openPodaRDOModal(progId, attribId){
         <span class="badge-prefix" style="color:${res.pct>=100?'var(--green)':res.pct>=50?'var(--accent)':'var(--red)'};">${res.pct}%</span>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <thead><tr><th style="text-align:left;padding:4px 6px;">#</th><th style="text-align:left;">Código</th><th style="text-align:left;">Descrição</th><th style="text-align:center;">Un.</th><th style="text-align:center;">Prev.</th><th style="text-align:center;">Exec.</th><th style="text-align:center;">%</th></tr></thead>
+        <thead><tr><th style="text-align:left;padding:4px 6px;">#</th><th style="text-align:left;">Código</th><th style="text-align:left;">Descrição</th><th style="text-align:center;">Un.</th><th style="text-align:center;">Prev.</th><th style="text-align:center;">Exec.</th><th style="text-align:center;">%</th><th style="text-align:center;">Fotos</th></tr></thead>
         <tbody>
           ${(x.atribuicao.atividades||[]).map((a,idx)=>{
             const at = findAtividade(a.atividadeId);
             const p = parseFloat(a.quantidadePrevista)||0;
             const e = a.quantidadeExecutada==null? null : parseFloat(a.quantidadeExecutada);
             const pct = p? Math.round((e||0)/p*100) : 0;
+            const fotos = String(a.fotos||'').split(';;').filter(Boolean);
             return `<tr style="border-top:1px solid var(--border-soft);">
               <td style="padding:4px 6px;color:var(--muted-2);">${idx+1}</td>
               <td class="mono" style="padding:4px 6px;">${esc(at?.codigo||'?')}</td>
@@ -6153,6 +6191,7 @@ function openPodaRDOModal(progId, attribId){
               <td style="text-align:center;" class="mono">${p? fmtNum(p):'—'}</td>
               <td style="text-align:center;" class="mono"><strong>${e!=null? fmtNum(e):'—'}</strong></td>
               <td style="text-align:center;color:${pct>=100?'var(--green)':pct>=50?'var(--accent)':'var(--red)'};font-weight:700;">${p? pct+'%':'—'}</td>
+              <td style="text-align:center;">${fotos.length? `<div class="rdo-fotos" style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">${fotos.map(u=>`<img class="rdo-foto" src="${esc(u)}" alt="foto" title="Ampliar" style="width:36px;height:36px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:zoom-in;">`).join('')}</div>`:'<span style="color:var(--muted-2);">—</span>'}</td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -6164,7 +6203,10 @@ function openPodaRDOModal(progId, attribId){
     </div>
     <div class="admin-field-meta">Confirmado pela equipe em <strong>${rdoConfData(x)}</strong></div>`;
 
-  openModal({ title:'RDO Poda — Detalhes da execução', bodyHtml: body, submitLabel:'Fechar', wide:true });
+  openModal({ title:'RDO Poda — Detalhes da execução', bodyHtml: body, submitLabel:'Fechar', wide:true, footerBtns:[
+    { label: icon('edit',14)+' Editar registro', cls:'btn', onClick: ()=> editRdoModal(x, podaProgLabel) },
+    { label: icon('print',14)+' Gerar PDF', cls:'btn', onClick: ()=> printRDOTipoCompleto(x,'poda') }
+  ] });
 }
 function renderOcNds(){
   const el = document.getElementById('content');
@@ -7098,7 +7140,12 @@ function renderAcidenteModal(acid){
   const eqLabel = acidente.equipeLabel || '—';
   const progGid = acidente.progGid || '—';
   const local = acidente.local || '—';
-  const mapsLink = (acidente.localLat!=null && acidente.localLng!=null) ? mapsLinkByCoords(acidente.localLat, acidente.localLng) : mapsLinkByAddress(local);
+  const temGps = acidente.localLat!=null && acidente.localLng!=null;
+  const mapsLink = temGps ? mapsLinkByCoords(acidente.localLat, acidente.localLng) : mapsLinkByAddress(local);
+  const gpsMeta = temGps
+    ? [acidente.gpsPrecisao!=null? 'Precisão ±'+acidente.gpsPrecisao+' m' : '', acidente.gpsTs? 'Capturado às '+fmtDateTime(acidente.gpsTs).split(' ')[1] : ''].filter(Boolean).join(' · ')
+    : (acidente.gpsErro || '');
+  const localProgramado = acidente.localProgramado || '';
   const qr = qrCodeUrl(mapsLink, 140);
   const projNome = acidente.projetoNome || '—';
   const projCod = acidente.projetoCodigo || '—';
@@ -7142,8 +7189,10 @@ function renderAcidenteModal(acid){
             <div style="font-size:14px;font-weight:700;color:#000;">${esc(setor)} / ${esc(coordenacao)}</div>
           </div>
           <div style="border:2px solid #fecaca;background:#fef2f2;border-radius:10px;padding:14px;grid-column:1/-1;">
-            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#dc2626;margin-bottom:4px;font-weight:700;">LOCALIZAÇÃO</div>
-            <div style="font-size:14px;color:#000;margin-bottom:8px;line-height:1.4;">${esc(local)}</div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#dc2626;margin-bottom:4px;font-weight:700;">LOCALIZAÇÃO DA EQUIPE (GPS)</div>
+            <div style="font-size:14px;color:#000;margin-bottom:${gpsMeta? '4px':'8px'};line-height:1.4;">${esc(local)}</div>
+            ${gpsMeta? `<div style="font-size:11px;color:#991b1b;margin-bottom:8px;">${temGps? icon('pin',11)+' '+esc(gpsMeta) : '⚠ '+esc(gpsMeta)}</div>`:''}
+            ${localProgramado && localProgramado!==local? `<div style="font-size:11px;color:#666;margin-bottom:8px;">Local programado: ${esc(localProgramado)}</div>`:''}
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
               <a href="${esc(mapsLink)}" target="_blank" style="display:inline-flex;align-items:center;gap:8px;background:#dc2626;color:#fff;padding:10px 16px;border-radius:8px;font-weight:800;font-size:13px;text-decoration:none;box-shadow:0 4px 12px #dc262666;">${icon('pin',14)} Abrir no Google Maps</a>
               <img src="${esc(qr)}" alt="QR Code localização" style="width:96px;height:96px;border:2px solid #fecaca;border-radius:6px;box-shadow:0 2px 8px #0001;">
@@ -7753,8 +7802,9 @@ function rdoOptionsHtml(q, atual){
   const opts = q.id==='rdo_condicoes'? ['Bom','Nublado','Chuvoso','Impraticável'] : ['Não','Sim'];
   return `<option value="">—</option>${opts.map(o=>`<option ${String(atual||'').trim()===o? 'selected':''}>${o}</option>`).join('')}`;
 }
-function editRdoModal(x){
+function editRdoModal(x, gidOf){
   if(!requerEscrita()) return;
+  const gidLabel = gidOf || (p=>progGid(p));
   const at = x.atribuicao;
   const horarios = RDO_HORARIOS.map(h=>`<div class="field" style="flex:1;"><label>${h.label}</label><input type="time" name="${h.k}" value="${at[h.k]||''}"></div>`).join('');
   const kmFields = RDO_KM.map(h=>`<div class="field" style="flex:1;"><label>${h.label}</label><input type="number" name="${h.k}" value="${at[h.k]||''}" placeholder="0"></div>`).join('');
@@ -7764,7 +7814,7 @@ function editRdoModal(x){
     return `<div class="field" style="display:flex;gap:8px;align-items:center;"><span style="flex:1;font-size:12px;"><strong>${esc(atDef?.codigo||'?')}</strong> · ${esc(atDef?.descricao||'')}</span><input type="number" step="0.01" min="0" name="exec_${idx}" value="${a.quantidadeExecutada!=null? a.quantidadeExecutada:''}" style="max-width:110px;" placeholder="Exec."></div>`;
   }).join('') || '<p class="admin-field-meta">Sem atividades neste registro.</p>';
   const body = `
-    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">Editando o registro RDO de <strong>${esc(equipeLabel(findEquipe(at.equipeId)))}</strong> — ${progGid(x.programacao)}</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">Editando o registro RDO de <strong>${esc(equipeLabel(findEquipe(at.equipeId)))}</strong> — ${esc(gidLabel(x.programacao))}</div>
     <div class="field"><label>Motivo da edição <span class="req">*</span></label><input type="text" name="motivo" required maxlength="200" placeholder="Por que você está editando este registro RDO?"></div>
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-soft);">
       <h4 style="font-size:12.5px;margin:0 0 10px;">Horários do RDO</h4>
@@ -7801,7 +7851,7 @@ function editRdoModal(x){
       at.observacao = obs;
       at.historico = at.historico||[];
       at.historico.push({...currentAutor(), ts:Date.now(), tipo:'rdo_edicao', de:null, para:'RDO', motivo, obs});
-      registrarEvento('rdo','atribuicao',at.id, progGid(x.programacao)+' · '+equipeLabel(findEquipe(at.equipeId)), 'Registro RDO editado · '+motivo+(obs? ' · '+obs:''));
+      registrarEvento('rdo','atribuicao',at.id, gidLabel(x.programacao)+' · '+equipeLabel(findEquipe(at.equipeId)), 'Registro RDO editado · '+motivo+(obs? ' · '+obs:''));
       saveData(); renderContent(); toast('Registro RDO atualizado.');
     }
   });
@@ -7944,6 +7994,275 @@ function printRDOCompleto(x){
       <div>Responsável pelo projeto<br><div class="linha">Assinatura e carimbo</div></div>
     </div>
     <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},800);});<\/script>
+  </body></html>`);
+  w.document.close();
+}
+
+/* RDO PODA/OSE: mesmo padrão do RDO de projetos */
+function printRDOTipoCompleto(x, tipo){
+  const eq = findEquipe(x.atribuicao.equipeId);
+  const rdo = x.atribuicao.rdoRespostas||{};
+  const res = rdoResumo(x);
+  const imped = rdoImpedimentos(x.atribuicao);
+  const p = x.programacao;
+  const titulo = tipo==='poda'? 'PODA' : 'OSE';
+  const gidLabel = tipo==='poda'? podaProgLabel(p) : oseProgLabel(p);
+  const geradoPor = CURRENT_USER ? ((CURRENT_USER.nome||'') + (CURRENT_USER.login? ' ('+CURRENT_USER.login+')':'') || 'Sistema') : 'Sistema';
+  const horarios = RDO_HORARIOS.map(h=>`<tr><td style="border:1px solid #999;padding:4px 8px;font-weight:600;background:#f5f5f5;">${h.label}</td><td style="border:1px solid #999;padding:4px 8px;">${x.atribuicao[h.k]||'—'}</td></tr>`).join('');
+  const kmRows = RDO_KM.map(h=>`<tr><td style="border:1px solid #999;padding:4px 8px;font-weight:600;background:#f5f5f5;">${h.label}</td><td style="border:1px solid #999;padding:4px 8px;">${x.atribuicao[h.k]||'—'}</td></tr>`).join('');
+  const condicoes = RDO_QUESTIONS.map(q=>`<tr><td style="border:1px solid #999;padding:4px 8px;font-weight:600;background:#f5f5f5;">${q.label}</td><td style="border:1px solid #999;padding:4px 8px;">${String(rdo[q.id]||'')||'—'}</td></tr>`).join('');
+  const impedHtml = imped.length? imped.map(i=>`<span style="display:inline-block;border:1px solid #d95555;color:#b33;background:#fdecec;border-radius:4px;padding:2px 8px;margin:2px 3px 2px 0;">${esc(i)}</span>`).join('') : '—';
+  const ativRows = (x.atribuicao.atividades||[]).map((a,idx)=>{
+    const at = findAtividade(a.atividadeId);
+    const pv = parseFloat(a.quantidadePrevista)||0;
+    const e = a.quantidadeExecutada==null? null : parseFloat(a.quantidadeExecutada);
+    const pct = pv? Math.round((e||0)/pv*100) : 0;
+    const vu = at?.valorUnitario||0;
+    const execVal = e!=null? e*vu : 0;
+    const fotos = String(a.fotos||'').split(';;').filter(Boolean);
+    const fotosHtml = fotos.length? `<div class="fotos">${fotos.map(u=>`<figure><img src="${esc(u)}" alt="Foto da execução da atividade ${idx+1}"><figcaption>Atividade ${at?.codigo||idx+1} — foto ${idx+1}</figcaption></figure>`).join('')}</div>` : '<div style="color:#999;">Sem fotos registradas.</div>';
+    return `<tr>
+      <td style="border:1px solid #999;padding:4px 8px;text-align:center;">${idx+1}</td>
+      <td style="border:1px solid #999;padding:4px 8px;" class="mono">${esc(at?.codigo||'?')}</td>
+      <td style="border:1px solid #999;padding:4px 8px;">${esc(at?.descricao||'')}</td>
+      <td style="border:1px solid #999;padding:4px 8px;text-align:center;">${esc(at?.unidade||'')}</td>
+      <td style="border:1px solid #999;padding:4px 8px;text-align:center;">${pv? fmtNum(pv):'—'}</td>
+      <td style="border:1px solid #999;padding:4px 8px;text-align:center;"><strong>${e!=null? fmtNum(e):'—'}</strong></td>
+      <td style="border:1px solid #999;padding:4px 8px;text-align:center;font-weight:700;color:${pct>=100?'#1c7d1c':pct>=50?'#b8860b':'#b33'};">${pv? pct+'%':'—'}</td>
+      <td style="border:1px solid #999;padding:4px 8px;text-align:right;">${fmtMoney(execVal)}</td>
+    </tr><tr><td colspan="8" style="border:1px solid #999;padding:8px;background:#fafafa;">${fotosHtml}</td></tr>`;
+  }).join('') || '<tr><td colspan="8" style="border:1px solid #999;padding:4px 8px;">Sem atividades registradas.</td></tr>';
+  const hist = x.atribuicao.historico||[];
+  const histRows = hist.length? hist.slice().reverse().map(h=>`<tr>
+      <td style="border:1px solid #999;padding:4px 8px;">${fmtDateTime(h.ts)}</td>
+      <td style="border:1px solid #999;padding:4px 8px;">${esc(h.tipo||'—')}</td>
+      <td style="border:1px solid #999;padding:4px 8px;">${esc(h.de||'—')}</td>
+      <td style="border:1px solid #999;padding:4px 8px;">${esc(h.para||'—')}</td>
+      <td style="border:1px solid #999;padding:4px 8px;">${esc(h.motivo||'—')}</td>
+      <td style="border:1px solid #999;padding:4px 8px;">${esc(h.usuarioNome||'—')}${h.usuarioLogin? ' ('+esc(h.usuarioLogin)+')':''}</td>
+    </tr>`).join('') : '<tr><td colspan="6" style="border:1px solid #999;padding:4px 8px;color:#999;">Sem registros de histórico.</td></tr>';
+
+  const dadosGerais = tipo==='poda' ? `
+    <h2>Dados gerais da programação</h2>
+    <div class="grid">
+      <div>
+        <p class="meta"><strong>${esc(gidLabel)}</strong></p>
+        <p class="meta">OSI: ${esc(p.osi||'—')} · Subestação: ${esc(p.subestacao||'—')}</p>
+        <p class="meta">Tipo Rede: ${esc(p.tipoRede||'—')} · Chave: ${esc(p.chave||'—')}</p>
+        <p class="meta">ID-SIPROG: ${esc(p.idSiprog||'—')} · OSE: ${esc(p.ose||'—')}</p>
+      </div>
+      <div>
+        <p class="meta">Qtd Anomalia: ${esc(p.qtdAnomalia||'—')}</p>
+        <p class="meta">Status Documentação: ${esc(p.statusDocumentacao||'—')}</p>
+        <p class="meta">Observações: ${esc(p.observacoes||'—')}</p>
+      </div>
+    </div>` : `
+    <h2>Dados gerais da programação</h2>
+    <div class="grid">
+      <div>
+        <p class="meta"><strong>${esc(gidLabel)}</strong></p>
+        <p class="meta">Município: ${esc(p.municipio||'—')} · Subestação: ${esc(p.subestacao||'—')}</p>
+        <p class="meta">Tipo Intervenção: ${esc(p.tipoIntervencao||'—')}</p>
+        <p class="meta">Observações: ${esc(p.observacoes||'—')}</p>
+      </div>
+    </div>`;
+  const localHtml = `
+    <h2>Localização</h2>
+    <p class="meta">Referência: <strong>${esc(p.local||'—')}</strong>${(p.localLat&&p.localLng)? ` · <a href="https://www.google.com/maps?q=${p.localLat},${p.localLng}" target="_blank">Ver no mapa</a>`:''}</p>`;
+
+  const w = window.open('', '_blank', 'width=1100,height=800');
+  if(!w) return;
+  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>RDO ${titulo} ${gidLabel}</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:12px;color:#222;margin:24px 30px;}
+    h1{font-size:18px;margin:0 0 2px;}
+    h2{font-size:14px;margin:18px 0 6px;border-bottom:2px solid #444;padding-bottom:3px;}
+    h3{font-size:12.5px;margin:12px 0 4px;}
+    .meta{color:#555;font-size:11.5px;margin:2px 0;}
+    .grid{display:flex;gap:40px;flex-wrap:wrap;}
+    table{border-collapse:collapse;width:100%;}
+    th{background:#eee;text-align:left;padding:4px 8px;border:1px solid #999;}
+    td{padding:4px 8px;border:1px solid #999;}
+    .mono{font-family:Consolas,monospace;font-size:11px;}
+    .fotos{display:flex;flex-wrap:wrap;gap:12px;}
+    .fotos figure{margin:0;width:210px;border:1px solid #ccc;border-radius:4px;padding:6px;background:#fff;}
+    .fotos img{width:100%;height:auto;border-radius:3px;}
+    .fotos figcaption{font-size:10px;color:#666;margin-top:4px;}
+    .assin{display:flex;gap:60px;margin-top:46px;}
+    .assin div{flex:1;text-align:center;font-size:11px;color:#555;}
+    .assin .linha{border-top:1px solid #333;padding-top:6px;margin-top:34px;}
+    .badge-print{display:inline-block;border:1px solid #999;border-radius:4px;padding:2px 8px;font-size:11px;}
+  </style></head><body>
+    <h1>Relatório de RDO — Detalhes da Execução (${titulo})</h1>
+    <p class="meta">Programação ${esc(gidLabel)} · Data programada ${fmtDate(x.atribuicao.dataProgramada)}</p>
+    <p class="meta">Gerado por: <strong>${esc(geradoPor)}</strong> em ${fmtDateTime(Date.now())} · Status: ${esc(x.atribuicao.status||'Programado')}</p>
+
+    ${dadosGerais}
+    ${localHtml}
+
+    <h2>Equipe executora</h2>
+    <div class="grid">
+      <div>
+        <p class="meta"><strong>${esc(equipeLabel(eq))}</strong></p>
+        <p class="meta">Supervisor: ${esc(eq?.supervisor||'—')}</p>
+        <p class="meta">Encarregado: ${esc(eq?.encarregado||'—')}</p>
+      </div>
+      <div>
+        <p class="meta">Motorista: ${esc(eq?.motorista||'—')}</p>
+        <p class="meta">Eletricistas: ${esc((eq?.eletricistas||[]).filter(Boolean).join(', ')||'—')}</p>
+        <p class="meta">WhatsApp: ${esc(eq?.whatsapp||'—')}</p>
+      </div>
+    </div>
+
+    <h2>Horários do RDO</h2>
+    <table>${horarios}</table>
+
+    <h2>KM do Veículo</h2>
+    <table>${kmRows}</table>
+
+    <h2>Condições do RDO</h2>
+    <table>${condicoes}</table>
+    <p class="meta" style="margin-top:8px;">Impedimentos: ${impedHtml}</p>
+
+    <h2>Atividades executadas</h2>
+    <p class="meta">Previsto: ${fmtNum(res.prev)} · Executado: <strong>${fmtNum(res.exec)}</strong> · Percentual: <strong>${res.pct}%</strong></p>
+    <table>
+      <thead><tr><th style="text-align:center;">#</th><th>Código</th><th>Descrição</th><th style="text-align:center;">Un.</th><th style="text-align:center;">Prev.</th><th style="text-align:center;">Exec.</th><th style="text-align:center;">%</th><th style="text-align:right;">Valor exec.</th></tr></thead>
+      <tbody>${ativRows}</tbody>
+    </table>
+
+    <h2>Observação da execução</h2>
+    <p>${esc(x.atribuicao.observacao)||'—'}</p>
+    <p class="meta">Confirmado pela equipe em <strong>${rdoConfData(x)}</strong></p>
+
+    ${(p.anexos&&p.anexos.length)? `<h2>Anexos do programador</h2>${anexosDisplayHtml(p.anexos, true)}`:''}
+
+    <h2>Histórico do registro</h2>
+    <table>
+      <thead><tr><th>Data/Hora</th><th>Tipo</th><th>De</th><th>Para</th><th>Motivo</th><th>Autor</th></tr></thead>
+      <tbody>${histRows}</tbody>
+    </table>
+
+    <div class="assin">
+      <div>Supervisor<br><div class="linha">Assinatura e carimbo</div></div>
+      <div>Encarregado<br><div class="linha">Assinatura e carimbo</div></div>
+      <div>Responsável pela execução<br><div class="linha">Assinatura e carimbo</div></div>
+    </div>
+    <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},800);});<\/script>
+  </body></html>`);
+  w.document.close();
+}
+
+function rdoTipoLabel(tipo, p){ return tipo==='poda'? podaProgLabel(p) : oseProgLabel(p); }
+function rdoTipoSub(tipo, p){
+  return tipo==='poda'
+    ? [p.osi? 'OSI '+p.osi : '', p.subestacao? 'SE '+p.subestacao : ''].filter(Boolean).join(' · ')
+    : [p.municipio||'', p.subestacao? 'SE '+p.subestacao : ''].filter(Boolean).join(' · ');
+}
+function exportRDOTipo(registros, tipo){
+  const linhas=[];
+  registros.forEach(x=>{
+    const p = x.programacao;
+    const eq = findEquipe(x.atribuicao.equipeId);
+    const res = rdoResumo(x);
+    const imped = rdoImpedimentos(x.atribuicao).join(', ');
+    const cab = {
+      'Programação': rdoTipoLabel(tipo,p),
+      'Detalhe': rdoTipoSub(tipo,p),
+      'Data Programada': fmtDate(x.atribuicao.dataProgramada),
+      'Equipe': equipeLabel(eq),
+      'Supervisor': eq?.supervisor||'',
+      'Status': x.atribuicao.status||'Programado',
+      'Quantidade Prevista': res.prev,
+      'Quantidade Executada': res.exec,
+      'Percentual': res.pct+'%',
+      'Condições Climáticas': x.atribuicao.rdoCondicoes||'',
+      'Impedimentos': imped,
+      'Observação': x.atribuicao.observacao||'',
+      'Confirmação': rdoConfData(x)
+    };
+    RDO_HORARIOS.forEach(h=> cab[h.label]= x.atribuicao[h.k]||'');
+    RDO_KM.forEach(h=> cab[h.label]= x.atribuicao[h.k]||'');
+    const detalhe = (x.atribuicao.atividades||[]).map((a,idx)=>{
+      const at = findAtividade(a.atividadeId);
+      const pv = parseFloat(a.quantidadePrevista)||0;
+      const e = a.quantidadeExecutada==null? null : parseFloat(a.quantidadeExecutada);
+      return {
+        'Programação': rdoTipoLabel(tipo,p),
+        'Detalhe': rdoTipoSub(tipo,p),
+        'Data Programada': fmtDate(x.atribuicao.dataProgramada),
+        'Equipe': equipeLabel(eq),
+        'Supervisor': eq?.supervisor||'',
+        'Status': x.atribuicao.status||'Programado',
+        '# Atividade': idx+1,
+        'Código Atividade': at?.codigo||'—',
+        'Descrição Atividade': at?.descricao||'',
+        'Unidade': at?.unidade||'',
+        'Qtd Prevista Atividade': a.quantidadePrevista||'',
+        'Qtd Executada Atividade': e!=null? e:'',
+        'Percentual Atividade': pv? Math.round((e||0)/pv*100)+'%':'',
+        'Fotos Atividade': a.fotos||''
+      };
+    });
+    if(detalhe.length) linhas.push(...detalhe); else linhas.push(cab);
+  });
+  const cols = linhas.length? Object.keys(linhas[0]) : ['Programação','Detalhe'];
+  const escapeCsv = v=> String(v??'').replace(/"/g,'""');
+  let csv = '\ufeff' + cols.join(';') + '\n';
+  linhas.forEach(l=>{ csv += cols.map(c=> `"${escapeCsv(l[c])}"`).join(';') + '\n'; });
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `rdo_execucoes_${tipo}_${todayISO()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Exportação gerada.');
+}
+
+function printRDOReportTipo(registros, tipo){
+  const w = window.open('', '_blank', 'width=1100,height=800');
+  if(!w) return;
+  const titulo = tipo==='poda'? 'PODA' : 'OSE';
+  const rows = registros.map((x,i)=>{
+    const eq = findEquipe(x.atribuicao.equipeId);
+    const res = rdoResumo(x);
+    const imped = rdoImpedimentos(x.atribuicao).join(', ');
+    const horarios = [x.atribuicao.rdoHorarioChegada, x.atribuicao.rdoHorarioSaidaObra].filter(Boolean).join(' → ')||'—';
+    return `<tr>
+      <td style="border:1px solid #999;padding:4px 6px;">${i+1}</td>
+      <td style="border:1px solid #999;padding:4px 6px;">${esc(rdoTipoLabel(tipo,x.programacao))}</td>
+      <td style="border:1px solid #999;padding:4px 6px;">${esc(rdoTipoSub(tipo,x.programacao)||'—')}</td>
+      <td style="border:1px solid #999;padding:4px 6px;">${esc(equipeLabel(eq))}</td>
+      <td style="border:1px solid #999;padding:4px 6px;">${fmtDate(x.atribuicao.dataProgramada)}</td>
+      <td style="border:1px solid #999;padding:4px 6px;">${esc(x.atribuicao.status||'Programado')}</td>
+      <td style="border:1px solid #999;padding:4px 6px;">${esc(horarios)}</td>
+      <td style="border:1px solid #999;padding:4px 6px;">${esc(x.atribuicao.rdoCondicoes||'—')}</td>
+      <td style="border:1px solid #999;padding:4px 6px;">${imped? esc(imped):'—'}</td>
+      <td style="border:1px solid #999;padding:4px 6px;text-align:right;">${fmtNum(res.exec)}</td>
+      <td style="border:1px solid #999;padding:4px 6px;text-align:right;">${res.pct}%</td>
+    </tr>`;
+  }).join('');
+  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>RDO ${titulo} — Execução das equipes</title></head><body style="font-family:Arial,sans-serif;font-size:12px;">
+    <h2 style="margin:0 0 4px;">RDO ${titulo} — Relatório de Execução das Equipes</h2>
+    <p style="margin:0 0 16px;color:#555;">Gerado em ${fmtDateTime(Date.now())} · ${registros.length} registro(s)</p>
+    <table style="border-collapse:collapse;width:100%;">
+      <thead><tr style="background:#eee;">
+        <th style="border:1px solid #999;padding:4px 6px;text-align:left;">#</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:left;">Programação</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:left;">Detalhe</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:left;">Equipe</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:left;">Data</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:left;">Status</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:left;">Horários</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:left;">Clima</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:left;">Impedimentos</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:right;">Exec.</th>
+        <th style="border:1px solid #999;padding:4px 6px;text-align:right;">%</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <script>window.onload=function(){setTimeout(function(){window.print();},200);};<\/script>
   </body></html>`);
   w.document.close();
 }

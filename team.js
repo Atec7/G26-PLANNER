@@ -24,7 +24,7 @@ const PRES_REF = database.ref('g26_planner/presenca');
 const ACCIDENT_REF = database.ref('g26_planner/acidentes');
 let presTeamHeartbeat = null;
 function registrarPresencaTeam(){
-  if(!progId && !ocndsId) return;
+  if(!progId && !ocndsId && !podaId && !oseId) return;
   try{
     if(isOcndsMode && ocndsId && DB){
       const item = (DB.ocnds||[]).find(p=>p.id===ocndsId);
@@ -36,18 +36,20 @@ function registrarPresencaTeam(){
       PRES_REF.child(info.login).onDisconnect().remove();
       return;
     }
-    if(!progId) return;
-    let nome = 'Equipe #'+progId;
+    if(!teamNumericId()) return;
+    let nome = 'Equipe #'+teamNumericId();
     let progLabel = '';
     if(DB){
-      const pg = DB.programacoes.find(p=>p.id===progId);
+      const pg = teamFindProg(DB);
       if(pg){
-        progLabel = pg.gid || ('G26-'+String(pg.id).padStart(7,'0'));
+        progLabel = teamGidLabel(pg);
         const eq = findEquipe(DB, (pg.atribuicoes||[])[0]?.equipeId);
         if(eq) nome = equipeLabel(eq);
       }
     }
-    const info = { login:'equipe-'+progId, nome, role:'equipe', view:'pagina-equipe', prog:progLabel, ts:Date.now() };
+    const m = teamMode();
+    const view = 'pagina-equipe'+(m==='poda'?'-poda':m==='ose'?'-ose':'');
+    const info = { login:'equipe-'+teamKey(), nome, role:'equipe', view, prog:progLabel, ts:Date.now() };
     PRES_REF.child(info.login).set(info);
     PRES_REF.child(info.login).onDisconnect().remove();
   }catch(e){}
@@ -59,7 +61,7 @@ function iniciarPresencaTeam(){
 }
 function pararPresencaTeam(){
   clearInterval(presTeamHeartbeat); presTeamHeartbeat=null;
-  try{ if(isOcndsMode) PRES_REF.child('equipe-ocnds-'+ocndsId).remove(); else if(progId) PRES_REF.child('equipe-'+progId).remove(); }catch(e){}
+  try{ if(isOcndsMode) PRES_REF.child('equipe-ocnds-'+ocndsId).remove(); else if(teamNumericId()) PRES_REF.child('equipe-'+teamKey()).remove(); }catch(e){}
 }
 
 const QUEUE_KEY = 'g26_equipe_queue';
@@ -150,7 +152,35 @@ function icon(name,size=18){ return `<svg width="${size}" height="${size}" viewB
 let DB = null;
 const progId = Number(new URLSearchParams(location.search).get('equipe')) || null;
 const ocndsId = Number(new URLSearchParams(location.search).get('ocnds')) || null;
+const podaId = Number(new URLSearchParams(location.search).get('poda')) || null;
+const oseId = Number(new URLSearchParams(location.search).get('ose')) || null;
 let isOcndsMode = !!ocndsId;
+
+/* Modo da página: 'prog' (projetos), 'poda', 'ose' ou 'ocnds' */
+function teamMode(){ return isOcndsMode? 'ocnds' : (podaId? 'poda' : (oseId? 'ose' : 'prog')); }
+function teamCollectionName(){
+  const m = teamMode();
+  return m==='poda'? 'podaProgramacoes' : m==='ose'? 'oseProgramacoes' : 'programacoes';
+}
+function teamNumericId(){ return podaId || oseId || progId; }
+function teamKey(){
+  const m = teamMode();
+  return m==='ocnds'? ('ocnds_'+ocndsId) : m==='poda'? ('poda_'+podaId) : m==='ose'? ('ose_'+oseId) : String(progId);
+}
+function teamGidLabel(p){
+  if(!p) return '';
+  if(p.gid) return p.gid;
+  const pre = { poda:'PODA-', ose:'OSE-' }[teamMode()] || 'G26-';
+  return pre+String(p.id).padStart(7,'0');
+}
+function teamFindProg(db){
+  if(isOcndsMode) return ((db||{}).ocnds||[]).find(p=>p.id===ocndsId)||null;
+  return ((db||{})[teamCollectionName()]||[]).find(p=>p.id===teamNumericId())||null;
+}
+function teamDataRef(){
+  if(!prog) return null;
+  return prog.dataProgramada || prog.dataProgramacao || ((prog.atribuicoes||[])[0]||{}).dataProgramada || null;
+}
 let ocndsItem = null;
 let prog = null;
 let editors = {};
@@ -168,9 +198,10 @@ function setStatus(txt, kind){
 }
 
 function checkDataProgramadaExpirada(){
-  if(!prog || !prog.dataProgramada) return false;
+  const dataRef = teamDataRef();
+  if(!prog || !dataRef) return false;
   const hoje = new Date().toISOString().split('T')[0];
-  const progData = new Date(prog.dataProgramada).toISOString().split('T')[0];
+  const progData = new Date(dataRef).toISOString().split('T')[0];
   return progData < hoje && !['Concluído','Cancelado'].includes(prog.status||'');
 }
 
@@ -189,8 +220,8 @@ function dbToEditors(db){
     return item;
   }
 
-  if(!progId) return null;
-  const pg = (db.programacoes||[]).find(p=>p.id===progId);
+  if(!teamNumericId()) return null;
+  const pg = teamFindProg(db);
   if(!pg) return null;
   prog = pg;
   editors = {};
@@ -223,7 +254,7 @@ function renderRDOForm(){
     ${anexosDoProgramadorHtml()}
     ${orientacoesPlanejamentoHtml()}
     <div class="panel section-gap" style="max-width:600px;margin:0 auto;">
-      <div class="panel-head"><h3>Questionário RDO - Saída da Base</h3><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${prog.gid||'G26-'+String(prog.id).padStart(7,'0')}</span></div>
+      <div class="panel-head"><h3>Questionário RDO - Saída da Base</h3><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${teamGidLabel(prog)}</span></div>
       <div style="padding:24px;">
         <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">Responda às questões abaixo e informe os horários de saída da base. Os dados ficam salvos neste aparelho e são enviados quando você concluir as atividades.</p>
         ${RDO_PERGUNTAS.map((p,i)=>`
@@ -420,11 +451,11 @@ function horaValida(v){
 
 /* RDO já foi respondido se houver respostas salvas (no aparelho ou no servidor) */
 function atualizaRDOCompletado(){
-  if(!DB || !progId) return;
-  const pg = (DB.programacoes||[]).find(p=>p.id===progId);
+  if(!DB || !teamNumericId()) return;
+  const pg = teamFindProg(DB);
   if(!pg) return;
   const rdoSalvo = (pg.atribuicoes||[]).some(at=> at.rdoRespostas && Object.keys(at.rdoRespostas||{}).length>0);
-  if(rdoSalvo || loadPendingRDO(progId)) rdoCompletado = true;
+  if(rdoSalvo || loadPendingRDO(teamKey())) rdoCompletado = true;
 }
 
 function respostasRDOPreenchidas(){
@@ -556,8 +587,8 @@ function render(){
     return;
   }
 
-  /* === MODO PROGRAMAÇÃO (existente) === */
-  if(!progId){ root.innerHTML = `<div class="panel"><div class="empty-state"><p>Link inválido — faltou identificar a programação.</p></div></div>`; return; }
+  /* === MODO PROGRAMAÇÃO / PODA / OSE === */
+  if(!teamNumericId()){ root.innerHTML = `<div class="panel"><div class="empty-state"><p>Link inválido — faltou identificar a programação.</p></div></div>`; return; }
   if(!prog){ root.innerHTML = `<div class="panel"><div class="empty-state"><p>Programação não encontrada.</p><p style="font-size:12px;color:var(--muted-2);">Conecte-se ao menos uma vez para carregar os dados, ou tente novamente com internet.</p></div></div>`; return; }
 
   /* Após o envio, a página mostra apenas a confirmação com a logo */
@@ -567,7 +598,7 @@ function render(){
         <div class="brand-mark team-ok-logo">G2</div>
         <h3>Dados enviados e sincronizados</h3>
         <p>Obrigado, equipe! Suas atividades, quantidades executadas, fotos e o RDO foram enviados ao escritório.</p>
-        <p class="team-ok-meta">Programação ${prog.gid||'G26-'+String(prog.id).padStart(7,'0')} · ${esc(prog.ciclo||'')} · ${fmtDate(prog.dataProgramada)}</p>
+        <p class="team-ok-meta">${teamMode()==='poda'?'Programação PODA':teamMode()==='ose'?'Programação OSE':'Programação'} ${teamGidLabel(prog)} · ${fmtDate(teamDataRef())}</p>
       </div>`;
     setStatus('Sincronizado', 'ok');
     return;
@@ -579,7 +610,7 @@ function render(){
       <div class="panel" style="background:var(--red);color:#fff;padding:40px 20px;">
         <div style="max-width:500px;margin:0 auto;">
           <h3 style="color:#fff;">Acesso negado — Programação vencida</h3>
-          <p style="font-size:16px;margin:16px 0 8px;">A data da programação ${fmtDate(prog.dataProgramada)} já venceu.</p>
+          <p style="font-size:16px;margin:16px 0 8px;">A data da programação ${fmtDate(teamDataRef())} já venceu.</p>
           <p style="font-size:14px;opacity:0.9;">Equipe não pode mais acessar esta programação após o prazo.</p>
           <button class="btn btn-secondary" id="voltar-dashboard" style="margin-top:24px;padding:12px 24px;">Voltar ao Dashboard</button>
         </div>
@@ -603,7 +634,7 @@ function render(){
       }
       // Guarda localmente — só será enviado junto com a conclusão das atividades
       try{
-        savePendingRDO({ programacaoId: progId, ts: Date.now(), respostas: respostas });
+        savePendingRDO({ programacaoId: teamKey(), ts: Date.now(), respostas: respostas });
       }catch(e){}
       rdoCompletado = true;
       toast('RDO concluído. As respostas serão enviadas quando você concluir as atividades.');
@@ -612,16 +643,23 @@ function render(){
     return;
   }
   
+  const m = teamMode();
   const pr = findProjeto(DB, prog.projetoId);
+  const headTitulo = m==='poda'? 'PODA — OSI '+(prog.osi||'—') : m==='ose'? 'OSE — '+(prog.municipio||'Município') : (pr?.nome||'Projeto');
+  const headSub = [teamGidLabel(prog),
+    m==='poda'? [prog.subestacao? 'SE '+prog.subestacao:'', prog.tipoRede, prog.chave? 'Chave '+prog.chave:''].filter(Boolean).join(' · ')
+    : m==='ose'? [prog.subestacao? 'SE '+prog.subestacao:'', prog.tipoIntervencao].filter(Boolean).join(' · ')
+    : [(pr?.codigo||''), prog.ciclo? 'Ciclo '+prog.ciclo : ''].filter(Boolean).join(' · ')
+  ].filter(Boolean).join(' — ');
   resetFotos();
   root.innerHTML = `
     ${anexosDoProgramadorHtml()}
     ${orientacoesPlanejamentoHtml()}
     <div class="panel section-gap">
       <div class="panel-head">
-        <div><h3>${esc(pr?.nome||'Projeto')}</h3><div class="admin-field-meta">${prog.gid||'G26-'+String(prog.id).padStart(7,'0')} · ${esc(pr?.codigo||'')} · Ciclo ${esc(prog.ciclo||'—')}</div></div>
+        <div><h3>${esc(headTitulo)}</h3><div class="admin-field-meta">${esc(headSub)}</div></div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${fmtDate(prog.dataProgramada)}</span>
+          <span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${fmtDate(teamDataRef())}</span>
           <button type="button" class="btn btn-danger-solid" id="btn-informar-acidente" style="font-weight:700;">${icon('alert',14)} INFORMAR ACIDENTE</button>
         </div>
       </div>
@@ -671,21 +709,43 @@ function render(){
     console.warn('[team] btn-informar-acidente não encontrado no DOM');
   }
 }
+/* GPS da equipe: posição atual + endereço aproximado (Geoapify) */
+function geoPosAtual(opts){
+  return new Promise(resolve=>{
+    if(!('geolocation' in navigator)){ resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos=>resolve({ lat:pos.coords.latitude, lng:pos.coords.longitude, precisao:pos.coords.accuracy }),
+      err=>{ console.warn('[team] geolocation falhou:', err && err.message); resolve(null); },
+      Object.assign({ enableHighAccuracy:true, timeout:12000, maximumAge:0 }, opts||{})
+    );
+  });
+}
+async function geoEnderecoAprox(lat,lng){
+  try{
+    const res = await fetch(`https://api.geoapify.com/v1/geocode/reverse?lat=${Number(lat)}&lon=${Number(lng)}&apiKey=${MAPS_KEY}&format=json&limit=1`);
+    if(!res.ok) return '';
+    const j = await res.json();
+    const f = j && j.features && j.features[0];
+    return (f && f.properties && f.properties.formatted) || '';
+  }catch(e){ return ''; }
+}
+
 function abrirModalAcidente(){
   console.log('[team] abrirModalAcidente chamado');
   const eq = findEquipe(DB, (prog.atribuicoes||[])[0]?.equipeId);
   const pr = findProjeto(DB, prog.projetoId);
-  const progGidLabel = prog.gid || ('G26-'+String(prog.id).padStart(7,'0'));
+  const progGidLabel = teamGidLabel(prog);
   const body = `
     <div style="color:var(--red);font-weight:700;font-size:14px;margin-bottom:12px;">${icon('alert',16)} CONFIRMAR INFORMAÇÃO DE ACIDENTE</div>
-    <div style="font-size:12.5px;color:var(--muted);margin-bottom:16px;">Preencha o motivo/descrição do acidente. Isso enviará um alerta vermelho bloqueante para todas as telas do escritório (Admin) com localização, equipe e QR Code. O alarme sonoro tocará até que alguém confirme "Reportado".</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:16px;">Preencha o motivo/descrição do acidente. Isso enviará um alerta vermelho bloqueante para todas as telas do escritório (Admin) com a <strong>localização atual da equipe (GPS)</strong>, equipe e QR Code. O alarme sonoro tocará até que alguém confirme "Reportado".</div>
     <div class="field"><label>Motivo / Descrição do acidente <span class="req">*</span></label><textarea name="acidente-motivo" id="acidente-motivo" rows="4" required placeholder="Ex.: Colisão de veículo na rota, queda de poste, choque elétrico..."></textarea></div>
     <div style="margin-top:8px;padding:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:11px;color:#991b1b;">
       <strong>Equipe:</strong> ${esc(equipeLabel(eq))}<br>
-      <strong>Programação:</strong> ${esc(progGidLabel)} · ${fmtDate(prog.dataProgramada)}<br>
+      <strong>Programação:</strong> ${esc(progGidLabel)} · ${fmtDate(teamDataRef())}<br>
       <strong>Projeto:</strong> ${esc(pr?.nome||'—')} (${esc(pr?.codigo||'—')})<br>
-      <strong>Local:</strong> ${esc(prog.local||'—')}${prog.localLat!=null && prog.localLng!=null ? ` — <a href="${esc(mapsLinkByCoords(prog.localLat,prog.localLng))}" target="_blank" style="color:var(--blue);">${icon('pin',12)} Ver no Google Maps</a>` : ''}
+      <strong>Local programado:</strong> ${esc(prog.local||'—')}
     </div>
+    <div style="margin-top:8px;font-size:11px;color:var(--muted-2);">Ao enviar, o aparelho captura automaticamente a localização atual da equipe pelo GPS. Mantenha o GPS ativado e autorize o acesso à localização.</div>
   `;
   openModal({
     title: 'Informar Acidente', bodyHtml: body, submitLabel: 'ENVIAR ALERTA DE ACIDENTE',
@@ -693,19 +753,36 @@ function abrirModalAcidente(){
       const motivo = fd.get('acidente-motivo').trim();
       if(!motivo){ toast('Informe o motivo/descrição do acidente.', 'error'); return false; }
       try{
+        toast('Capturando a localização atual da equipe…');
+        const gps = await geoPosAtual();
+        let localEquipe = '', lat = null, lng = null, precisao = null;
+        if(gps){
+          lat = gps.lat; lng = gps.lng; precisao = Math.round(gps.precisao);
+          localEquipe = await geoEnderecoAprox(lat, lng);
+          if(!localEquipe) localEquipe = 'GPS '+lat.toFixed(6)+', '+lng.toFixed(6);
+        }else{
+          toast('Não foi possível obter o GPS. O alerta será enviado sem coordenadas.', 'error');
+        }
         const acidente = {
           ts: Date.now(),
-          programacaoId: progId,
+          programacaoId: teamNumericId(),
+          _coll: teamCollectionName(),
           progGid: progGidLabel,
-          dataProgramada: prog.dataProgramada,
+          dataProgramada: teamDataRef(),
           projetoId: prog.projetoId,
           projetoNome: pr?.nome||'',
           projetoCodigo: pr?.codigo||'',
           equipeId: eq?.id,
           equipeLabel: equipeLabel(eq),
-          local: prog.local||'',
-          localLat: prog.localLat??null,
-          localLng: prog.localLng??null,
+          local: localEquipe,
+          localLat: lat,
+          localLng: lng,
+          gpsPrecisao: precisao,
+          gpsTs: gps? Date.now() : null,
+          gpsErro: gps? '' : 'GPS indisponível ou permissão negada',
+          localProgramado: prog.local||'',
+          localProgramadoLat: prog.localLat??null,
+          localProgramadoLng: prog.localLng??null,
           motivo,
           status: 'ativo',
           confirmadoPor: null,
@@ -968,7 +1045,8 @@ async function submitEdit(){
       }
       const patch = {
         id: 'e'+Date.now()+Math.random().toString(36).slice(2,6),
-        programacaoId: progId,
+        programacaoId: teamNumericId(),
+        _coll: teamCollectionName(),
         ts: Date.now(),
         observacao: obs,
         atribuicoes: Object.keys(editors).map(eqId=>({
@@ -982,10 +1060,10 @@ async function submitEdit(){
         }))
       };
       // Envia as respostas do RDO (perguntas + horários de saída) junto com a conclusão
-      const pendRDO = loadPendingRDO(progId);
+      const pendRDO = loadPendingRDO(teamKey());
       const respostas = Object.assign({}, (pendRDO&&pendRDO.respostas)||{}, horariosFinais||{});
       if(Object.keys(respostas).length){ patch.respostas = respostas; }
-      if(pendRDO) clearPendingRDO(progId);
+      if(pendRDO) clearPendingRDO(teamKey());
       const q = loadQueue(); q.push(patch); saveQueue(q);
       observacao = '';
       enviado = true;
@@ -1056,11 +1134,12 @@ async function syncNow(){
       const v = snap.val();
       db = (typeof v==='string')? JSON.parse(v) : v;
     }else{
-      db = { equipes:[], atividades:[], projetos:[], programacoes:[], usuarios:[], customFields:{equipes:[],atividades:[],projetos:[],programacoes:[]}, seq:1 };
+      db = { equipes:[], atividades:[], projetos:[], programacoes:[], ocnds:[], podaProgramacoes:[], oseProgramacoes:[], usuarios:[], customFields:{equipes:[],atividades:[],projetos:[],programacoes:[]}, seq:1 };
     }
     let changed = false;
     q.forEach(patch=>{
-      const pg = (db.programacoes||[]).find(p=>p.id===Number(patch.programacaoId));
+      const coll = patch._coll || 'programacoes';
+      const pg = ((db[coll])||[]).find(p=>p.id===Number(patch.programacaoId));
       if(!pg) return;
       (pg.atribuicoes||[]).forEach(at=>{
         const pa = (patch.atribuicoes||[]).find(x=>String(x.equipeId)===String(at.equipeId));
@@ -1218,7 +1297,7 @@ function init(){
     initPrint();
     return;
   }
-  if(!progId && !ocndsId){
+  if(!progId && !ocndsId && !podaId && !oseId){
     render();
     setStatus('Link inválido', 'warn');
     return;
@@ -1235,7 +1314,7 @@ function init(){
       saveCache(DB); dbToEditors(DB);
     }
     if(!isOcndsMode){
-      const pg = DB?.programacoes?.find(p=>p.id===progId);
+      const pg = teamFindProg(DB);
       if(pg){
         if(checkDataProgramadaExpirada()){
           setStatus('Programação vencida — acesso negado', 'warn');
