@@ -3588,9 +3588,13 @@ function paintAdminUsersList(){
       </div>
       <div class="field" style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="ativo" id="u-ativo" style="width:auto;" ${u? (u.ativo?'checked':'') : 'checked'}><label for="u-ativo" style="margin:0;">Usuário ativo</label></div>
       <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:10px;flex-wrap:wrap;">
           <h4 style="margin:0;font-size:14px;">Permissões por tela</h4>
-          <div style="display:flex;gap:6px;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+            <select id="copiar-acessos" style="font-size:11px;padding:5px 6px;max-width:220px;">
+              <option value="">Copiar acessos de…</option>
+              ${(DB.usuarios||[]).filter(x=>String(x.id)!==String(u?.id)).map(x=>`<option value="${x.id}">${esc(x.nome)} (${esc(x.login)})</option>`).join('')}
+            </select>
             <button type="button" class="btn btn-sm" id="perm-todos-ver" style="font-size:11px;">Marcar Todas: Ver</button>
             <button type="button" class="btn btn-sm" id="perm-todos-editar" style="font-size:11px;">Marcar Todas: Editar</button>
             <button type="button" class="btn btn-sm" id="perm-todos-nenhum" style="font-size:11px;">Desmarcar Todas</button>
@@ -3608,6 +3612,17 @@ function paintAdminUsersList(){
       modal.querySelector('#perm-todos-ver')?.addEventListener('click', ()=>{ TELAS.forEach(t=>{ const r=modal.querySelector(`input[name="perm_${t.id}"][value="leitura"]`); if(r) r.checked=true; }); });
       modal.querySelector('#perm-todos-editar')?.addEventListener('click', ()=>{ TELAS.forEach(t=>{ const r=modal.querySelector(`input[name="perm_${t.id}"][value="edicao"]`); if(r) r.checked=true; }); });
       modal.querySelector('#perm-todos-nenhum')?.addEventListener('click', ()=>{ TELAS.forEach(t=>{ const r=modal.querySelector(`input[name="perm_${t.id}"][value="nenhum"]`); if(r) r.checked=true; }); });
+      modal.querySelector('#copiar-acessos')?.addEventListener('change', (e)=>{
+        const src = (DB.usuarios||[]).find(x=>String(x.id)===String(e.target.value));
+        if(!src) return;
+        const perm = src.permissoes||{};
+        TELAS.forEach(t=>{
+          const v = perm[t.id]||'nenhum';
+          const r = modal.querySelector(`input[name="perm_${t.id}"][value="${v}"]`);
+          if(r) r.checked = true;
+        });
+        toast('Acessos copiados de '+src.nome+'. Ajuste se necessário antes de salvar.');
+      });
     },
     onSubmit:(fd)=>{
       const nome = fd.get('nome').trim(), login = fd.get('login').trim();
