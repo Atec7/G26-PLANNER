@@ -137,7 +137,8 @@ let currentView = 'dashboard';
 let progFilters = (()=>{ const r=monthRangeISO(); return { projeto:'', equipe:'', status:'Programado', ciclo:'', dataDe:r.de, dataAte:r.ate, modo:'lista', calView:'mes', calDay:todayISO() }; })();
 let ativFilters = { q:'', fav:'' };
 let equipeFilters = { q:'', status:'' };
-let projFilters = { q:'', status:'' };
+let projFilters = { q:'', status:'', ciclo:'', recebido:'', cidade:'', periodoDe:'', periodoAte:'' };
+let projetoSel = new Set();
 let avancoFilters = { q:'', status:'' };
 let histFilters = { tipo:'', projeto:'', dataDe:'', dataAte:'', ultimasHs:12 };
 let calRef = new Date();
@@ -1766,8 +1767,17 @@ function renderProjetos(){
     return;
   }
   const customFields = DB.customFields.projetos||[];
+  const ciclosPj = [...new Set(visiveis.map(p=>p.ciclo).filter(Boolean))].sort();
+  const cidadesPj = [...new Set(visiveis.map(p=>(p.cidade||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   const list = visiveis.filter(p=>{
     if(projFilters.status && p.status!==projFilters.status) return false;
+    if(projFilters.ciclo && (p.ciclo||'')!==projFilters.ciclo) return false;
+    if(projFilters.recebido==='sim' && !p.dataRecebimentoCarteira) return false;
+    if(projFilters.recebido==='nao' && p.dataRecebimentoCarteira) return false;
+    if(projFilters.cidade && (p.cidade||'').trim().toLowerCase()!==projFilters.cidade.toLowerCase()) return false;
+    const ini=p.dataInicio||'', fim=p.dataFim||ini;
+    if(projFilters.periodoDe && fim && fim<projFilters.periodoDe) return false;
+    if(projFilters.periodoAte && ini && ini>projFilters.periodoAte) return false;
     if(projFilters.q){ const t=(p.codigo+' '+(p.nome||'')+' '+(p.descricao||'')+' '+(p.ciclo||'')+' '+(p.setor||'')+' '+(p.coordenacao||'')+' '+(p.cidade||'')).toLowerCase(); if(!t.includes(projFilters.q.toLowerCase())) return false; }
     return true;
   });
@@ -1776,18 +1786,25 @@ function renderProjetos(){
       <div class="filters">
         <input id="f-pj-q" placeholder="Buscar projeto…" value="${esc(projFilters.q)}">
         <select id="f-pj-status"><option value="">Todos os status</option>${STATUS_PROJETO.map(s=>`<option ${projFilters.status===s?'selected':''}>${s}</option>`).join('')}</select>
+        <select id="f-pj-ciclo"><option value="">Todos os ciclos</option>${ciclosPj.map(c=>`<option ${projFilters.ciclo===c?'selected':''}>${esc(c)}</option>`).join('')}</select>
+        <select id="f-pj-recebido"><option value="">Recebimento: todos</option><option value="sim" ${projFilters.recebido==='sim'?'selected':''}>Carteira recebida</option><option value="nao" ${projFilters.recebido==='nao'?'selected':''}>Não recebida</option></select>
+        <select id="f-pj-cidade"><option value="">Todas as cidades</option>${cidadesPj.map(c=>`<option ${projFilters.cidade.toLowerCase()===c.toLowerCase()?'selected':''}>${esc(c)}</option>`).join('')}</select>
+        <input type="date" id="f-pj-de" title="Período — de" value="${projFilters.periodoDe}">
+        <input type="date" id="f-pj-ate" title="Período — até" value="${projFilters.periodoAte}">
       </div>
       <span style="font-size:12px;color:var(--muted);">${list.length} de ${visiveis.length} projetos</span>
+      ${ehMestre()&&projetoSel.size? `<button class="btn btn-danger-solid btn-sm" id="pj-del-massa">${icon('trash',13)} Excluir selecionados (${projetoSel.size})</button>`:''}
     </div>
     <div class="panel"><div class="table-scroll"><table>
-      <thead><tr><th>Código</th><th>Projeto</th><th>Período</th><th>Receb. carteira</th><th>Vencimento</th><th>Setor · Coordenação</th><th>Cidade</th><th>Ciclo</th><th>Orçado</th><th>Avanço</th><th>Status</th><th>Programações</th>${customFields.map(f=>`<th>${esc(f.label)}</th>`).join('')}<th></th></tr></thead>
+      <thead><tr>${ehMestre()? `<th style="width:28px;"><input type="checkbox" id="pj-sel-all" style="width:auto;" title="Selecionar todos"></th>`:''}<th>Código</th><th>Projeto</th><th>Período</th><th>Receb. carteira</th><th>Vencimento</th><th>Setor · Coordenação</th><th>Cidade</th><th>Ciclo</th><th>Orçado</th><th>Avanço</th><th>Status</th><th>Programações</th>${customFields.map(f=>`<th>${esc(f.label)}</th>`).join('')}<th></th></tr></thead>
       <tbody>${list.map(p=>{
       const count = DB.programacoes.filter(x=>x.projetoId===p.id).reduce((s,pg)=>s+(pg.atribuicoes?.length||0),0);
       const av = projetoAvanco(p);
       const aberto = !['Encerrado','Cancelado'].includes(p.status);
       const atingiu100 = aberto && (av.fisicoPct>=100 || av.financeiroPct>=100);
-      const alerta = atingiu100? `<tr class="proj-100-alert-row"><td colspan="${13+customFields.length}"><div class="proj-100-alert">${icon('alert',14)}<span><strong>Projeto em 100% de avanço</strong> · ${av.fisicoPct.toFixed(1)}% físico · ${av.financeiroPct.toFixed(1)}% financeiro — <span class="blink-red">encerre o projeto</span> para ele deixar de aparecer nas opções de programação.</span><button class="btn btn-sm btn-danger-solid" data-encerrar-pj="${p.id}">${icon('check',13)} Encerrar projeto</button></div></td></tr>`:'';
+      const alerta = atingiu100? `<tr class="proj-100-alert-row"><td colspan="${(ehMestre()?14:13)+customFields.length}"><div class="proj-100-alert">${icon('alert',14)}<span><strong>Projeto em 100% de avanço</strong> · ${av.fisicoPct.toFixed(1)}% físico · ${av.financeiroPct.toFixed(1)}% financeiro — <span class="blink-red">encerre o projeto</span> para ele deixar de aparecer nas opções de programação.</span><button class="btn btn-sm btn-danger-solid" data-encerrar-pj="${p.id}">${icon('check',13)} Encerrar projeto</button></div></td></tr>`:'';
       return `<tr>
+        ${ehMestre()? `<td><input type="checkbox" class="pj-sel" data-id="${p.id}" style="width:auto;" ${projetoSel.has(String(p.id))?'checked':''}></td>`:''}
         <td class="mono">${esc(p.codigo)}</td>
         <td><strong>${esc(p.nome)}</strong><div style="color:var(--muted-2);font-size:11.5px;margin-top:2px;">${esc(p.descricao||'')}</div></td>
         <td class="mono" style="font-size:12px;">${fmtDate(p.dataInicio)} → ${fmtDate(p.dataFim)}</td>
@@ -1802,9 +1819,22 @@ function renderProjetos(){
         ${customFields.map(f=>`<td>${esc(p.custom?.[f.id]||'—')}</td>`).join('')}
         <td><div class="row-actions"><button class="icon-btn" title="Imprimir projeto" data-print-pj="${p.id}">${icon('printer',14)}</button><button class="icon-btn" title="Ver avanço" data-avanco-detalhe="${p.id}">${icon('trend',14)}</button><button class="icon-btn" data-edit-pj="${p.id}">${icon('edit',14)}</button><button class="icon-btn" data-del-pj="${p.id}">${icon('trash',14)}</button></div></td>
       </tr>${alerta}`;
-    }).join('') || `<tr class="empty-row"><td colspan="${13+customFields.length}">Nenhum projeto encontrado com os filtros.</td></tr>`}</tbody></table></div></div>`;
+    }).join('') || `<tr class="empty-row"><td colspan="${(ehMestre()?14:13)+customFields.length}">Nenhum projeto encontrado com os filtros.</td></tr>`}</tbody></table></div></div>`;
   document.getElementById('f-pj-q').addEventListener('input', e=>{ projFilters.q=e.target.value; renderContent(); });
   document.getElementById('f-pj-status').addEventListener('change', e=>{ projFilters.status=e.target.value; renderContent(); });
+  document.getElementById('f-pj-ciclo').addEventListener('change', e=>{ projFilters.ciclo=e.target.value; renderContent(); });
+  document.getElementById('f-pj-recebido').addEventListener('change', e=>{ projFilters.recebido=e.target.value; renderContent(); });
+  document.getElementById('f-pj-cidade').addEventListener('change', e=>{ projFilters.cidade=e.target.value; renderContent(); });
+  document.getElementById('f-pj-de').addEventListener('change', e=>{ projFilters.periodoDe=e.target.value; renderContent(); });
+  document.getElementById('f-pj-ate').addEventListener('change', e=>{ projFilters.periodoAte=e.target.value; renderContent(); });
+  const selAll = document.getElementById('pj-sel-all');
+  if(selAll){
+    selAll.checked = list.length>0 && list.every(p=>projetoSel.has(String(p.id)));
+    selAll.addEventListener('change', ()=>{ list.forEach(p=>{ const k=String(p.id); if(selAll.checked) projetoSel.add(k); else projetoSel.delete(k); }); renderContent(); });
+  }
+  el.querySelectorAll('.pj-sel').forEach(cb=> cb.addEventListener('change', ()=>{ const k=cb.dataset.id; if(cb.checked) projetoSel.add(k); else projetoSel.delete(k); renderContent(); }));
+  const delMassa = document.getElementById('pj-del-massa');
+  if(delMassa) delMassa.addEventListener('click', excluirProjetosEmMassa);
   el.querySelectorAll('[data-avanco-detalhe]').forEach(b=>b.addEventListener('click', ()=>openAvancoDetalhe(b.dataset.avancoDetalhe)));
   el.querySelectorAll('[data-edit-pj]').forEach(b=>b.addEventListener('click', ()=>openProjetoModal(b.dataset.editPj)));
   el.querySelectorAll('[data-del-pj]').forEach(b=>b.addEventListener('click', ()=>deleteProjeto(b.dataset.delPj)));
@@ -1927,6 +1957,31 @@ function openPlanoFisicoModal(pjId){
   DB.projetos = DB.projetos.filter(p=>p.id!==id);
   registrarEvento('exclusao','projeto',id,findProjeto(id)? findProjeto(id).codigo+' · '+findProjeto(id).nome : String(id),'Projeto excluído'+(vinculadas.length? ' com '+vinculadas.length+' programação(ões) vinculada(s)':''));
   saveData(); renderContent(); toast('Projeto excluído.');
+}
+function excluirProjetosEmMassa(){
+  if(!ehMestre()) return;
+  const projs = [...projetoSel].map(id=>findProjeto(id)).filter(Boolean);
+  if(!projs.length){ toast('Selecione ao menos um projeto.', 'error'); return; }
+  const comVinc = projs.filter(p=> DB.programacoes.some(pg=>pg.projetoId===p.id));
+  const totalVinc = comVinc.reduce((s,p)=> s+DB.programacoes.filter(pg=>pg.projetoId===p.id).length, 0);
+  if(comVinc.length && !ehMestre()){
+    const nomes = comVinc.slice(0,3).map(p=>p.codigo).join(', ')+(comVinc.length>3? '…':'');
+    toast(`${comVinc.length} projeto(s) possuem programações vinculadas (${nomes}) e só podem ser excluídos pelo Mestre.`, 'error');
+    return;
+  }
+  let msg = `Excluir ${projs.length} projeto(s) selecionado(s)?`;
+  if(totalVinc) msg += `\n\nAtenção: ${totalVinc} programação(ões) vinculada(s) também serão excluídas.`;
+  msg += '\n\nEsta ação não pode ser desfeita.';
+  if(!confirm(msg)) return;
+  let exc = 0;
+  projs.forEach(p=>{
+    DB.programacoes = DB.programacoes.filter(pg=>pg.projetoId!==p.id);
+    DB.projetos = DB.projetos.filter(x=>x.id!==p.id);
+    registrarEvento('exclusao','projeto',p.id,p.codigo+' · '+p.nome,'Projeto excluído em massa'+(comVinc.includes(p)? ' com programações vinculadas':''));
+    exc++;
+  });
+  projetoSel.clear();
+  saveData(); renderContent(); toast(exc+' projeto(s) excluído(s).');
 }
 function encerrarProjeto(id){
   if(!requerEscrita()) return;
