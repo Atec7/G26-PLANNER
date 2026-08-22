@@ -667,7 +667,7 @@ function statusBadge(status, pending){
   return `<span class="badge ${pending?'blink-red':''}" style="color:${pending?'var(--red)':c};background:${bgFromVar(pending?'var(--red)':c)}"><span class="badge-dot"></span>${status}</span>`;
 }
 function atividadesResumo(atividadesArr){
-  return atividadesArr.map(a=>{ const at=findAtividade(a.atividadeId); return `${esc(at?.codigo||'?')} · ${esc(at?.descricao||'')} ×${a.quantidadePrevista??'—'}`; }).join(', ');
+  return atividadesArr.map(a=>{ const at=findAtividade(a.atividadeId); return `${esc(at?.codigo||'?')} · ${esc(at?.descricao||'')}`; }).join(', ');
 }
 
 /* --- Exportação Excel (CSV) --- */
@@ -2200,14 +2200,15 @@ function renderProgListaInto(area, list){
       const p=x.atribuicao, pr=findProjeto(x.programacao.projetoId), eq=findEquipe(p.equipeId), late=isLate(p);
       const valPrev = p.atividades.reduce((s,a)=> s + (a.quantidadePrevista||0)*(findAtividade(a.atividadeId)?.valorUnitario||0), 0);
       const metaWarn = metaWarningHtml(p);
-      return `<tr>
-        <td class="mono" style="white-space:nowrap;">${progGid(x.programacao)}</td>
+      const gid = progGid(x.programacao);
+      return `<tr ${late?'style="background:#ffe4e1;"':''} data-programacao-id="${x.programacao.id}" style="cursor:pointer;">
+        <td class="mono" style="white-space:nowrap;">${gid}</td>
         <td class="mono">${fmtDate(p.dataProgramada)} ${late?`<div class="blink-red" style="font-size:10.5px;">VENCIDA</div>`:''}</td>
         <td>${esc(pr?.nome||'—')}<div style="color:var(--muted-2);font-size:11px;">${esc(pr?.setor||'')} · ${esc(pr?.coordenacao||'')}</div></td>
         <td><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);font-size:10.5px;">${esc(x.programacao.ciclo||'—')}</span></td>
         <td><span class="badge-prefix">${eqtlLabel(eq)}</span></td>
         <td><span class="badge-prefix">${prtnLabel(eq)}</span>${metaWarn? `<div style="margin-top:4px;">${metaWarn}</div>`:''}</td>
-        <td style="font-size:12px;color:var(--muted);">${atividadesResumo(p.atividades)}</td>
+        <td style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${atividadesResumo(p.atividades)}</td>
         <td class="mono">${fmtMoney(valPrev)}</td>
         <td>${statusBadge(p.status, late)}${teamBadgeHtml(p)? `<div style="margin-top:4px;">${teamBadgeHtml(p)}</div>`:''}</td>
         <td><div class="row-actions">
@@ -2229,6 +2230,8 @@ function bindProgRowActions(area){
   area.querySelectorAll('[data-reprog]').forEach(b=>b.addEventListener('click', ()=>{ const [pgId,atId]=b.dataset.reprog.split('|'); openReprogramarManual(pgId, atId); }));
   area.querySelectorAll('[data-edit-prog]').forEach(b=>b.addEventListener('click', ()=>openProgramacaoModal(b.dataset.editProg)));
   area.querySelectorAll('[data-del-atrib]').forEach(b=>b.addEventListener('click', ()=>{ const [pgId,atId]=b.dataset.delAtrib.split('|'); deleteAtribuicao(pgId, atId); }));
+  // Clicar na linha da programação abre o modal
+  area.querySelectorAll('tr[data-programacao-id]').forEach(tr=>tr.addEventListener('click', ()=>{ const pgId = tr.dataset.programacaoId; openProgramacaoDetalheModal(pgId); }));
 }
 function deleteAtribuicao(pgId, atId){
   if(!confirm('Remover esta equipe desta programação?')) return;
@@ -8411,4 +8414,58 @@ function printRDOReport(registros){
     <script>window.onload=function(){setTimeout(function(){window.print();},200);};<\/script>
   </body></html>`);
   w.document.close();
+}
+function openProgramacaoDetalheModal(id){
+  const pg = DB.programacoes.find(x=>x.id===Number(id));
+  if(!pg){ toast('Programação não encontrada.', 'error'); return; }
+  const pr = findProjeto(DB, pg.projetoId);
+  const eq = (pg.atribuicoes||[]).map(a=>findEquipe(DB, a.equipeId)).find(Boolean);
+  const atrib = (pg.atribuicoes||[])[0];
+  const headTitulo = 'Programação — '+(pr?.nome||'Projeto');
+  const headSub = [teamGidLabel(pg),
+    pr?.codigo? 'Ciclo '+pr.ciclo : '',
+    eq? equipeLabel(eq) : ''
+  ].filter(Boolean).join(' — ');
+  const rows = (atrib?.atividades||[]).map((a,idx)=>{
+    const at = findAtividade(DB, a.atividadeId);
+    return `<tr>
+      <td style="text-align:center;">${idx+1}</td>
+      <td class="mono" style="font-weight:700;">${esc(at?.codigo||'?')}</td>
+      <td>${esc(at?.descricao||'')}</td>
+      <td style="text-align:center;">${esc(at?.unidade||'')}</td>
+      <td style="text-align:center;">${a.quantidadePrevista??'—'}</td>
+      <td style="height:22px;"></td>
+      <td></td>
+    </tr>`;
+  }).join('');
+  const body = `
+  <div class="print-sheet">
+    <div class="ps-head">
+      <div><h1>G26 New · Programação de Redes Elétricas</h1><div class="ps-sub">Documento de campo — visualização</div></div>
+      <div style="text-align:right;"><div style="font-size:14px;font-weight:700;">${fmtDate(atrib?.dataProgramada||pg.dataProgramada)}</div><div class="ps-sub">Emissão: ${fmtDateTime(Date.now())}</div></div>
+    </div>
+    <div class="ps-block">
+      <div class="ps-block-head">
+        <div>${pg.gid||'G26-'+String(pg.id).padStart(7,'0')} — ${esc(pr?.nome||'Projeto')} (${esc(pr?.codigo||'')}) — ${esc(equipeLabel(eq))} — ${fmtDate(atrib?.dataProgramada||pg.dataProgramada)}</div>
+        <div class="ps-qr"></div>
+      </div>
+      <table class="ps-info">
+        <tr><th>Supervisor</th><td>${esc(eq?.supervisor||'—')}</td><th>Encarregado</th><td>${esc(eq?.encarregado||'—')}</td></tr>
+        <tr><th>Motorista</th><td>${esc(eq?.motorista||'—')}</td><th>Eletricistas</th><td>${esc((eq?.eletricistas||[]).filter(Boolean).join(', ')||'—')}</td></tr>
+        <tr><th>Ciclo</th><td>${esc(pg.ciclo||'—')}</td><th>Setor</th><td>${esc(pr?.setor||'—')}</td></tr>
+      </table>
+      ${pg.local? `<div style="margin:10px 0;"><strong>Local de execução:</strong><br>${esc(pg.local)}</div>`:''}
+      <table>
+        <thead><tr><th style="width:26px;">#</th><th>Código</th><th>Descrição</th><th style="width:40px;">Un.</th><th style="width:52px;">Qtd prev.</th><th style="width:64px;">Qtd exec.</th><th>Obs.</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="ps-check"><div><strong>Executou?</strong> &nbsp;☐ SIM &nbsp;☐ NÃO &nbsp;☐ PARCIAL</div><div><strong>Data da execução:</strong> ____/____/____</div></div>
+      <div class="ps-sign"><strong>Observações do campo:</strong><div class="ps-obs"></div></div>
+      <div class="ps-sign"><strong>Assinatura do encarregado:</strong> <span class="ps-line"></span></div>
+    </div>
+  </div>`;
+  openModal({
+    title: headTitulo, bodyHtml: body, submitLabel: 'Fechar',
+    onSubmit:()=>{ /* Apenas fechar */ }
+  });
 }
