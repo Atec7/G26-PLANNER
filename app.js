@@ -1084,8 +1084,16 @@ function openModal({title, bodyHtml, onMount, onSubmit, submitLabel='Salvar', wi
 /* =========================================================
    BANNER GLOBAL DE PENDÊNCIAS
 ========================================================= */
+function recebeAlertaExecucao(){
+  if(!CURRENT_USER || CURRENT_USER.ativo===false) return false;
+  const aprovadores = (DB.usuarios||[]).filter(x=> x.ativo!==false && x.aprovador);
+  if(!aprovadores.length) return true;
+  return aprovadores.some(x=> String(x.id)===String(CURRENT_USER.id));
+}
+
 function renderBanner(){
   const area = document.getElementById('banner-area');
+  if(!recebeAlertaExecucao()){ area.innerHTML=''; return; }
   const list = pendingList();
   if(!list.length){ area.innerHTML=''; return; }
   area.innerHTML = `
@@ -1097,6 +1105,7 @@ function renderBanner(){
 }
 
 function checkPendingConfirmations(force){
+  if(!recebeAlertaExecucao()) return;
   const list = pendingList();
   if(!list.length) return;
   const item = list[0];
@@ -2203,7 +2212,7 @@ function renderProgListaInto(area, list){
       const gid = progGid(x.programacao);
       return `<tr ${late?'style="background:#ffe4e1;"':''} data-programacao-id="${x.programacao.id}" style="cursor:pointer;">
         <td class="mono" style="white-space:nowrap;">${gid}</td>
-        <td class="mono">${fmtDate(p.dataProgramada)} ${late?`<div class="blink-red" style="font-size:10.5px;">VENCIDA</div>`:''}</td>
+        <td class="mono">${fmtDate(p.dataProgramada)} ${late?`<div class="late-flag">VENCIDA</div>`:''}</td>
         <td>${esc(pr?.nome||'—')}<div style="color:var(--muted-2);font-size:11px;">${esc(pr?.setor||'')} · ${esc(pr?.coordenacao||'')}</div></td>
         <td><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);font-size:10.5px;">${esc(x.programacao.ciclo||'—')}</span></td>
         <td><span class="badge-prefix">${eqtlLabel(eq)}</span></td>
@@ -2252,7 +2261,7 @@ function renderProgFluxoInto(area, list){
         const valPrev = valorProgramadoAtrib(p);
         const metaWarn = metaWarningHtml(p);
         return `<div class="kcard ${late?'pending':''}" draggable="true" data-atrib="${p.id}" data-open-prog="${p.id}">
-          <div class="kc-code ${late?'blink-red':''}">${late?'VENCIDA · ':''}${equipeLabel(eq)}</div>
+          <div class="kc-code ${late?'late-blink late':''}">${late?'VENCIDA · ':''}${equipeLabel(eq)}</div>
           <div class="kc-title">${esc(atividadesResumo(p.atividades))}</div>
           <div class="kc-meta"><span>${esc(pr?.nome||'—')}<span style="color:var(--muted-2);"> · ${esc(pr?.setor||'')} · ${esc(pr?.coordenacao||'')}</span></span><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);font-size:10px;">${esc(x.programacao.ciclo||'')}</span></div>
           <div class="kc-meta"><span>${fmtDate(p.dataProgramada)}</span><span class="mono" style="color:var(--accent);">${progGid(x.programacao)}</span><span class="mono" style="color:var(--muted);">${p.atividades.length} ativ. · ${fmtMoney(valPrev)}</span></div>
@@ -2397,7 +2406,7 @@ function renderProgCalendarioInto(area, list){
       <div class="cal-daynum" data-day-view="${iso}" style="cursor:pointer;" title="Ver dia">${d} ${items.length?`<span style="color:var(--accent);">· ${items.length}</span>`:''}</div>
       ${items.slice(0,3).map(x=>{
         const eq=findEquipe(x.atribuicao.equipeId); const late=isLate(x.atribuicao); const c=STATUS_COLOR[x.atribuicao.status];
-        return `<div class="cal-chip ${late?'blink-red':''}" style="color:${late?'var(--red)':c};border-color:${late?'var(--red)':'var(--border)'}" data-open-prog="${x.atribuicao.id}">${equipeLabel(eq)}</div>`;
+        return `<div class="cal-chip ${late?'late-blink late':''}" style="color:${late?'var(--purple)':c};border-color:${late?'rgba(180,140,224,.5)':'var(--border)'}" data-open-prog="${x.atribuicao.id}">${equipeLabel(eq)}</div>`;
       }).join('')}
       ${items.length>3? `<div style="font-size:10px;color:var(--accent);cursor:pointer;" data-day-view="${iso}">+${items.length-3} mais</div>`:''}
     </div>`;
@@ -2477,7 +2486,7 @@ function atribDetalheHtml(programacao, atrib, comAcoes=true){
 
       <div class="dtl-grid">
         <div class="dtl-tile"><div class="dtl-tile-lbl">Equipe</div><div class="dtl-tile-val"><span class="badge-prefix">${equipeLabel(eq)}</span></div>${metaWarningHtml(atrib)? `<div style="margin-top:6px;">${metaWarningHtml(atrib)}</div>`:''}</div>
-        <div class="dtl-tile"><div class="dtl-tile-lbl">Data programada</div><div class="dtl-tile-val mono">${fmtDate(atrib.dataProgramada)}</div>${late? `<div class="blink-red" style="font-size:11px;color:var(--red);margin-top:4px;">VENCIDA</div>`:''}</div>
+        <div class="dtl-tile"><div class="dtl-tile-lbl">Data programada</div><div class="dtl-tile-val mono">${fmtDate(atrib.dataProgramada)}</div>${late? `<div class="late-flag" style="font-size:11px;margin-top:4px;">VENCIDA</div>`:''}</div>
         <div class="dtl-tile"><div class="dtl-tile-lbl">Encarregado</div><div class="dtl-tile-val">${esc(eq?.encarregado||'—')}</div></div>
         <div class="dtl-tile"><div class="dtl-tile-lbl">Status</div><div class="dtl-tile-val">${statusBadge(atrib.status, late)}</div></div>
         <div class="dtl-tile" style="grid-column:1/-1;"><div class="dtl-tile-lbl">Local de execução</div><div class="dtl-tile-val">${programacao.local? esc(programacao.local) : '—'}</div>${(programacao.local||programacao.localLat!=null)? `<div style="margin-top:4px;font-size:11.5px;"><a href="${esc(localMapsHref(programacao.local,programacao.localLat,programacao.localLng))}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600;">${icon('pin',11)} Abrir no Google Maps</a></div>`:''}</div>
@@ -3601,6 +3610,7 @@ function paintAdminUsersList(){
         <div class="field"><label>Coordenação</label><select name="coordenacao"><option value="">Todas</option><option ${u?.coordenacao==='RIO VERDE'?'selected':''}>RIO VERDE</option><option ${u?.coordenacao==='QUIRINOPOLIS'?'selected':''}>QUIRINOPOLIS</option></select></div>
       </div>
       <div class="field" style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="ativo" id="u-ativo" style="width:auto;" ${u? (u.ativo?'checked':'') : 'checked'}><label for="u-ativo" style="margin:0;">Usuário ativo</label></div>
+      <div class="field" style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="aprovador" id="u-aprovador" style="width:auto;" ${u?.aprovador?'checked':''}><label for="u-aprovador" style="margin:0;">Aprovador de execução</label><div class="field-hint" style="margin-left:4px;">💡 Marcando esta caixa, os alertas que perguntam se a equipe executou (ou não) a atividade aparecerão apenas para este usuário aprovar.</div></div>
       <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:10px;flex-wrap:wrap;">
           <h4 style="margin:0;font-size:14px;">Permissões por tela</h4>
@@ -3646,7 +3656,7 @@ function paintAdminUsersList(){
       if(DB.usuarios.some(x=>x.login.toLowerCase()===login.toLowerCase() && String(x.id)!==String(u?.id))){ toast('Já existe um usuário com este login.', 'error'); return false; }
       const permissoes = {};
       TELAS.forEach(t=>{ const v = fd.get('perm_'+t.id); if(v && v!=='nenhum') permissoes[t.id] = v; });
-      const data = { nome, login, role:'administrador', nivel:'total', setor: fd.get('setor')||'', coordenacao: fd.get('coordenacao')||'', ativo: fd.get('ativo')==='on', permissoes };
+      const data = { nome, login, role:'administrador', nivel:'total', setor: fd.get('setor')||'', coordenacao: fd.get('coordenacao')||'', ativo: fd.get('ativo')==='on', aprovador: fd.get('aprovador')==='on', permissoes };
       if(senha) data.senha = senha;
       if(u){ Object.assign(u, data); toast('Usuário atualizado.'); registrarEvento('edicao','usuario',u.id,u.login,'Usuário atualizado · permissões atualizadas'); }
       else { data.id = nextId(); data.senha = senha; DB.usuarios.push(data); toast('Usuário criado.'); registrarEvento('criacao','usuario',data.id,data.login,'Usuário criado'); }
@@ -3961,7 +3971,7 @@ function renderOseListaInto(area, list){
       const ativResumo = (a.atividades||[]).map(at=>{ const atd=findAtividade(at.atividadeId); return `${esc(atd?.codigo||'?')} ×${at.quantidadePrevista??'—'}`; }).join(', ');
       return `<tr style="cursor:pointer;" data-ose-open="${a.id}">
         <td class="mono" style="white-space:nowrap;">${oseProgLabel(p)}</td>
-        <td class="mono">${fmtDate(a.dataProgramada)} ${late?'<div class="blink-red" style="font-size:10.5px;">VENCIDA</div>':''}</td>
+        <td class="mono">${fmtDate(a.dataProgramada)} ${late?'<div class="late-flag">VENCIDA</div>':''}</td>
         <td>${esc(p.municipio||'—')}</td>
         <td>${esc(p.subestacao||'—')}</td>
         <td><span class="badge" style="color:${p.tipoIntervencao==='Aéreo'?'var(--blue)':p.tipoIntervencao==='Subterrâneo'?'var(--accent)':'var(--purple)'};background:${p.tipoIntervencao==='Aéreo'?'rgba(78,140,235,.14)':p.tipoIntervencao==='Subterrâneo'?'rgba(224,164,88,.14)':'rgba(180,140,224,.14)'};">${esc(p.tipoIntervencao||'—')}</span></td>
@@ -4010,7 +4020,7 @@ function renderOseFluxoInto(area, list){
         const p=x.programacao, a=x.atribuicao, eq=findEquipe(a.equipeId);
         const late = a.dataProgramada < todayISO() && !['Concluído','Cancelado'].includes(a.status);
         return `<div class="kcard ${late?'pending':''}" draggable="true" data-atrib="${a.id}" data-open-ose="${a.id}">
-          <div class="kc-code ${late?'blink-red':''}">${late?'VENCIDA · ':''}${equipeLabel(eq)}</div>
+          <div class="kc-code ${late?'late-blink late':''}">${late?'VENCIDA · ':''}${equipeLabel(eq)}</div>
           <div class="kc-title">${esc(p.municipio||'—')} · ${esc(p.subestacao||'—')}</div>
           <div class="kc-meta"><span>${esc(p.tipoIntervencao||'—')} · ${esc(p.statusDocumentacao||'—')}</span></div>
           <div class="kc-meta"><span>${fmtDate(a.dataProgramada)}</span><span class="mono" style="color:var(--accent);">${oseProgLabel(p)}</span></div>
@@ -4115,7 +4125,7 @@ function renderOseCalendarioInto(area, list){
       <div class="cal-daynum" data-day-view="${iso}" style="cursor:pointer;" title="Ver dia">${d} ${items.length?`<span style="color:var(--accent);">· ${items.length}</span>`:''}</div>
       ${items.slice(0,3).map(x=>{
         const eq=findEquipe(x.atribuicao.equipeId); const late=x.atribuicao.dataProgramada < todayISO() && !['Concluído','Cancelado'].includes(x.atribuicao.status); const c=STATUS_COLOR[x.atribuicao.status]||'var(--muted)';
-        return `<div class="cal-chip ${late?'blink-red':''}" style="color:${late?'var(--red)':c};border-color:${late?'var(--red)':'var(--border)'}" data-open-ose="${x.atribuicao.id}">${equipeLabel(eq)}</div>`;
+        return `<div class="cal-chip ${late?'late-blink late':''}" style="color:${late?'var(--purple)':c};border-color:${late?'rgba(180,140,224,.5)':'var(--border)'}" data-open-ose="${x.atribuicao.id}">${equipeLabel(eq)}</div>`;
       }).join('')}
       ${items.length>3? `<div style="font-size:10px;color:var(--accent);cursor:pointer;" data-day-view="${iso}">+${items.length-3} mais</div>`:''}
     </div>`;
@@ -4180,7 +4190,7 @@ function oseDetalheHtml(programacao, atrib, comAcoes=true){
 
       <div class="dtl-grid">
         <div class="dtl-tile"><div class="dtl-tile-lbl">Equipe</div><div class="dtl-tile-val"><span class="badge-prefix">${equipeLabel(eq)}</span></div></div>
-        <div class="dtl-tile"><div class="dtl-tile-lbl">Data programada</div><div class="dtl-tile-val mono">${fmtDate(atrib.dataProgramada)}</div>${late? `<div class="blink-red" style="font-size:11px;color:var(--red);margin-top:4px;">VENCIDA</div>`:''}</div>
+        <div class="dtl-tile"><div class="dtl-tile-lbl">Data programada</div><div class="dtl-tile-val mono">${fmtDate(atrib.dataProgramada)}</div>${late? `<div class="late-flag" style="font-size:11px;margin-top:4px;">VENCIDA</div>`:''}</div>
         <div class="dtl-tile"><div class="dtl-tile-lbl">Encarregado</div><div class="dtl-tile-val">${esc(eq?.encarregado||'—')}</div></div>
         <div class="dtl-tile"><div class="dtl-tile-lbl">Status</div><div class="dtl-tile-val">${statusBadge(atrib.status, late)}</div></div>
         <div class="dtl-tile"><div class="dtl-tile-lbl">Status Doc.</div><div class="dtl-tile-val"><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${esc(programacao.statusDocumentacao||'—')}</span></div></div>
@@ -5237,7 +5247,7 @@ function renderPodaListaInto(area, list){
       const ativResumo = (a.atividades||[]).map(at=>{ const atd=findAtividade(at.atividadeId); return `${esc(atd?.codigo||'?')} ×${at.quantidadePrevista??'—'}`; }).join(', ');
       return `<tr style="cursor:pointer;" data-poda-open="${a.id}">
         <td class="mono" style="white-space:nowrap;">${podaProgLabel(p)}</td>
-        <td class="mono">${fmtDate(a.dataProgramada)} ${late?'<div class="blink-red" style="font-size:10.5px;">VENCIDA</div>':''}</td>
+        <td class="mono">${fmtDate(a.dataProgramada)} ${late?'<div class="late-flag">VENCIDA</div>':''}</td>
         <td>${esc(p.osi||'—')}</td>
         <td>${esc(p.subestacao||'—')}</td>
         <td><span class="badge" style="color:${p.tipoRede==='MT'?'var(--blue)':'var(--accent)'};background:${p.tipoRede==='MT'?'rgba(78,140,235,.14)':'rgba(224,164,88,.14)'};">${esc(p.tipoRede||'—')}</span></td>
@@ -5286,7 +5296,7 @@ function renderPodaFluxoInto(area, list){
         const p=x.programacao, a=x.atribuicao, eq=findEquipe(a.equipeId);
         const late = a.dataProgramada < todayISO() && !['Concluído','Cancelado'].includes(a.status);
         return `<div class="kcard ${late?'pending':''}" draggable="true" data-atrib="${a.id}" data-open-poda="${a.id}">
-          <div class="kc-code ${late?'blink-red':''}">${late?'VENCIDA · ':''}${equipeLabel(eq)}</div>
+          <div class="kc-code ${late?'late-blink late':''}">${late?'VENCIDA · ':''}${equipeLabel(eq)}</div>
           <div class="kc-title">${esc(p.osi||'—')} · ${esc(p.subestacao||'—')}</div>
           <div class="kc-meta"><span>${esc(p.tipoRede||'—')} · ${esc(p.statusDocumentacao||'—')}</span><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);font-size:10px;">${esc(p.chave||'')}</span></div>
           <div class="kc-meta"><span>${fmtDate(a.dataProgramada)}</span><span class="mono" style="color:var(--accent);">${podaProgLabel(p)}</span></div>
@@ -5391,7 +5401,7 @@ function renderPodaCalendarioInto(area, list){
       <div class="cal-daynum" data-day-view="${iso}" style="cursor:pointer;" title="Ver dia">${d} ${items.length?`<span style="color:var(--accent);">· ${items.length}</span>`:''}</div>
       ${items.slice(0,3).map(x=>{
         const eq=findEquipe(x.atribuicao.equipeId); const late=x.atribuicao.dataProgramada < todayISO() && !['Concluído','Cancelado'].includes(x.atribuicao.status); const c=STATUS_COLOR[x.atribuicao.status]||'var(--muted)';
-        return `<div class="cal-chip ${late?'blink-red':''}" style="color:${late?'var(--red)':c};border-color:${late?'var(--red)':'var(--border)'}" data-open-poda="${x.atribuicao.id}">${equipeLabel(eq)}</div>`;
+        return `<div class="cal-chip ${late?'late-blink late':''}" style="color:${late?'var(--purple)':c};border-color:${late?'rgba(180,140,224,.5)':'var(--border)'}" data-open-poda="${x.atribuicao.id}">${equipeLabel(eq)}</div>`;
       }).join('')}
       ${items.length>3? `<div style="font-size:10px;color:var(--accent);cursor:pointer;" data-day-view="${iso}">+${items.length-3} mais</div>`:''}
     </div>`;
@@ -5456,7 +5466,7 @@ function podaDetalheHtml(programacao, atrib, comAcoes=true){
 
       <div class="dtl-grid">
         <div class="dtl-tile"><div class="dtl-tile-lbl">Equipe</div><div class="dtl-tile-val"><span class="badge-prefix">${equipeLabel(eq)}</span></div></div>
-        <div class="dtl-tile"><div class="dtl-tile-lbl">Data programada</div><div class="dtl-tile-val mono">${fmtDate(atrib.dataProgramada)}</div>${late? `<div class="blink-red" style="font-size:11px;color:var(--red);margin-top:4px;">VENCIDA</div>`:''}</div>
+        <div class="dtl-tile"><div class="dtl-tile-lbl">Data programada</div><div class="dtl-tile-val mono">${fmtDate(atrib.dataProgramada)}</div>${late? `<div class="late-flag" style="font-size:11px;margin-top:4px;">VENCIDA</div>`:''}</div>
         <div class="dtl-tile"><div class="dtl-tile-lbl">Encarregado</div><div class="dtl-tile-val">${esc(eq?.encarregado||'—')}</div></div>
         <div class="dtl-tile"><div class="dtl-tile-lbl">Status</div><div class="dtl-tile-val">${statusBadge(atrib.status, late)}</div></div>
         <div class="dtl-tile"><div class="dtl-tile-lbl">Status Doc.</div><div class="dtl-tile-val"><span class="badge" style="color:var(--teal);background:rgba(87,199,199,.12);">${esc(programacao.statusDocumentacao||'—')}</span></div></div>
