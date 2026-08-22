@@ -818,10 +818,10 @@ function renderTeamBlock(eqId){
         <div class="team-atividade">
           <div class="activity-row">
             <select class="te-select" data-tes="${eqId}|${i}"><option value="">Atividade…</option>${DB.atividades.map(a=>`<option value="${a.id}" ${String(r.atividadeId)===String(a.id)?'selected':''}>${esc(a.codigo)} · ${esc(a.descricao)}</option>`).join('')}</select>
-            <div class="qty-field"><label>Prevista</label><input type="number" step="0.01" min="0" class="te-qty" data-teq="${eqId}|${i}" placeholder="Qtd." value="${r.quantidadePrevista??''}"></div>
+            <div class="qty-field"><label>Prevista</label><input type="number" step="0.01" min="0" class="te-qty" data-teq="${eqId}|${i}" placeholder="Qtd." value="${r.atividadeId ? r.quantidadePrevista : '0'}" readonly>${r.atividadeId?'':' (bloqueado)'}</div>
             <div class="qty-field"><label>Executada</label><input type="number" step="0.01" min="0" class="te-exec" data-tee="${eqId}|${i}" placeholder="Qtd." value="${r.quantidadeExecutada??''}"></div>
             ${teamMode()==='ose'? `<div class="qty-field"><label title="Quantidade de anomalias executadas">Anomalias</label><input type="number" step="1" min="0" class="te-anom" data-tea="${eqId}|${i}" placeholder="Qtd." value="${r.qtdAnomaliaExecutada??''}"></div>`:''}
-            <button type="button" class="icon-btn te-remove" data-eq-rm="${eqId}|${i}" title="Remover atividade">${icon('close',13)}</button>
+            <button type="button" class="icon-btn te-remove" data-eq-rm="${eqId}|${i}" title="Remover atividade" ${r.atividadeId?'disabled':''}>${icon('close',13)}</button>
           </div>
           <div class="activity-fotos">
             <div class="te-thumbs" data-tef="${eqId}|${i}"></div>
@@ -883,7 +883,10 @@ function atualizarFotosUI(eqId, idx){
 }
 function resetFotos(){
   _fotos = {};
-  Object.keys(editors).forEach(eqId=>{ _fotos[eqId] = editors[eqId].map(()=>[]); });
+  Object.keys(editors).forEach(eqId=>{
+    const existing = _fotos[eqId] || [];
+    _fotos[eqId] = editors[eqId].map((_a, i)=> existing[i] || []);
+  });
 }
 function fotosCount(eqId, idx){
   return ((_fotos[eqId]||[])[idx]||[]).length;

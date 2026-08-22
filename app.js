@@ -23,6 +23,7 @@ if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js').ca
 const DEFAULT_DATA = {
   equipes: [], atividades: [], projetos: [], programacoes: [], ocnds: [], podaProgramacoes: [], oseProgramacoes: [], usuarios: [],
   customFields: { equipes: [], atividades: [], projetos: [], programacoes: [], podaProgramacoes: [], oseProgramacoes: [] },
+  cidades: [], cidadeDistancias: [], cidadeMaxDist: 50,
   seq: 1, rev: 0
 };
 function mergeData(raw){
