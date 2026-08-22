@@ -18,6 +18,7 @@ const rtdb = firebase.database(app);
 const DB_REF = rtdb.ref('g26_planner/data');
 const PRES_REF = rtdb.ref('g26_planner/presenca');
 const ACCIDENT_REF = rtdb.ref('g26_planner/acidentes');
+const AUD_REF = rtdb.ref('g26_planner/auditoria');
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
 
 const DEFAULT_DATA = {
@@ -26,11 +27,15 @@ const DEFAULT_DATA = {
   cidades: [], cidadeDistancias: [], cidadeMaxDist: 50,
   seq: 1, rev: 0
 };
+let legacyAuditoria = null;
 function mergeData(raw){
   if(!raw || typeof raw!=='object') return structuredClone(DEFAULT_DATA);
   const merged = Object.assign(structuredClone(DEFAULT_DATA), raw);
   merged.customFields = Object.assign(structuredClone(DEFAULT_DATA.customFields), raw.customFields||{});
   merged.seq = Number(merged.seq)||1;
+  // Auditoria migrou para nó próprio (g26_planner/auditoria): guarda o legado p/ migração e tira do blob
+  if(Array.isArray(raw.auditoria) && raw.auditoria.length && (!legacyAuditoria || raw.auditoria.length>legacyAuditoria.length)) legacyAuditoria = raw.auditoria;
+  delete merged.auditoria;
   migrarGids(merged);
   return merged;
 }
@@ -82,7 +87,7 @@ function aplicarPendente(){
 }
 function saveData(){
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(()=>{ saveTimer=null; flushSave(); }, 300);
+  saveTimer = setTimeout(()=>{ saveTimer=null; flushSave(); }, 1000);
 }
 function guardarPendente(snapshot){
   try{ localStorage.setItem('g26_admin_pending', JSON.stringify({ snapshot, server: lastServerJson })); }catch(e){}
@@ -106,8 +111,9 @@ function flushSave(){
       }
     }catch(err){ console.error('Falha ao conferir versão antes de salvar', err); }
   }
-  DB.rev = (DB.rev||0)+1;
   const snapshot = JSON.stringify(DB);
+  if(servidorSincronizado && lastWrittenJson===snapshot) return; // nada mudou de fato: evita regravar o banco inteiro
+  DB.rev = (DB.rev||0)+1;
   lastWrittenJson = snapshot;
   saveAdminCache(DB, true);
   if(!servidorSincronizado){
@@ -939,6 +945,7 @@ function openImportProjetosModal(){
 function openImportArquivoModal({title, templateName, headers, exampleRow, textoAviso, processar, toastResumo}){
   if(!requerEscrita()) return;
   if(typeof XLSX==='undefined'){ toast('Biblioteca de planilhas indisponível. Verifique a conexão e recarregue.', 'error'); return; }
+  const jaUsouHoje = !ehMestre() && ((((DB.importControl||{})[String(CURRENT_USER.login)]))||'')===todayISO();
   const root = document.getElementById('modal-root');
   let arquivo = null;
   function importar(){
@@ -954,9 +961,21 @@ function openImportArquivoModal({title, templateName, headers, exampleRow, texto
         }
         if(!ws) ws = wb.Sheets[wb.SheetNames[0]];
         const linhas = normalizarLinhasExcel(XLSX.utils.sheet_to_json(ws, {header:1, defval:''}), headers, exampleRow);
+        let consumoRegistrado = false;
+        if(!ehMestre()){
+          if(linhas.length > 30){ toast('Limite de 30 linhas por importação. Seu arquivo tem '+linhas.length+' linha(s) — divida em partes menores.', 'error'); return; }
+          const ultimoDia = ((DB.importControl||{})[String(CURRENT_USER.login)]) || '';
+          if(ultimoDia && ultimoDia===todayISO()){ toast('Importação em massa já realizada hoje. O limite é de 1x por dia.', 'error'); return; }
+          if(linhas.length){
+            DB.importControl = DB.importControl||{};
+            DB.importControl[String(CURRENT_USER.login)] = todayISO();
+            consumoRegistrado = true;
+            registrarEvento('config','sistema',null,CURRENT_USER.login,'Importação em massa ('+linhas.length+' linha(s))');
+          }
+        }
         const r = processar(linhas);
         root.innerHTML='';
-        if(r.criados>0){ saveData(); renderContent(); }
+        if(r.criados>0 || consumoRegistrado){ saveData(); renderContent(); }
         if(linhas.length===0){
           const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:''}).slice(0,12);
           root.innerHTML = `
@@ -994,9 +1013,10 @@ function openImportArquivoModal({title, templateName, headers, exampleRow, texto
             <div class="field-hint">💡 O template vem com o cabeçalho (colunas na ordem) e uma <strong>linha de exemplo</strong>. Preencha suas linhas abaixo do cabeçalho, salve e envie o arquivo.</div>
           </div>
           <div class="field"><label>Arquivo preenchido (.xlsx)</label><input type="file" id="imp-arquivo" accept=".xlsx,.xls,.csv"></div>
+          ${!ehMestre()? `<div class="field-hint">${jaUsouHoje? '⚠️ Você já realizou sua importação em massa hoje. O limite é de <strong>1 importação por dia</strong>.' : '📏 Limite para este usuário: <strong>30 linhas por arquivo</strong> e <strong>1 importação por dia</strong> (o usuário Mestre não possui limites).'}</div>` : ''}
           ${textoAviso? `<div class="field-hint">💡 ${textoAviso}</div>` : ''}
         </div>
-        <div class="modal-foot"><button type="button" class="btn btn-ghost" id="modal-cancel">Cancelar</button><button type="button" class="btn btn-primary" id="imp-confirm">Importar arquivo</button></div>
+        <div class="modal-foot"><button type="button" class="btn btn-ghost" id="modal-cancel">Cancelar</button><button type="button" class="btn btn-primary" id="imp-confirm" ${jaUsouHoje? 'disabled style="opacity:.5;cursor:not-allowed;"':''}>Importar arquivo</button></div>
       </div>
     </div>`;
   document.getElementById('modal-close').addEventListener('click', ()=>{ root.innerHTML=''; });
@@ -6963,16 +6983,54 @@ let monPresList = [];
 let monHeartbeat = null;
 function registrarEvento(tipo, itemTipo, itemId, itemRotulo, detalhe){
   if(!CURRENT_USER || !tipo) return;
-  DB.auditoria = DB.auditoria||[];
-  DB.auditoria.push({
+  DB.auditoria = Array.isArray(DB.auditoria)? DB.auditoria : [];
+  const ev = {
     id: nextId(), ts: Date.now(), user: CURRENT_USER.login, nome: CURRENT_USER.nome,
     tipo, itemTipo, itemId: itemId!=null? itemId : null,
     itemRotulo: String(itemRotulo||'').slice(0,120),
     detalhe: String(detalhe||'').slice(0,400),
     bytes: Math.round(JSON.stringify(DB).length/1024)
-  });
+  };
+  DB.auditoria.push(ev);
+  if(!audCarregado) audPendentes.push(ev);
   if(DB.auditoria.length > 4000) DB.auditoria = DB.auditoria.slice(-4000);
+  agendarAuditoriaSave();
 }
+let audSaveTimer = null;
+let audCarregado = false;
+let audPendentes = [];
+function agendarAuditoriaSave(){
+  clearTimeout(audSaveTimer);
+  audSaveTimer = setTimeout(()=>{
+    if(!audCarregado){ agendarAuditoriaSave(); return; }
+    try{ AUD_REF.set(DB.auditoria||[]); }catch(e){}
+  }, 1500);
+}
+/* Auditoria em nó próprio (fora do blob principal) para não regravar
+   nem redistribuir todos os dados a cada evento. Migra o legado sozinho. */
+AUD_REF.once('value', ()=>{ audCarregado=true; }, ()=>{ audCarregado=true; });
+AUD_REF.on('value', snap=>{
+  let remota = snap.exists()? (snap.val()||[]) : [];
+  const local = Array.isArray(DB.auditoria)? DB.auditoria : [];
+  if(audPendentes.length){
+    const ids = new Set(remota.map(e=>String(e.id)));
+    const faltantes = audPendentes.filter(e=>!ids.has(String(e.id)));
+    audPendentes = [];
+    if(faltantes.length){
+      remota = remota.concat(faltantes);
+      try{ AUD_REF.set(remota); }catch(e){}
+    }
+  }
+  const maiorLocal = (legacyAuditoria && legacyAuditoria.length>local.length)? legacyAuditoria : local;
+  if(maiorLocal.length > remota.length){
+    try{ AUD_REF.set(maiorLocal); }catch(e){}
+    DB.auditoria = maiorLocal;
+    return;
+  }
+  legacyAuditoria = null;
+  if(remota.length) DB.auditoria = remota;
+  else delete DB.auditoria;
+});
 function fmtRelTempo(ts){
   if(!ts) return '—';
   const s = Math.max(0, Math.round((Date.now()-ts)/1000));
