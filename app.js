@@ -399,6 +399,9 @@ document.getElementById('mobile-toggle').addEventListener('click', ()=> document
 function renderTopbarActions(){
   const el = document.getElementById('topbar-actions');
   el.innerHTML = '';
+  // Nome do usuário logado
+  const userHtml = `<span style="font-size:12px;font-weight:600;color:var(--accent);padding:0 6px;">👤 ${CURRENT_USER? esc(CURRENT_USER.nome) : ''}</span>`;
+  el.insertAdjacentHTML('beforeend', userHtml);
   const primary = (podeEditar()? {
     equipes: ()=>actionBtn('Nova equipe', ()=>openEquipeModal()),
     atividades: ()=>actionBtn('Nova atividade', ()=>openAtividadeModal()),
@@ -971,7 +974,6 @@ function openImportArquivoModal({title, templateName, headers, exampleRow, texto
           const fechar = ()=>{ root.innerHTML=''; };
           document.getElementById('modal-close').addEventListener('click', fechar);
           document.getElementById('modal-close2').addEventListener('click', fechar);
-          document.getElementById('modal-overlay').addEventListener('click', e=>{ if(e.target.id==='modal-overlay') fechar(); });
         } else {
           toast(toastResumo? toastResumo(r, linhas.length) : 'Importação concluída.');
         }
@@ -998,7 +1000,6 @@ function openImportArquivoModal({title, templateName, headers, exampleRow, texto
     </div>`;
   document.getElementById('modal-close').addEventListener('click', ()=>{ root.innerHTML=''; });
   document.getElementById('modal-cancel').addEventListener('click', ()=>{ root.innerHTML=''; });
-  document.getElementById('modal-overlay').addEventListener('click', e=>{ if(e.target.id==='modal-overlay') root.innerHTML=''; });
   document.getElementById('dl-template').addEventListener('click', ()=>baixarTemplateExcel(templateName, headers, exampleRow));
   document.getElementById('imp-arquivo').addEventListener('change', e=>{ arquivo = e.target.files[0]||null; });
   document.getElementById('imp-confirm').addEventListener('click', importar);
@@ -1075,7 +1076,6 @@ function openModal({title, bodyHtml, onMount, onSubmit, submitLabel='Salvar', wi
   const close = ()=>{ root.innerHTML=''; };
   document.getElementById('modal-close').addEventListener('click', close);
   document.getElementById('modal-cancel').addEventListener('click', close);
-  document.getElementById('modal-overlay').addEventListener('click', (e)=>{ if(e.target.id==='modal-overlay') close(); });
   document.getElementById('modal-form').addEventListener('submit', (e)=>{ e.preventDefault(); const ok = onSubmit(new FormData(e.target), e.target); if(ok!==false) close(); });
   footerBtns.forEach((b,i)=>{ const el=document.getElementById('modal-btn-'+i); if(el) el.addEventListener('click', ()=> b.onClick(el)); });
   if(onMount) onMount(root);
@@ -2573,6 +2573,7 @@ function openAtribDetalhe(atribId){
     function openProgramacaoModal(id){
       if(!requerEscrita()) return;
       const pg = id ? DB.programacoes.find(x=>x.id===Number(id)) : null;
+      if(id && !progVisivelPorId(id)){ toast('Você não tem permissão para acessar esta programação.', 'error'); return; }
   let atribs = pg ? pg.atribuicoes.map(a=>({ equipeId:String(a.equipeId), atividades: a.atividades.map(x=>({atividadeId:String(x.atividadeId), quantidadePrevista:x.quantidadePrevista??''})) })) : [{ equipeId:'', atividades:[{atividadeId:'',quantidadePrevista:''}] }];
   let selProjeto = pg? findProjeto(pg.projetoId) : null;
   let anexos = pg ? (pg.anexos||[]).map(a=>({...a})) : [];
@@ -2634,8 +2635,8 @@ function openAtribDetalhe(atribId){
     <div class="field"><label>Observações gerais</label><textarea name="observacoes">${esc(pg?.observacoes||'')}</textarea></div>
     <div class="field">
       <label>Local / endereço de execução</label>
-      <input type="text" name="local" id="pg-local" value="${esc(pg?.local||'')}" placeholder="Digite o endereço onde a equipe vai executar…">
-      <div class="field-hint">💡 Enquanto você digita, geramos automaticamente o link do Google Maps com a localização. Também dá para abrir o mapa e marcar o ponto exato. O local e o mapa vão para o documento (PDF), para os registros e para a mensagem do WhatsApp.</div>
+      <input type="text" name="local" id="pg-local" required value="${esc(pg?.local||'')}" placeholder="Digite o endereço onde a equipe vai executar…">
+      <div class="field-hint">💡 Obrigatório. Enquanto você digita, geramos automaticamente o link do Google Maps com a localização. Também dá para abrir o mapa e marcar o ponto exato. O local e o mapa vão para o documento (PDF), para os registros e para a mensagem do WhatsApp.</div>
       <div id="pg-local-tools"></div>
       <div id="pg-map-wrap" style="display:none;margin-top:8px;">
         <div id="pg-local-map" style="height:460px;width:100%;border-radius:10px;overflow:hidden;border:1px solid var(--border-soft);"></div>
@@ -2907,6 +2908,7 @@ function openAtribDetalhe(atribId){
       if(!numeroSI) statusSI = '';
       const custom = parseCustomFieldsFromForm('programacoes', fd);
       const local = String(fd.get('local')||'').trim()||localAddr||'';
+      if(!local){ toast('Informe o local da programação.', 'error'); return false; }
       const locLat = local? localLat : null;
       const locLng = local? localLng : null;
       if(pg){
@@ -3810,7 +3812,12 @@ let oseFilters = (()=>{ const r=monthRangeISO(); return { busca:'', equipe:'', s
 let oseCalRef = new Date();
 function oseProgLabel(p){ return p.gid || ('OSE-'+String(p.id).padStart(7,'0')); }
 function findOseProg(id){ return (DB.oseProgramacoes||[]).find(p=>p.id===Number(id)); }
-function oseProgramacoesVisiveis(){ return DB.oseProgramacoes||[]; }
+function oseProgramacoesVisiveis(){
+  const all = DB.oseProgramacoes||[];
+  if(!usuarioRestrito()) return all;
+  const eqIds = new Set(equipesVisiveis().map(e=>String(e.id)));
+  return all.filter(pg=> (pg.atribuicoes||[]).some(a=> eqIds.has(String(a.equipeId))));
+}
 function flatOseAtribuicoes(){
   const out=[];
   (DB.oseProgramacoes||[]).forEach(pg=>{ (pg.atribuicoes||[]).forEach(at=> out.push({ programacao: pg, atribuicao: at })); });
@@ -3910,7 +3917,7 @@ function renderOseProgramacoes(){
     <div class="panel-head" style="padding:0;margin-bottom:16px;border:none;">
       <div class="filters">
         <input type="search" id="ose-f-busca" placeholder="Buscar município, subestação, equipe..." style="flex:1;min-width:180px;" value="${esc(oseFilters.busca)}">
-        <select id="ose-f-equipe"><option value="">Todas as equipes</option>${(DB.equipes||[]).filter(e=>e.ativo!==false).map(e=>`<option value="${e.id}" ${oseFilters.equipe==String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' — '+esc(e.encarregado):''}</option>`).join('')}</select>
+        <select id="ose-f-equipe"><option value="">Todas as equipes</option>${equipesVisiveis().filter(e=>e.ativo!==false).map(e=>`<option value="${e.id}" ${oseFilters.equipe==String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' — '+esc(e.encarregado):''}</option>`).join('')}</select>
         <select id="ose-f-status"><option value="">Todos os status</option>${STATUS_OSE.map(s=>`<option ${oseFilters.status===s?'selected':''}>${s}</option>`).join('')}</select>
         <input type="date" id="ose-f-de" value="${oseFilters.dataDe}" title="Data inicial">
         <span style="color:var(--muted);font-size:12px;">até</span>
@@ -4432,7 +4439,7 @@ function openOseProgramacaoModal(id){
     const searchId = `ose-act-search-${i}`;
     return `<div class="atrib-block" data-idx="${i}">
       <div class="atrib-head">
-        <select class="atrib-equipe" data-idx="${i}"><option value="">Selecione a equipe…</option>${DB.equipes.filter(e=>e.ativo!==false).map(e=>`<option value="${e.id}" ${String(a.equipeId)===String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' · '+esc(e.encarregado):''}</option>`).join('')}</select>
+        <select class="atrib-equipe" data-idx="${i}"><option value="">Selecione a equipe…</option>${equipesVisiveis().filter(e=>e.ativo!==false).map(e=>`<option value="${e.id}" ${String(a.equipeId)===String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' · '+esc(e.encarregado):''}</option>`).join('')}</select>
         ${atribs.length>1? `<button type="button" class="icon-btn atrib-remove" data-idx="${i}">${icon('trash',14)}</button>`:''}
       </div>
       <div class="atrib-meta-live" data-idx="${i}"></div>
@@ -4469,7 +4476,7 @@ function openOseProgramacaoModal(id){
     </div>
     <div class="field"><label>Observações</label><textarea name="observacoes" rows="2" placeholder="Observações da programação OSE">${esc(pg?.observacoes||'')}</textarea></div>
     <div class="field"><label>Local / endereço de execução</label>
-      <input type="text" name="local" id="ose-local" value="${esc(pg?.local||'')}" placeholder="Digite o endereço...">
+      <input type="text" name="local" id="ose-local" required value="${esc(pg?.local||'')}" placeholder="Digite o endereço...">
       <div class="field-hint">Enquanto digita, geramos o link do Google Maps. Marque o ponto exato no mapa interativo.</div>
       <div id="ose-local-tools"></div>
       <div id="ose-map-wrap" style="display:none;margin-top:8px;">
@@ -4662,6 +4669,7 @@ function openOseProgramacaoModal(id){
       const observacoes = String(fd.get('observacoes')||'').trim();
       const orientacoesPlanejamento = String(fd.get('orientacoesPlanejamento')||'').trim();
       const local = String(fd.get('local')||'').trim()||localAddr||'';
+      if(!local){ toast('Informe o local da programação.', 'error'); return false; }
       const custom = {};
       (DB.customFields.programacoes||[]).forEach(f=>{ const v=fd.get('cf_'+f.id); if(v!=null) custom[f.id]=v; });
       const base = {
@@ -5080,7 +5088,12 @@ let podaFilters = (()=>{ const r=monthRangeISO(); return { busca:'', equipe:'', 
 let podaCalRef = new Date();
 function podaProgLabel(p){ return p.gid || ('PODA-'+String(p.id).padStart(7,'0')); }
 function findPodaProg(id){ return (DB.podaProgramacoes||[]).find(p=>p.id===Number(id)); }
-function podaProgramacoesVisiveis(){ return DB.podaProgramacoes||[]; }
+function podaProgramacoesVisiveis(){
+  const all = DB.podaProgramacoes||[];
+  if(!usuarioRestrito()) return all;
+  const eqIds = new Set(equipesVisiveis().map(e=>String(e.id)));
+  return all.filter(pg=> (pg.atribuicoes||[]).some(a=> eqIds.has(String(a.equipeId))));
+}
 function flatPodaAtribuicoes(){
   const out=[];
   (DB.podaProgramacoes||[]).forEach(pg=>{ (pg.atribuicoes||[]).forEach(at=> out.push({ programacao: pg, atribuicao: at })); });
@@ -5180,7 +5193,7 @@ function renderPodaProgramacoes(){
     <div class="panel-head" style="padding:0;margin-bottom:16px;border:none;">
       <div class="filters">
         <input type="search" id="poda-f-busca" placeholder="Buscar OSI, subestação, equipe..." style="flex:1;min-width:180px;" value="${esc(podaFilters.busca)}">
-        <select id="poda-f-equipe"><option value="">Todas as equipes</option>${(DB.equipes||[]).filter(e=>e.ativo!==false).map(e=>`<option value="${e.id}" ${podaFilters.equipe==String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' — '+esc(e.encarregado):''}</option>`).join('')}</select>
+        <select id="poda-f-equipe"><option value="">Todas as equipes</option>${equipesVisiveis().filter(e=>e.ativo!==false).map(e=>`<option value="${e.id}" ${podaFilters.equipe==String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' — '+esc(e.encarregado):''}</option>`).join('')}</select>
         <select id="poda-f-status"><option value="">Todos os status</option>${STATUS_PODA.map(s=>`<option ${podaFilters.status===s?'selected':''}>${s}</option>`).join('')}</select>
         <input type="date" id="poda-f-de" value="${podaFilters.dataDe}" title="Data inicial">
         <span style="color:var(--muted);font-size:12px;">até</span>
@@ -5702,7 +5715,7 @@ function openPodaProgramacaoModal(id){
     const searchId = `poda-act-search-${i}`;
     return `<div class="atrib-block" data-idx="${i}">
       <div class="atrib-head">
-        <select class="atrib-equipe" data-idx="${i}"><option value="">Selecione a equipe…</option>${DB.equipes.filter(e=>e.ativo!==false).map(e=>`<option value="${e.id}" ${String(a.equipeId)===String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' · '+esc(e.encarregado):''}</option>`).join('')}</select>
+        <select class="atrib-equipe" data-idx="${i}"><option value="">Selecione a equipe…</option>${equipesVisiveis().filter(e=>e.ativo!==false).map(e=>`<option value="${e.id}" ${String(a.equipeId)===String(e.id)?'selected':''}>${equipeLabel(e)}${e.encarregado? ' · '+esc(e.encarregado):''}</option>`).join('')}</select>
         ${atribs.length>1? `<button type="button" class="icon-btn atrib-remove" data-idx="${i}">${icon('trash',14)}</button>`:''}
       </div>
       <div class="atrib-meta-live" data-idx="${i}"></div>
@@ -5745,7 +5758,7 @@ function openPodaProgramacaoModal(id){
     </div>
     <div class="field"><label>Observações</label><textarea name="observacoes" rows="2" placeholder="Observações da programação de poda">${esc(pg?.observacoes||'')}</textarea></div>
     <div class="field"><label>Local / endereço de execução</label>
-      <input type="text" name="local" id="poda-local" value="${esc(pg?.local||'')}" placeholder="Digite o endereço...">
+      <input type="text" name="local" id="poda-local" required value="${esc(pg?.local||'')}" placeholder="Digite o endereço...">
       <div class="field-hint">Enquanto digita, geramos o link do Google Maps. Marque o ponto exato no mapa interativo.</div>
       <div id="poda-local-tools"></div>
       <div id="poda-map-wrap" style="display:none;margin-top:8px;">
@@ -5937,6 +5950,7 @@ function openPodaProgramacaoModal(id){
       const observacoes = String(fd.get('observacoes')||'').trim();
       const orientacoesPlanejamento = String(fd.get('orientacoesPlanejamento')||'').trim();
       const local = String(fd.get('local')||'').trim()||localAddr||'';
+      if(!local){ toast('Informe o local da programação.', 'error'); return false; }
       const custom = {};
       (DB.customFields.programacoes||[]).forEach(f=>{ const v=fd.get('cf_'+f.id); if(v!=null) custom[f.id]=v; });
       const base = {
@@ -6244,7 +6258,7 @@ function renderOcNds(){
     el.innerHTML = emptyState('Cadastre equipes primeiro', 'É necessário ter equipes cadastradas para despachar OC/NDS.');
     return;
   }
-  const list = (DB.ocnds||[]).slice().sort((a,b)=> String(b.data||'').localeCompare(String(a.data||'')));
+  const list = ocndsVisiveis().slice().sort((a,b)=> String(b.data||'').localeCompare(String(a.data||'')));
 
   const stats = (()=>{
     const total = list.length;
@@ -6763,7 +6777,7 @@ function equipePageUrlOcNds(id){
 }
 
 function ocndsVisiveis(){
-  return DB.ocnds||[];
+  return (DB.ocnds||[]).filter(x=> !usuarioRestrito() || mesmoDominio(x));
 }
 
 function flatOcNds(){
@@ -6840,11 +6854,20 @@ function garantirMaster(){
   }
 }
 function ehMestre(){ return !!(CURRENT_USER && String(CURRENT_USER.login)==='1'); }
-function usuarioRestrito(){ return !!(CURRENT_USER && CURRENT_USER.role==='supervisor' && CURRENT_USER.nivel==='programacao'); }
-function projetoVisivel(p){ return !usuarioRestrito() || (p.setor===CURRENT_USER.setor && p.coordenacao===CURRENT_USER.coordenacao); }
+function usuarioRestrito(){ return !!(CURRENT_USER && ((CURRENT_USER.setor||'').trim() || (CURRENT_USER.coordenacao||'').trim())); }
+function mesmoDominio(x){
+  if(!usuarioRestrito()) return true;
+  const us=String(CURRENT_USER.setor||'').trim(), uc=String(CURRENT_USER.coordenacao||'').trim();
+  const xs=String((x&&x.setor)||'').trim(), xc=String((x&&x.coordenacao)||'').trim();
+  if(us && xs!==us) return false;
+  if(uc && xc!==uc) return false;
+  return true;
+}
+function projetoVisivel(p){ return mesmoDominio(p); }
 function projetosVisiveis(){ return DB.projetos.filter(projetoVisivel); }
 function programacoesVisiveis(){ const vis = projetosVisiveis().map(p=>p.id); return DB.programacoes.filter(pg=> vis.includes(pg.projetoId)); }
-function equipesVisiveis(){ return usuarioRestrito()? DB.equipes.filter(e=> e.setor===CURRENT_USER.setor && e.coordenacao===CURRENT_USER.coordenacao) : DB.equipes; }
+function progVisivelPorId(id){ const pg=DB.programacoes.find(p=>p.id===Number(id)); return !!pg && programacoesVisiveis().some(v=>v.id===pg.id); }
+function equipesVisiveis(){ return DB.equipes.filter(e=> mesmoDominio(e)); }
 function equipesDoProjeto(pr){
   if(!pr || !pr.setor || !pr.coordenacao) return equipesVisiveis();
   return equipesVisiveis().filter(e=> !e.setor || !e.coordenacao || (e.setor===pr.setor && e.coordenacao===pr.coordenacao));
@@ -7014,10 +7037,10 @@ function monRastrearHtml(){
 function monRastrearBusca(q, tipo){
   q = (q||'').toLowerCase().trim();
   const res = [];
-  if((!tipo||tipo==='programacao')) (DB.programacoes||[]).forEach(p=>{ const pr=findProjeto(p.projetoId); const hay=(progGid(p)+' '+(pr?.nome||'')+' '+(pr?.codigo||'')).toLowerCase(); if(!q||hay.includes(q)) res.push({tipo:'programacao',id:p.id,lbl:progGid(p)+' · '+(pr?.codigo||'')+' '+(pr?.nome||'')}); });
+  if((!tipo||tipo==='programacao')) programacoesVisiveis().forEach(p=>{ const pr=findProjeto(p.projetoId); const hay=(progGid(p)+' '+(pr?.nome||'')+' '+(pr?.codigo||'')).toLowerCase(); if(!q||hay.includes(q)) res.push({tipo:'programacao',id:p.id,lbl:progGid(p)+' · '+(pr?.codigo||'')+' '+(pr?.nome||'')}); });
   if(!tipo||tipo==='atribuicao') flatAtribuicoes().forEach(x=>{ const at=x.atribuicao; const pg=progDaAtribuicao(at.id); const eq=findEquipe(at.equipeId); const hay=(progGid(pg)+' '+equipeLabel(eq)+' '+at.status).toLowerCase(); if(!q||hay.includes(q)) res.push({tipo:'atribuicao',id:at.id,lbl:progGid(pg)+' · '+equipeLabel(eq)+' · '+at.status}); });
-  if(!tipo||tipo==='equipe') (DB.equipes||[]).forEach(e=>{ const hay=(e.eqtl+' '+e.prtn+' '+e.supervisor+' '+e.encarregado).toLowerCase(); if(!q||hay.includes(q)) res.push({tipo:'equipe',id:e.id,lbl:(e.eqtl||e.prtn||'Equipe')+(e.setor? ' · '+e.setor:'')}); });
-  if(!tipo||tipo==='projeto') (DB.projetos||[]).forEach(p=>{ const hay=(p.codigo+' '+p.nome+' '+p.ciclo).toLowerCase(); if(!q||hay.includes(q)) res.push({tipo:'projeto',id:p.id,lbl:p.codigo+' · '+p.nome+' · '+p.ciclo}); });
+  if(!tipo||tipo==='equipe') equipesVisiveis().forEach(e=>{ const hay=(e.eqtl+' '+e.prtn+' '+e.supervisor+' '+e.encarregado).toLowerCase(); if(!q||hay.includes(q)) res.push({tipo:'equipe',id:e.id,lbl:(e.eqtl||e.prtn||'Equipe')+(e.setor? ' · '+e.setor:'')}); });
+  if(!tipo||tipo==='projeto') projetosVisiveis().forEach(p=>{ const hay=(p.codigo+' '+p.nome+' '+p.ciclo).toLowerCase(); if(!q||hay.includes(q)) res.push({tipo:'projeto',id:p.id,lbl:p.codigo+' · '+p.nome+' · '+p.ciclo}); });
   if(!tipo||tipo==='atividade') (DB.atividades||[]).forEach(a=>{ const hay=(a.codigo+' '+a.descricao).toLowerCase(); if(!q||hay.includes(q)) res.push({tipo:'atividade',id:a.id,lbl:a.codigo+' · '+a.descricao}); });
   if(!tipo||tipo==='usuario') (DB.usuarios||[]).forEach(u=>{ const hay=(u.nome+' '+u.login).toLowerCase(); if(!q||hay.includes(q)) res.push({tipo:'usuario',id:u.id,lbl:u.nome+' ('+u.login+')'}); });
   res.sort((a,b)=>a.id-b.id);
@@ -7666,7 +7689,7 @@ function renderRdoProjetos(){
 
 function renderRdoOcNds(){
   const el = document.getElementById('content');
-  const ocndsConcluidas = (DB.ocnds||[]).filter(x=>x.status==='Concluída').sort((a,b)=> String(b.data||'').localeCompare(String(a.data||'')));
+  const ocndsConcluidas = ocndsVisiveis().filter(x=>x.status==='Concluída').sort((a,b)=> String(b.data||'').localeCompare(String(a.data||'')));
 
   if(!ocndsConcluidas.length){
     el.innerHTML = `<div class="section-gap"><div class="panel"><div class="empty-state">${icon('check',36)}<h3 style="margin-bottom:6px;">Nenhuma ocorrência OC/NDS concluída</h3><p>Quando as equipes concluiram uma ocorrência OC/NDS, os dados aparecerão aqui.</p><button class="btn btn-primary" id="rdo-oc-back" style="margin-top:16px;">Voltar ao Painel</button></div></div></div>`;
@@ -8416,10 +8439,11 @@ function printRDOReport(registros){
   w.document.close();
 }
 function openProgramacaoDetalheModal(id){
+  if(!progVisivelPorId(id)){ toast('Você não tem permissão para acessar esta programação.', 'error'); return; }
   const pg = DB.programacoes.find(x=>x.id===Number(id));
   if(!pg){ toast('Programação não encontrada.', 'error'); return; }
-  const pr = findProjeto(DB, pg.projetoId);
-  const eq = (pg.atribuicoes||[]).map(a=>findEquipe(DB, a.equipeId)).find(Boolean);
+  const pr = findProjeto(pg.projetoId);
+  const eq = (pg.atribuicoes||[]).map(a=>findEquipe(a.equipeId)).find(Boolean);
   const atrib = (pg.atribuicoes||[])[0];
   const headTitulo = 'Programação — '+(pr?.nome||'Projeto');
   const headSub = [teamGidLabel(pg),

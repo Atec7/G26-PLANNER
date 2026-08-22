@@ -128,7 +128,6 @@ function openModal({title, bodyHtml, onSubmit, submitLabel='Salvar'}){
   const close = ()=>{ overlay.remove(); };
   overlay.querySelector('#team-modal-close').addEventListener('click', close);
   overlay.querySelector('#team-modal-cancel').addEventListener('click', close);
-  overlay.addEventListener('click', (e)=>{ if(e.target===overlay) close(); });
   overlay.querySelector('#team-modal-form').addEventListener('submit', (e)=>{ e.preventDefault(); const ok = onSubmit(new FormData(e.target)); if(ok!==false) close(); });
 }
 const ICONS = {
@@ -1113,7 +1112,6 @@ function coletarHorariosFinais(cb){
   });
   const close = ()=> ov.remove();
   ov.querySelector('.fin-cancel').addEventListener('click', close);
-  ov.addEventListener('click', e=>{ if(e.target===ov) close(); });
   ov.querySelector('.fin-ok').addEventListener('click', ()=>{
     const horarios = {};
     let ok = true;
